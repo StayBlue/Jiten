@@ -46,7 +46,8 @@ public static partial class MetadataProviderHelper
                                                       extraLarge
                                                     },
                                                     synonyms,
-                                                    averageScore
+                                                    averageScore,
+                                                    meanScore
                                                   }
                                                 }
                                               }
@@ -79,7 +80,7 @@ public static partial class MetadataProviderHelper
                                                                  }
                                                              ],
                                                              Image = media.CoverImage.ExtraLarge, Aliases = media.Synonyms,
-                                                             Rating = media.AverageScore ?? 0
+                                                             Rating = media.AverageScore ?? media.MeanScore ?? 0
                                                          }).ToList() ?? [];
     }
 
@@ -108,7 +109,8 @@ public static partial class MetadataProviderHelper
                                                       extraLarge
                                                     },
                                                     synonyms,
-                                                    averageScore
+                                                    averageScore,
+                                                    meanScore
                                                   }
                                               }
                                       """,
@@ -138,7 +140,7 @@ public static partial class MetadataProviderHelper
                    [
                        new Link { LinkType = LinkType.Anilist, Url = $"https://anilist.co/manga/{media.Id}" }
                    ],
-                   Image = media.CoverImage.ExtraLarge, Aliases = media.Synonyms, Rating = media.AverageScore ?? 0
+                   Image = media.CoverImage.ExtraLarge, Aliases = media.Synonyms, Rating = media.AverageScore ?? media.MeanScore ?? 0
                };
     }
 
@@ -166,7 +168,8 @@ public static partial class MetadataProviderHelper
                                                       extraLarge
                                                     },
                                                     synonyms,
-                                                    averageScore
+                                                    averageScore,
+                                                    meanScore
                                                   }
                                               }
                                       """,
@@ -200,7 +203,7 @@ public static partial class MetadataProviderHelper
                        new Link { LinkType = LinkType.Anilist, Url = $"https://anilist.co/anime/{media.Id}" },
                        new Link { LinkType = LinkType.Mal, Url = $"https://myanimelist.net/anime/{media.IdMal}" }
                    ],
-                   Image = media.CoverImage.ExtraLarge, Aliases = media.Synonyms, Rating = media.AverageScore ?? 0
+                   Image = media.CoverImage.ExtraLarge, Aliases = media.Synonyms, Rating = media.AverageScore ?? media.MeanScore ?? 0
                };
     }
 }

@@ -11,6 +11,7 @@ public class AnilistMedia
     public required AnilistImage CoverImage { get; set; }
     public List<string> Synonyms { get; set; } = new ();
     public int? AverageScore { get; set; }
+    public int? MeanScore { get; set; }
 
     public DateTime ReleaseDate => new(
                                        StartDate.Year.GetValueOrDefault(1),

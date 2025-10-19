@@ -37,6 +37,7 @@
   const englishTitle = ref('');
   const releaseDate = ref<Date>();
   const description = ref('');
+  const rating = ref(0);
 
   const coverImage = ref<File | null>(null); // User uploaded file
   const coverImageUrl = ref<string | null>(null); // URL from API metadata
@@ -197,6 +198,7 @@
     englishTitle.value = metadata.englishTitle || '';
     description.value = metadata.description || '';
     releaseDate.value = new Date(metadata.releaseDate) || new Date();
+    rating.value = metadata.rating || 0;
 
     if (metadata.image) {
       coverImageUrl.value = metadata.image;
@@ -224,6 +226,7 @@
       searchResults.value = [];
       selectedMetadata.value = null;
       subdecks.value = [];
+      rating.value = 0;
     }
   }
 
@@ -247,6 +250,7 @@
       formData.append('englishTitle', englishTitle.value);
       formData.append('releaseDate', formatDateAsYyyyMmDd(releaseDate.value));
       formData.append('description', description.value);
+      formData.append('rating', rating.value);
 
       // Handle cover image
       if (coverImage.value) {
