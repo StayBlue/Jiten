@@ -38,6 +38,8 @@ export const useJpdbApi = () => {
       try {
         // Step 1: Get list of decks
         const deckIds = await this.getUserDecks();
+        deckIds.push('never-forget');
+        deckIds.push('blacklist');
 
         // Step 2: Get vocabulary from all decks
         const allVocabulary: VocabularyIdPair[] = [];
@@ -63,12 +65,12 @@ export const useJpdbApi = () => {
       }
     }
 
-    private async getUserDecks(): Promise<number[]> {
+    private async getUserDecks(): Promise<any[]> {
       const requestBody = { fields: ['id'] };
 
       const response = await this.makeApiRequest('https://jpdb.io/api/v1/list-user-decks', requestBody);
 
-      const deckIds: number[] = [];
+      const deckIds: any[] = [];
       if (response.decks && Array.isArray(response.decks)) {
         for (const deck of response.decks) {
           if (Array.isArray(deck) && deck.length > 0) {
