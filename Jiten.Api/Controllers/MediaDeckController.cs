@@ -1265,27 +1265,9 @@ public class MediaDeckController(
                          "username": "IssueReporter"
                        }}
                        """;
-
-        string SafeMarkdown(string input)
-        {
-            if (string.IsNullOrEmpty(input)) return "";
-            // Escape common Discord markup characters: *, _, ~, `, >, |, [, ], (, ), @, #, :, \, etc.
-            var sb = new StringBuilder(input.Length);
-            foreach (var c in input)
-            {
-                if (c is '*' or '_' or '~' or '`' or '>' or '|' or '[' or ']' or '(' or ')' or '@' or '#' or ':' or '\\')
-                {
-                    sb.Append('\\'); // prepend backslash to escape
-                }
-
-                sb.Append(c);
-            }
-
-            return sb.ToString();
-        }
-
-        var safeComment = SafeMarkdown(request.Comment);
-        var safeIssueType = SafeMarkdown(request.IssueType);
+        
+        var safeComment = SanitizeForDiscord(request.Comment);
+        var safeIssueType = SanitizeForDiscord(request.IssueType);
         var embed = String.Format(rawEmbed, currentUserService.UserId, deck.OriginalTitle, deck.DeckId, safeComment, safeIssueType);
         var webhook = configuration["DiscordWebhook"];
         using var httpClient = new HttpClient();
@@ -1296,5 +1278,60 @@ public class MediaDeckController(
             return Ok();
 
         return BadRequest("Failed to send report");
+        
+        string SanitizeForDiscord(string input)
+        {
+            if (string.IsNullOrEmpty(input))
+                return "";
+
+            // Detect URLs (http/https)
+            var urlRegex = new Regex(@"(https?:\/\/[^\s)]+)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+            var sb = new StringBuilder();
+            int lastIndex = 0;
+
+            foreach (Match match in urlRegex.Matches(input))
+            {
+                // Escape text before the URL
+                if (match.Index > lastIndex)
+                {
+                    var textPart = input.Substring(lastIndex, match.Index - lastIndex);
+                    sb.Append(EscapeMarkdown(textPart));
+                }
+
+                // Add URL unescaped
+                sb.Append(match.Value);
+
+                lastIndex = match.Index + match.Length;
+            }
+
+            // Escape any remaining text after last URL
+            if (lastIndex < input.Length)
+            {
+                sb.Append(EscapeMarkdown(input.Substring(lastIndex)));
+            }
+
+            return sb.ToString();
+        }
+
+        string EscapeMarkdown(string text)
+        {
+            if (string.IsNullOrEmpty(text))
+                return text;
+
+            var sb = new StringBuilder(text.Length);
+            foreach (char c in text)
+            {
+                // Escape markdown/meta characters but leave slashes and colons for URLs
+                if (c is '*' or '_' or '~' or '`' or '>' or '|' or '[' or ']' or '(' or ')' or '@' or '#' or ':')
+                {
+                    sb.Append('\\');
+                }
+
+                sb.Append(c);
+            }
+
+            return sb.ToString();
+        }
     }
 }
