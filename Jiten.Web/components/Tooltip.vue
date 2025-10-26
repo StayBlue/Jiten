@@ -3,7 +3,7 @@
     <slot :toggle="toggle" :show="show" :hide="hide" />
   </div>
 
-  <Teleport to="body">
+  <Teleport to="body" v-if="formattedContent != ''">
     <Transition
       enter-active-class="transition-opacity duration-200"
       enter-from-class="opacity-0"

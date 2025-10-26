@@ -40,6 +40,18 @@
     { label: 'English', value: 2 },
   ]);
 
+  const difficultyDisplayStyleOptions = ref([
+    { label: 'Name only', value: 0 },
+    { label: 'Name and value', value: 1 },
+    { label: 'Value only', value: 2 },
+  ]);
+
+  const difficultyValueDisplayStyleOptions = ref([
+    { label: '1 to 6', value: 0 },
+    { label: '0 to 5', value: 1 },
+    { label: 'Percentage', value: 2 },
+  ]);
+
   const titleLanguage = computed({
     get: () => store.titleLanguage,
     set: (value) => (store.titleLanguage = value),
@@ -73,6 +85,16 @@
   const readingSpeed = computed({
     get: () => store.readingSpeed,
     set: (value) => (store.readingSpeed = value),
+  });
+
+  const difficultyDisplayStyle = computed({
+    get: () => store.difficultyDisplayStyle,
+    set: (value) => (store.difficultyDisplayStyle = value),
+  });
+
+  const difficultyValueDisplayStyle = computed({
+    get: () => store.difficultyValueDisplayStyle,
+    set: (value) => (store.difficultyValueDisplayStyle = value),
   });
 
   const isOverSettings = ref(false);
@@ -243,6 +265,36 @@
         <Checkbox v-model="displayAdminFunctions" input-id="displayAdminFunctions" name="adminFunctions" :binary="true" />
         <label for="displayAdminFunctions">Display admin functions</label>
       </div>
+
+      <Divider class="!m-2" />
+
+      <FloatLabel variant="on" class="">
+        <Select
+          v-model="difficultyDisplayStyle"
+          :options="difficultyDisplayStyleOptions"
+          option-label="label"
+          option-value="value"
+          placeholder="Difficulty Style"
+          input-id="difficultyDisplayStyle"
+          @show="isSettingsInteracted = true"
+          @hide="isSettingsInteracted = false"
+        />
+        <label for="difficultyDisplayStyle">Difficulty Style</label>
+      </FloatLabel>
+
+      <FloatLabel variant="on" class="">
+        <Select
+          v-model="difficultyValueDisplayStyle"
+          :options="difficultyValueDisplayStyleOptions"
+          option-label="label"
+          option-value="value"
+          placeholder="Difficulty Value Style"
+          input-id="difficultyValueDisplayStyle"
+          @show="isSettingsInteracted = true"
+          @hide="isSettingsInteracted = false"
+        />
+        <label for="difficultyValueDisplayStyle">Difficulty Value Style</label>
+      </FloatLabel>
     </div>
   </Popover>
 </template>

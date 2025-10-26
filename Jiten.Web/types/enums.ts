@@ -71,3 +71,15 @@ export enum KnownState {
   Mature = 2,
   Suspended = 3,
 }
+
+export enum DifficultyDisplayStyle {
+  Name = 0,
+  NameAndValue = 1,
+  Value = 2
+}
+
+export enum DifficultyValueDisplayStyle {
+  StartsAt1 = 0,
+  StartsAt0 = 1,
+  Percentage = 2,
+}

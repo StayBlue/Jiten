@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia';
-import { TitleLanguage } from '~/types';
+import { DifficultyDisplayStyle, DifficultyValueDisplayStyle, TitleLanguage } from '~/types';
 
 export const useJitenStore = defineStore('jiten', () => {
   const titleLanguageCookie = useCookie<TitleLanguage>('jiten-title-language', {
@@ -106,6 +106,33 @@ export const useJitenStore = defineStore('jiten', () => {
     hideCoverageBordersCookie.value = newValue;
   });
 
+  const difficultyDisplayStyleCookie = useCookie<DifficultyDisplayStyle>('jiten-difficulty-display-style', {
+    default: () => 0,
+    watch: true,
+    maxAge: 60 * 60 * 24 * 365, // 1 year
+    path: '/',
+  });
+
+  const difficultyDisplayStyle = ref<DifficultyDisplayStyle>(difficultyDisplayStyleCookie.value);
+
+  watch(difficultyDisplayStyle, (newValue) => {
+    difficultyDisplayStyleCookie.value = newValue;
+  });
+
+  const difficultyValueDisplayStyleCookie = useCookie<DifficultyValueDisplayStyle>('jiten-difficulty-value-display-style', {
+    default: () => 0,
+    watch: true,
+    maxAge: 60 * 60 * 24 * 365, // 1 year
+    path: '/',
+  });
+
+  const difficultyValueDisplayStyle = ref<DifficultyValueDisplayStyle>(difficultyValueDisplayStyleCookie.value);
+
+  watch(difficultyValueDisplayStyle, (newValue) => {
+    difficultyValueDisplayStyleCookie.value = newValue;
+  });
+
+
   const getKnownWordIds = (): number[] => {
     if (import.meta.client) {
       try {
@@ -145,6 +172,8 @@ export const useJitenStore = defineStore('jiten', () => {
     knownWordIds,
     displayAllNsfw,
     hideVocabularyDefinitions,
-    hideCoverageBorders
+    hideCoverageBorders,
+    difficultyDisplayStyle,
+    difficultyValueDisplayStyle
   };
 });
