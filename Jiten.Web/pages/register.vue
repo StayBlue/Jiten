@@ -41,50 +41,62 @@
 </script>
 
 <template>
-  <Card class="max-w-100 mx-auto p-2">
+  <Card class="max-w-120 mx-auto p-2">
     <template #title>Register</template>
     <template #content>
-      <form @submit.prevent="handleRegister" class="flex flex-col gap-2">
+      <form @submit.prevent="handleRegister" class="flex flex-col gap-6 pt-4">
         <div class="w-full">
-          <FloatLabel for="username">Username</FloatLabel>
-          <InputText id="username" v-model.trim="form.username" required />
-        </div>
-        <div class="w-full">
-          <FloatLabel for="email">Email</FloatLabel>
-          <InputText id="email" v-model.trim="form.email" type="email" required />
-          <div class="text-sm text-gray-500Can dark:text-gray-300">
-            Please avoid hotmail/outlook email addresses or you might not receive confirmation emails.
-          </div>
+          <FloatLabel>
+            <InputText id="username" v-model.trim="form.username" required class="w-full" />
+            <label for="username">Username</label>
+          </FloatLabel>
         </div>
         <div class="w-full">
-          <FloatLabel for="password">Password</FloatLabel>
-          <Password
-            id="password"
-            v-model="form.password"
-            toggleMask
-            :feedback="true"
-            :promptLabel="'At least 10 characters including upper, lower, digit'"
-            :weakLabel="'Weak'"
-            :mediumLabel="'Medium'"
-            :strongLabel="'Strong'"
-            :inputProps="{ autocomplete: 'new-password', minlength: 10 }"
-            required
-          />
+          <FloatLabel>
+            <InputText id="email" v-model.trim="form.email" type="email" required class="w-full" />
+            <label for="email">Email</label>
+          </FloatLabel>
         </div>
-        <div>
-          <Checkbox id="terms" v-model="form.tosAccepted" name="terms" binary required />
-          <label for="terms">
-            I agree to the <NuxtLink to="/terms" target="_blank" class="text-blue-500 hover:underline">Terms of Service</NuxtLink> and
-            <NuxtLink to="/privacy" target="_blank" class="text-blue-500 hover:underline">Privacy Policy</NuxtLink>.</label
-          >
-        </div>
-        <div>
-          <Checkbox id="newsletter" v-model="form.receiveNewsletter" name="newsletter" binary />
-          <label for="newsletter">I would like to receive occasional updates and newsletters via email</label>
+        <div class="w-full">
+          <FloatLabel>
+            <Password
+              id="password"
+              v-model="form.password"
+              toggleMask
+              :feedback="true"
+              :promptLabel="'At least 10 characters including upper, lower, digit'"
+              :weakLabel="'Weak'"
+              :mediumLabel="'Medium'"
+              :strongLabel="'Strong'"
+              :inputProps="{ autocomplete: 'new-password', minlength: 10 }"
+              :inputClass="'w-full'"
+              required
+            />
+            <label for="password">Password</label>
+          </FloatLabel>
         </div>
 
-        <RecaptchaCheckbox v-model="recaptchaResponse" />
-        <Button type="submit" :disabled="isLoading">{{ isLoading ? 'Registering...' : 'Register' }}</Button>
+        <div class="flex flex-col gap-4 pt-2">
+          <div class="flex items-start gap-3">
+            <Checkbox inputId="terms" v-model="form.tosAccepted" name="terms" binary required class="mt-1" />
+            <label for="terms" class="text-sm text-gray-700 leading-relaxed cursor-pointer">
+              I agree to the
+              <NuxtLink to="/terms" target="_blank" class="text-blue-600 hover:text-blue-800 hover:underline font-medium"> Terms of Service </NuxtLink>
+              and
+              <NuxtLink to="/privacy" target="_blank" class="text-blue-600 hover:text-blue-800 hover:underline font-medium"> Privacy Policy </NuxtLink>
+            </label>
+          </div>
+
+          <div class="flex items-start gap-3">
+            <Checkbox inputId="newsletter" v-model="form.receiveNewsletter" name="newsletter" binary class="mt-1" />
+            <label for="newsletter" class="text-sm text-gray-700 leading-relaxed cursor-pointer">
+              I would like to receive occasional updates and newsletters via email
+            </label>
+          </div>
+        </div>
+
+        <RecaptchaCheckbox v-model="recaptchaResponse" class="my-2" />
+        <Button type="submit" :disabled="isLoading" class="w-full">{{ isLoading ? 'Registering...' : 'Register' }}</Button>
       </form>
       <p v-if="message" class="text-amber-400">{{ message }}</p>
       <p v-if="error" class="text-red-500">{{ error }}</p>
@@ -94,3 +106,30 @@
     </template>
   </Card>
 </template>
+
+<style scoped>
+  /* Ensure PrimeVue Password component takes full width */
+  :deep(.p-password) {
+    width: 100%;
+  }
+
+  :deep(.p-password input) {
+    width: 100%;
+  }
+
+  /* Ensure consistent input heights */
+  :deep(.p-inputtext),
+  :deep(.p-password input) {
+    min-height: 3rem;
+  }
+
+  /* Better spacing for float labels */
+  :deep(.p-float-label) {
+    margin-bottom: 0;
+  }
+
+  /* Improve checkbox alignment */
+  :deep(.p-checkbox) {
+    flex-shrink: 0;
+  }
+</style>
