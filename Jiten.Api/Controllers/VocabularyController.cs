@@ -2,6 +2,7 @@ using Jiten.Api.Dtos;
 using Jiten.Api.Helpers;
 using Jiten.Api.Services;
 using Jiten.Core;
+using Jiten.Core.Data;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
@@ -164,16 +165,19 @@ public class VocabularyController(JitenDbContext context, ICurrentUserService cu
     /// <param name="readingIndex">The reading index for the word.</param>
     /// <param name="alreadyLoaded">A list of deck IDs already loaded on the client to avoid duplicates.</param>
     /// <returns>A list of example sentences with metadata.</returns>
-    [HttpPost("{wordId}/{readingIndex}/random-example-sentences")]
-    [SwaggerOperation(Summary = "Get random example sentences", Description = "Returns up to three random example sentences for the given word and reading index, excluding already loaded ones.")]
+    [HttpPost("{wordId}/{readingIndex}/random-example-sentences/{mediaType?}")]
+    [SwaggerOperation(Summary = "Get random example sentences",
+                      Description =
+                          "Returns up to three random example sentences for the given word and reading index, excluding already loaded ones.")]
     [ProducesResponseType(typeof(List<ExampleSentenceDto>), StatusCodes.Status200OK)]
-    public async Task<List<ExampleSentenceDto>> GetRandomExampleSentences([FromRoute] int wordId, [FromRoute] int readingIndex, [FromBody] List<int> alreadyLoaded)
+    public async Task<List<ExampleSentenceDto>> GetRandomExampleSentences([FromRoute] int wordId, [FromRoute] int readingIndex,
+                                                                          [FromBody] List<int> alreadyLoaded, [FromRoute] MediaType? mediaType = null)
+
     {
         return await context.ExampleSentenceWords
                             .AsNoTracking()
                             .Where(w => w.WordId == wordId && w.ReadingIndex == readingIndex)
                             .OrderBy(_ => EF.Functions.Random())
-                            .Take(3)
                             .Join(
                                   context.ExampleSentences.AsNoTracking()
                                          .Where(s => !alreadyLoaded.Contains(s.DeckId)),
@@ -187,6 +191,7 @@ public class VocabularyController(JitenDbContext context, ICurrentUserService cu
                                   d => d.DeckId,
                                   (joined, deck) => new { joined, deck }
                                  )
+                            .Where(j => !mediaType.HasValue || j.deck.MediaType == mediaType.Value)
                             .GroupJoin(
                                        context.Decks.AsNoTracking(),
                                        j => j.deck.ParentDeckId,
@@ -198,6 +203,7 @@ public class VocabularyController(JitenDbContext context, ICurrentUserService cu
                                                                SourceDeckParent = parentDecks.FirstOrDefault()
                                                            }
                                       )
+                            .Take(3)
                             .ToListAsync();
     }
 }

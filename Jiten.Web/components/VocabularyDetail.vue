@@ -46,6 +46,20 @@
   const mediaAmountUrl = 'media-deck/decks-count';
   const { data: mediaAmountResponse } = await useApiFetch<Record<MediaType, number>>(mediaAmountUrl);
 
+  const selectedMediaType = ref<MediaType | null>(null);
+  const mediaAccordionValue = ref('0');
+  const selectMediaType = (type: number | string | null) => {
+    if (type != null) {
+      selectedMediaType.value = Number(type) as MediaType;
+    } else {
+      selectedMediaType.value = null;
+    }
+    mediaAccordionValue.value = '1';
+    exampleSentences.value = [];
+    canLoadExampleSentences.value = true;
+    getRandomExampleSentences();
+  };
+
   const switchReadingOrWord = async () => {
     exampleSentences.value = [];
     canLoadExampleSentences.value = true;
@@ -94,8 +108,14 @@
   });
 
   async function getRandomExampleSentences() {
+    let url = `vocabulary/${props.wordId}/${currentReadingIndex.value}/random-example-sentences`;
+
+    if (selectedMediaType.value != null) {
+      url += '/' + selectedMediaType.value;
+    }
+
     const alreadyLoaded = exampleSentences.value.map((sentence) => sentence.sourceDeck.deckId);
-    const results = await $api<ExampleSentence[]>(`vocabulary/${props.wordId}/${currentReadingIndex.value}/random-example-sentences`, {
+    const results = await $api<ExampleSentence[]>(url, {
       method: 'POST',
       body: alreadyLoaded,
     });
@@ -162,12 +182,13 @@
             </div>
           </ClientOnly>
         </div>
+
         <div class="min-w-64">
           <div class="text-gray-500 dark:text-gray-300 text-right hidden md:block">
             <VocabularyStatus :word="response.data" />
             Rank #{{ response.data.mainReading.frequencyRank }}
           </div>
-          <div class="md:text-right pt-4">
+          <div class="md:text-right pt-4 cursor-pointer" @click="selectMediaType(null)">
             Appears in <b>{{ response.data.mainReading.usedInMediaAmount }} media</b>
           </div>
           <ClientOnly>
@@ -179,7 +200,12 @@
                   <th class="text-gray-500 dark:text-gray-300 text-sm pl-4">% of total</th>
                 </tr>
               </thead>
-              <tr v-for="(amount, mediaType) in response.data.mainReading.usedInMediaAmountByType" :key="mediaType">
+              <tr
+                v-for="(amount, mediaType) in response.data.mainReading.usedInMediaAmountByType"
+                :key="mediaType"
+                class="cursor-pointer hover:bg-primary-100 dark:hover:bg-primary-900/30 transition-colors"
+                @click="selectMediaType(mediaType)"
+              >
                 <th class="text-right p-0.5 !font-bold">{{ getMediaTypeText(Number(mediaType)) }}</th>
                 <th class="text-right p-0.5">{{ amount }}</th>
                 <th class="text-right p-0.5">{{ mediaAmountResponse ? ((amount / mediaAmountResponse[mediaType as MediaType]) * 100).toFixed(0) : '0' }}%</th>
@@ -209,7 +235,7 @@
         </div>
       </ClientOnly>
 
-      <Accordion v-if="response.data.mainReading.usedInMediaAmount > 0" value="0" lazy>
+      <Accordion v-if="response.data.mainReading.usedInMediaAmount > 0" :value="mediaAccordionValue" lazy>
         <AccordionPanel value="1">
           <AccordionHeader>
             <div class="cursor-pointer">
@@ -217,7 +243,7 @@
             </div>
           </AccordionHeader>
           <AccordionContent>
-            <MediaList :word="response.data" />
+            <MediaList :word="response.data" :default-media-type="selectedMediaType" />
           </AccordionContent>
         </AccordionPanel>
       </Accordion>

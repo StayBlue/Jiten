@@ -20,10 +20,32 @@
 
   const props = defineProps<{
     word?: Word;
+    defaultMediaType?: MediaType | null;
   }>();
 
   const route = useRoute();
   const router = useRouter();
+
+  watch(
+    () => props.defaultMediaType,
+    (newVal) => {
+      if (newVal !== null && newVal !== undefined) {
+        const curr = route.query.mediaType ? Number(Array.isArray(route.query.mediaType) ? route.query.mediaType[0] : route.query.mediaType) : null;
+        if (curr !== Number(newVal)) {
+          router.replace({
+            query: { ...route.query, mediaType: Number(newVal) as any, offset: 0 as any },
+          });
+        }
+      } else {
+        if (route.query.mediaType) {
+          router.replace({
+            query: { ...route.query, mediaType: undefined, offset: 0 as any },
+          });
+        }
+      }
+    },
+    { immediate: true }
+  );
 
   const filters = ref();
 
@@ -73,7 +95,6 @@
   const sortBy = ref(route.query.sortBy ? route.query.sortBy : sortByOptions.value[0].value);
   const wordIdRef = ref(props.word?.wordId);
   const readingIndexRef = ref(props.word?.mainReading?.readingIndex);
-
 
   if (isConnected.value) {
     if (!sortByOptions.value.some((o) => o.value === 'uCoverage')) {
@@ -601,7 +622,7 @@
     <div>
       <div class="flex flex-col gap-1">
         <div class="flex flex-col md:flex-row justify-between">
-          <div class="flex gap-8 pl-2">
+          <div class="flex gap-8 pl-2 pb-2">
             <NuxtLink :to="previousLink" :class="previousLink == null ? '!text-gray-500 pointer-events-none' : ''" no-rel> Previous </NuxtLink>
             <NuxtLink :to="nextLink" :class="nextLink == null ? '!text-gray-500 pointer-events-none' : ''" no-rel> Next </NuxtLink>
           </div>

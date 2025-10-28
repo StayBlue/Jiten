@@ -66,6 +66,8 @@
         >
           {{ localiseTitle(exampleSentence.sourceDeck) }}
         </NuxtLink>
+        &nbsp;
+        ({{getMediaTypeText(exampleSentence.sourceDeck.mediaType)}})
       </div>
     </div>
   </div>
