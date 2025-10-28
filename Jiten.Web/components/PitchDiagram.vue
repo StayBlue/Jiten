@@ -1,15 +1,6 @@
 <script setup lang="ts">
   import { Line } from 'vue-chartjs';
-  import {
-    Chart as ChartJS,
-    CategoryScale,
-    LinearScale,
-    PointElement,
-    LineElement,
-    Tooltip,
-    type ChartOptions,
-    type ChartData,
-  } from 'chart.js';
+  import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, Tooltip, type ChartOptions, type ChartData } from 'chart.js';
   import type { Context } from 'chartjs-plugin-datalabels';
   import ChartDataLabels from 'chartjs-plugin-datalabels'; // Import datalabels plugin and Context type
   import { hatsuon, getPitchPatternName } from 'hatsuon/dist/index.es';
@@ -140,9 +131,9 @@
       maintainAspectRatio: false,
       layout: {
         padding: {
+          top: 5,
           left: 12,
-
-        }
+        },
       },
       scales: {
         x: {
@@ -154,7 +145,7 @@
         y: {
           display: false,
           min: -0.3,
-          max: 1.5,
+          max: 1.7,
           grid: {
             display: false,
           },
@@ -238,7 +229,7 @@
     padding: 1rem 0.6rem 0;
     text-align: center;
     margin-top: -10px;
-        font-size: 0.9em;
+    font-size: 0.9em;
   }
 
   .pitch-label small {
