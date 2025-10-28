@@ -1077,7 +1077,7 @@ public class MediaDeckController(
             case DeckFormat.Csv:
                 StringBuilder sb = new StringBuilder();
 
-                sb.AppendLine($"\"Reading\",\"ReadingFurigana\",\"ReadingKana\",\"Occurences\",\"ReadingFrequency\",\"PitchPositions\",\"Definitions\",\"ExampleSentence\"");
+                sb.AppendLine($"\"Word\",\"ReadingFurigana\",\"ReadingKana\",\"Occurences\",\"ReadingFrequency\",\"PitchPositions\",\"Definitions\",\"ExampleSentence\",\"JmDictWordId\"");
 
                 foreach (var word in deckWords)
                 {
@@ -1120,7 +1120,7 @@ public class MediaDeckController(
                         }
                     }
 
-                    sb.AppendLine($"\"{reading}\",\"{readingFurigana}\",\"{readingKana}\",\"{occurrences}\",\"{readingFrequency}\",\"{pitchPositions}\",\"{definitions}\",\"{exampleSentence}\"");
+                    sb.AppendLine($"\"{reading}\",\"{readingFurigana}\",\"{readingKana}\",\"{occurrences}\",\"{readingFrequency}\",\"{pitchPositions}\",\"{definitions}\",\"{exampleSentence}\",\"{word.WordId}\"");
                 }
 
                 return Encoding.UTF8.GetBytes(sb.ToString());
