@@ -227,7 +227,7 @@
                   Quotations belong to their original creators and are presented here for educational purposes only, as per the
                   <NuxtLink :to="`/terms`" target="_blank" class="hover:underline text-primary-600"> terms of service.</NuxtLink>
                 </div>
-                <ExampleSentenceEntry v-for="(exampleSentence, index) in exampleSentences" :key="index" :example-sentence="exampleSentence" />
+                <ExampleSentenceEntry v-for="(exampleSentence, index) in exampleSentences" :key="index" :example-sentence="exampleSentence" :show-source="true" />
                 <Button @click="getRandomExampleSentences()" :disabled="!canLoadExampleSentences">Load more</Button>
               </AccordionContent>
             </AccordionPanel>

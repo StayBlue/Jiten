@@ -34,12 +34,13 @@ public class DeckDto
     public float Coverage { get; set; }
     public float UniqueCoverage { get; set; }
     public byte ExternalRating { get; set; }
+    public ExampleSentenceDto? ExampleSentence { get; set; }
 
     public DeckDto()
     {
     }
 
-    public DeckDto(Deck deck, int occurrences)
+    public DeckDto(Deck deck, int occurrences, ExampleSentenceDto? exampleSentence = null)
     {
         DeckId = deck.DeckId;
         CreationDate = deck.CreationDate;
@@ -69,9 +70,10 @@ public class DeckDto
         HideDialoguePercentage = deck.HideDialoguePercentage;
         Aliases = deck.Titles.Where(t => t.TitleType == DeckTitleType.Alias).Select(t => t.Title).ToList();
         ExternalRating = deck.ExternalRating;
+        ExampleSentence = exampleSentence;
     }
 
-    public DeckDto(Deck deck)
+    public DeckDto(Deck deck, ExampleSentenceDto? exampleSentence = null)
     {
         DeckId = deck.DeckId;
         CreationDate = deck.CreationDate;
@@ -100,6 +102,7 @@ public class DeckDto
         HideDialoguePercentage = deck.HideDialoguePercentage;
         Aliases = deck.Titles.Where(t => t.TitleType == DeckTitleType.Alias).Select(t => t.Title).ToList();
         ExternalRating = deck.ExternalRating;
+        ExampleSentence = exampleSentence;
     }
 
     /// <summary>

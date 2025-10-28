@@ -170,10 +170,10 @@ public class MediaDeckController(
 
         if (subdeckCountMax != null)
             query = query.Where(d => d.Children.Count <= subdeckCountMax);
-        
+
         if (extRatingMin != null)
             query = query.Where(d => d.ExternalRating >= extRatingMin);
-        
+
         if (extRatingMax != null)
             query = query.Where(d => d.ExternalRating <= extRatingMax);
 
@@ -235,7 +235,7 @@ public class MediaDeckController(
 
         if (wordId != 0)
         {
-            return await HandleWordBasedQuery(projectedQuery!, sortBy, sortOrder, offset ?? 0, pageSize);
+            return await HandleWordBasedQuery(projectedQuery!, wordId, readingIndex, sortBy, sortOrder, offset ?? 0, pageSize);
         }
 
         // Handle regular queries
@@ -425,7 +425,8 @@ public class MediaDeckController(
     }
 
     private async Task<PaginatedResponse<List<DeckDto>>> HandleWordBasedQuery(
-        IQueryable<DeckWithOccurrences> projectedQuery, string sortBy, SortOrder sortOrder, int offset, int pageSize)
+        IQueryable<DeckWithOccurrences> projectedQuery, int wordId, int readingIndex, string sortBy, SortOrder sortOrder, int offset,
+        int pageSize)
     {
         // Apply sorting to the projected query
         projectedQuery = ApplySorting(projectedQuery, sortBy, sortOrder);
@@ -437,7 +438,55 @@ public class MediaDeckController(
                                      .AsSplitQuery()
                                      .ToListAsync();
 
-        var dtos = paginatedResults.Select(r => new DeckDto(r.Deck, r.Occurrences)).ToList();
+        var targetDeckIds = paginatedResults.Select(r => r.Deck.DeckId).ToList();
+
+        var minimalExamples = await context.ExampleSentences
+                                           .AsNoTracking()
+                                           .Join(context.Decks.AsNoTracking(),
+                                                 es => es.DeckId,
+                                                 d => d.DeckId,
+                                                 (es, d) => new { es, d })
+                                           .Where(x => targetDeckIds.Contains(x.d.ParentDeckId ?? x.d.DeckId))
+                                           .Select(x => new
+                                                        {
+                                                            EffectiveDeckId = x.d.ParentDeckId ?? x.d.DeckId, x.es.Text, Match = x.es.Words
+                                                                .Where(w => w.WordId == wordId && w.ReadingIndex == readingIndex)
+                                                                .Select(w => new { w.Position, w.Length })
+                                                                .FirstOrDefault()
+                                                        })
+                                           .Where(x => x.Match != null)
+                                           .GroupBy(x => x.EffectiveDeckId)
+                                           .Select(g => g.First())
+                                           .ToListAsync();
+
+        var exampleSentences = minimalExamples
+                               .Select(x => new ExampleSentence
+                                            {
+                                                DeckId = x.EffectiveDeckId, Text = x.Text, Words =
+                                                [
+                                                    new ExampleSentenceWord
+                                                    {
+                                                        WordId = wordId, ReadingIndex = (byte)readingIndex, Position = x.Match!.Position,
+                                                        Length = x.Match!.Length
+                                                    }
+                                                ]
+                                            })
+                               .ToList();
+
+
+        var dtos = paginatedResults
+                   .Select(r => new DeckDto(
+                                            r.Deck,
+                                            r.Occurrences,
+                                            exampleSentences
+                                                .Where(es => es.DeckId == r.Deck.DeckId)
+                                                .Select(es => new ExampleSentenceDto
+                                                              {
+                                                                  Text = es.Text, WordPosition = es.Words[0].Position,
+                                                                  WordLength = es.Words[0].Length
+                                                              })
+                                                .FirstOrDefault()))
+                   .ToList();
 
         // Populate user coverage if authenticated
         if (currentUserService.IsAuthenticated)
@@ -1251,25 +1300,19 @@ public class MediaDeckController(
         var safeIssueType = SanitizeForDiscord(request.IssueType);
 
         var discordPayload = new
-        {
-            content = $"A new report from user ID `{currentUserService.UserId}` came in.\n",
-            tts = false,
-            embeds = new[]
-            {
-                new
-                {
-                    id = 652627557,
-                    title = safeIssueType,
-                    description = $"[{deck.OriginalTitle}](https://jiten.moe/decks/media/{deck.DeckId}/detail)\n\nComment:\n{safeComment}",
-                    color = 8266731,
-                    fields = Array.Empty<object>()
-                }
-            },
-            components = Array.Empty<object>(),
-            actions = new { },
-            flags = 0,
-            username = "IssueReporter"
-        };
+                             {
+                                 content = $"A new report from user ID `{currentUserService.UserId}` came in.\n", tts = false, embeds =
+                                     new[]
+                                     {
+                                         new
+                                         {
+                                             id = 652627557, title = safeIssueType, description =
+                                                 $"[{deck.OriginalTitle}](https://jiten.moe/decks/media/{deck.DeckId}/detail)\n\nComment:\n{safeComment}",
+                                             color = 8266731, fields = Array.Empty<object>()
+                                         }
+                                     },
+                                 components = Array.Empty<object>(), actions = new { }, flags = 0, username = "IssueReporter"
+                             };
         var embedJson = JsonSerializer.Serialize(discordPayload);
         var webhook = configuration["DiscordWebhook"];
         using var httpClient = new HttpClient();
@@ -1280,7 +1323,7 @@ public class MediaDeckController(
             return Ok();
 
         return BadRequest("Failed to send report");
-        
+
         string SanitizeForDiscord(string input)
         {
             if (string.IsNullOrEmpty(input))

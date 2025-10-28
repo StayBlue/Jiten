@@ -201,6 +201,8 @@
                 </div>
               </div>
 
+              <ExampleSentenceEntry v-if="deck.exampleSentence != undefined" :example-sentence="deck.exampleSentence" />
+
               <div class="mt-4 flex flex-col md:flex-row gap-4">
                 <a v-for="link in sortedLinks" :key="link.url" :href="link.url" target="_blank">{{ getLinkTypeText(Number(link.linkType)) }}</a>
               </div>

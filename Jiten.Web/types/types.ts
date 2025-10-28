@@ -31,6 +31,7 @@ export interface Deck {
   uniqueCoverage: number;
   hideDialoguePercentage: boolean;
   externalRating: number;
+  exampleSentence?: ExampleSentence;
 }
 
 export interface DeckDetail {

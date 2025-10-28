@@ -4,6 +4,7 @@
 
   const props = defineProps<{
     exampleSentence: ExampleSentence;
+    showSource?: boolean;
   }>();
 
   const store = useJitenStore();
@@ -14,7 +15,6 @@
       store.displayAllNsfw = value;
     },
   });
-
 
   const formattedText = computed(() => {
     const { text, wordPosition, wordLength } = props.exampleSentence;
@@ -46,7 +46,7 @@
         </div>
       </div>
     </blockquote>
-    <div class="flex items-center mb-2">
+    <div v-if="showSource" class="flex items-center mb-2">
       <span class="text-xs italic mr-2 ml-4">Source:</span>
       <div class="inline-flex items-center text-xs">
         <NuxtLink
