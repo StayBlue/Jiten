@@ -36,7 +36,7 @@
             query: { ...route.query, mediaType: Number(newVal) as any, offset: 0 as any },
           });
         }
-      } else {
+      } else if (newVal === null) {
         if (route.query.mediaType) {
           router.replace({
             query: { ...route.query, mediaType: undefined, offset: 0 as any },
@@ -85,7 +85,7 @@
     'subdeckCount',
     'uKanjiOnce',
     'releaseDate',
-    'addedDate'
+    'addedDate',
   ];
 
   const authStore = useAuthStore();
@@ -157,7 +157,7 @@
       extRatingMin.value = val[0];
       extRatingMax.value = val[1];
     },
-  })
+  });
 
   // Ensure min is not higher than max and values stay within bounds
   const clamp = (val: number, min: number, max: number) => Math.min(max, Math.max(min, val));
@@ -227,9 +227,12 @@
     { leading: false }
   );
 
-  watch([charCountMin, charCountMax, releaseYearMin, releaseYearMax, uniqueKanjiMin, uniqueKanjiMax, subdeckCountMin, subdeckCountMax, extRatingMin, extRatingMax], () => {
-    updateFiltersDebounced();
-  });
+  watch(
+    [charCountMin, charCountMax, releaseYearMin, releaseYearMax, uniqueKanjiMin, uniqueKanjiMax, subdeckCountMin, subdeckCountMax, extRatingMin, extRatingMax],
+    () => {
+      updateFiltersDebounced();
+    }
+  );
 
   watch(
     () => mediaType.value,
@@ -420,7 +423,7 @@
           <NuxtLink
             v-for="option in mediaTypeOptions"
             :key="option.label"
-            :to="{ query: option.type ? { mediaType: option.type } : {} }"
+            :to="{ query: option.type ? { ...route.query, mediaType: option.type, offset: 0 } : { ...route.query, mediaType: undefined, offset: 0 } }"
             :class="{ 'font-bold !text-purple-500': isActive(option.type) }"
           >
             {{ option.label }}

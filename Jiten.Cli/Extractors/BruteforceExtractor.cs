@@ -33,7 +33,7 @@ public class BruteforceExtractor
         Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
 
         string regexPattern = @"[" +
-                              @"…" +
+                              @"…―」”" +
                               @"\p{IsHiragana}" + // Hiragana
                               @"\p{IsKatakana}" + // Katakana
                               @"\p{IsCJKUnifiedIdeographs}" + // Basic Kanji
