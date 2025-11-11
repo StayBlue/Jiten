@@ -24,7 +24,8 @@ public class UserDbContext : IdentityDbContext<User>
     public DbSet<RefreshToken> RefreshTokens { get; set; }
     public DbSet<UserMetadata> UserMetadatas { get; set; }
     public DbSet<ApiKey> ApiKeys { get; set; }
-    
+    public DbSet<UserDeckPreference> UserDeckPreferences { get; set; }
+
     public DbSet<FsrsCard> FsrsCards { get; set; }
     public DbSet<FsrsReviewLog> FsrsReviewLogs { get; set; }
 
@@ -145,6 +146,24 @@ public class UserDbContext : IdentityDbContext<User>
                   .HasDatabaseName("IX_ApiKey_UserId_IsRevoked");
         });
 
+        modelBuilder.Entity<UserDeckPreference>(entity =>
+        {
+            entity.HasKey(udp => new { udp.UserId, udp.DeckId });
+            entity.Property(udp => udp.UserId).HasConversion(guidToString).HasColumnType("uuid").IsRequired();
+            entity.Property(udp => udp.Status).IsRequired();
+            entity.Property(udp => udp.IsFavourite).IsRequired();
+            entity.Property(udp => udp.IsIgnored).IsRequired();
+
+            entity.HasOne<User>()
+                  .WithMany()
+                  .HasForeignKey(udp => udp.UserId)
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasIndex(udp => udp.UserId).HasDatabaseName("IX_UserDeckPreference_UserId");
+            entity.HasIndex(udp => new { udp.UserId, udp.IsFavourite }).HasDatabaseName("IX_UserDeckPreference_UserId_IsFavourite");
+            entity.HasIndex(udp => new { udp.UserId, udp.Status }).HasDatabaseName("IX_UserDeckPreference_UserId_Status");
+        });
+
         // FSRS
         modelBuilder.Entity<FsrsCard>(entity =>
         {
@@ -183,10 +202,10 @@ public class UserDbContext : IdentityDbContext<User>
 
     private void AddTimestamps()
     {
-        var entities = ChangeTracker.Entries()
-                                    .Where(x => x is { Entity: User, State: EntityState.Added or EntityState.Modified });
+        var userEntities = ChangeTracker.Entries()
+                                        .Where(x => x is { Entity: User, State: EntityState.Added or EntityState.Modified });
 
-        foreach (var entity in entities)
+        foreach (var entity in userEntities)
         {
             var now = DateTime.UtcNow;
             if (entity.State == EntityState.Added)

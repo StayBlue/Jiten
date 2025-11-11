@@ -1,4 +1,5 @@
 using Jiten.Core.Data;
+using Jiten.Core.Data.User;
 
 namespace Jiten.Api.Dtos;
 
@@ -35,6 +36,9 @@ public class DeckDto
     public float UniqueCoverage { get; set; }
     public byte ExternalRating { get; set; }
     public ExampleSentenceDto? ExampleSentence { get; set; }
+    public DeckStatus? Status { get; set; }
+    public bool? IsFavourite { get; set; }
+    public bool? IsIgnored { get; set; }
 
     public DeckDto()
     {

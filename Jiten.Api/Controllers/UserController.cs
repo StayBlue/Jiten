@@ -1,4 +1,5 @@
 using Hangfire;
+using Jiten.Api.Dtos.Requests;
 using Jiten.Api.Jobs;
 using Jiten.Api.Services;
 using Jiten.Core;
@@ -312,5 +313,153 @@ public class UserController(
         backgroundJobs.Enqueue<ComputationJob>(job => job.ComputeUserCoverage(userId));
 
         return Results.Ok();
+    }
+
+    /// <summary>
+    /// Get deck preference for a specific deck
+    /// </summary>
+    [HttpGet("deck-preferences/{deckId}")]
+    public async Task<IResult> GetDeckPreference(int deckId)
+    {
+        var userId = userService.UserId;
+        if (string.IsNullOrEmpty(userId)) return Results.Unauthorized();
+
+        var preference = await userContext.UserDeckPreferences
+                                          .AsNoTracking()
+                                          .FirstOrDefaultAsync(p => p.UserId == userId && p.DeckId == deckId);
+
+        if (preference == null)
+            return Results.Ok(new
+            {
+                deckId,
+                status = DeckStatus.None,
+                isFavourite = false,
+                isIgnored = false
+            });
+
+        return Results.Ok(new
+        {
+            preference.DeckId,
+            preference.Status,
+            preference.IsFavourite,
+            preference.IsIgnored
+        });
+    }
+
+    /// <summary>
+    /// Set favourite status for a deck
+    /// </summary>
+    [HttpPost("deck-preferences/{deckId}/favourite")]
+    public async Task<IResult> SetFavourite(int deckId, [FromBody] SetFavouriteRequest request)
+    {
+        var userId = userService.UserId;
+        if (string.IsNullOrEmpty(userId)) return Results.Unauthorized();
+
+        var preference = await userContext.UserDeckPreferences
+                                          .FirstOrDefaultAsync(p => p.UserId == userId && p.DeckId == deckId);
+
+        if (preference == null)
+        {
+            preference = new UserDeckPreference { UserId = userId, DeckId = deckId };
+            userContext.UserDeckPreferences.Add(preference);
+        }
+
+        if (request.IsFavourite && preference.IsIgnored)
+            return Results.BadRequest("A deck cannot be both favourited and ignored");
+
+        preference.IsFavourite = request.IsFavourite;
+        await userContext.SaveChangesAsync();
+
+        return Results.Ok(new
+        {
+            preference.DeckId,
+            preference.Status,
+            preference.IsFavourite,
+            preference.IsIgnored
+        });
+    }
+
+    /// <summary>
+    /// Set ignore status for a deck
+    /// </summary>
+    [HttpPost("deck-preferences/{deckId}/ignore")]
+    public async Task<IResult> SetIgnore(int deckId, [FromBody] SetIgnoreRequest request)
+    {
+        var userId = userService.UserId;
+        if (string.IsNullOrEmpty(userId)) return Results.Unauthorized();
+
+        var preference = await userContext.UserDeckPreferences
+                                          .FirstOrDefaultAsync(p => p.UserId == userId && p.DeckId == deckId);
+
+        if (preference == null)
+        {
+            preference = new UserDeckPreference { UserId = userId, DeckId = deckId };
+            userContext.UserDeckPreferences.Add(preference);
+        }
+
+        if (request.IsIgnored && preference.IsFavourite)
+            return Results.BadRequest("A deck cannot be both favourited and ignored");
+
+        preference.IsIgnored = request.IsIgnored;
+        await userContext.SaveChangesAsync();
+
+        return Results.Ok(new
+        {
+            preference.DeckId,
+            preference.Status,
+            preference.IsFavourite,
+            preference.IsIgnored
+        });
+    }
+
+    /// <summary>
+    /// Set status for a deck
+    /// </summary>
+    [HttpPost("deck-preferences/{deckId}/status")]
+    public async Task<IResult> SetDeckStatus(int deckId, [FromBody] SetDeckStatusRequest request)
+    {
+        var userId = userService.UserId;
+        if (string.IsNullOrEmpty(userId)) return Results.Unauthorized();
+
+        var preference = await userContext.UserDeckPreferences
+                                          .FirstOrDefaultAsync(p => p.UserId == userId && p.DeckId == deckId);
+
+        if (preference == null)
+        {
+            preference = new UserDeckPreference { UserId = userId, DeckId = deckId };
+            userContext.UserDeckPreferences.Add(preference);
+        }
+
+        preference.Status = request.Status;
+        await userContext.SaveChangesAsync();
+
+        return Results.Ok(new
+        {
+            preference.DeckId,
+            preference.Status,
+            preference.IsFavourite,
+            preference.IsIgnored
+        });
+    }
+
+    /// <summary>
+    /// Delete all preferences for a deck
+    /// </summary>
+    [HttpDelete("deck-preferences/{deckId}")]
+    public async Task<IResult> DeleteDeckPreference(int deckId)
+    {
+        var userId = userService.UserId;
+        if (string.IsNullOrEmpty(userId)) return Results.Unauthorized();
+
+        var preference = await userContext.UserDeckPreferences
+                                          .FirstOrDefaultAsync(p => p.UserId == userId && p.DeckId == deckId);
+
+        if (preference == null)
+            return Results.Ok(new { deleted = false });
+
+        userContext.UserDeckPreferences.Remove(preference);
+        await userContext.SaveChangesAsync();
+
+        return Results.Ok(new { deleted = true });
     }
 }

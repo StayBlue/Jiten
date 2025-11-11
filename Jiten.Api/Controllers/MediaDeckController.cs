@@ -10,6 +10,7 @@ using Jiten.Api.Services;
 using Jiten.Core;
 using Jiten.Core.Data;
 using Jiten.Core.Data.JMDict;
+using Jiten.Core.Data.User;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
@@ -83,6 +84,7 @@ public class MediaDeckController(
     /// <param name="titleFilter">Full‑text filter on title (supports romaji/english/japanese).</param>
     /// <param name="sortBy">Sort field (title, difficulty, charCount, wordCount, sentenceLength, dialoguePercentage, uKanji, uWordCount, uKanjiOnce, filter, releaseDate, coverage, uCoverage, etc.).</param>
     /// <param name="sortOrder">Ascending or Descending.</param>
+    /// <param name="status">Status (none, fav, ignore, planning, ongoing, completed, dropped)</param>
     /// <param name="charCountMin"></param>
     /// <param name="charCountMax"></param>
     /// <param name="releaseYearMin"></param>
@@ -104,6 +106,7 @@ public class MediaDeckController(
                                                                       int wordId = 0, int readingIndex = 0, string? titleFilter = "",
                                                                       string? sortBy = "",
                                                                       SortOrder sortOrder = SortOrder.Ascending,
+                                                                      string status = "",
                                                                       int? charCountMin = null, int? charCountMax = null,
                                                                       int? releaseYearMin = null, int? releaseYearMax = null,
                                                                       int? uniqueKanjiMin = null, int? uniqueKanjiMax = null,
@@ -189,6 +192,65 @@ public class MediaDeckController(
             query = query.Where(d => wordFilteredDeckIds.Contains(d.DeckId));
         }
 
+        // Filter by status (only when authenticated)
+        if (currentUserService.IsAuthenticated && !string.IsNullOrEmpty(status))
+        {
+            var userId = currentUserService.UserId!;
+            var normalizedStatus = status.ToLowerInvariant();
+
+            if (normalizedStatus == "fav")
+            {
+                var favDeckIds = await userContext.UserDeckPreferences
+                                                  .AsNoTracking()
+                                                  .Where(p => p.UserId == userId && p.IsFavourite)
+                                                  .Select(p => p.DeckId)
+                                                  .ToListAsync();
+                query = query.Where(d => favDeckIds.Contains(d.DeckId));
+            }
+            else if (normalizedStatus == "ignore")
+            {
+                var ignoredDeckIds = await userContext.UserDeckPreferences
+                                                      .AsNoTracking()
+                                                      .Where(p => p.UserId == userId && p.IsIgnored)
+                                                      .Select(p => p.DeckId)
+                                                      .ToListAsync();
+                query = query.Where(d => ignoredDeckIds.Contains(d.DeckId));
+            }
+            else if (normalizedStatus != "none")
+            {
+                DeckStatus? deckStatus = normalizedStatus switch
+                {
+                    "planning" => DeckStatus.Planning,
+                    "ongoing" => DeckStatus.Ongoing,
+                    "completed" => DeckStatus.Completed,
+                    "dropped" => DeckStatus.Dropped,
+                    _ => null
+                };
+
+                if (deckStatus.HasValue)
+                {
+                    var statusDeckIds = await userContext.UserDeckPreferences
+                                                         .AsNoTracking()
+                                                         .Where(p => p.UserId == userId && p.Status == deckStatus.Value)
+                                                         .Select(p => p.DeckId)
+                                                         .ToListAsync();
+                    query = query.Where(d => statusDeckIds.Contains(d.DeckId));
+                }
+            }
+        }
+
+        // Exclude ignored decks (only when authenticated and status is not "ignore")
+        if (currentUserService.IsAuthenticated && status?.ToLowerInvariant() != "ignore")
+        {
+            var userId = currentUserService.UserId!;
+            var ignoredDeckIds = await userContext.UserDeckPreferences
+                                                  .AsNoTracking()
+                                                  .Where(p => p.UserId == userId && p.IsIgnored)
+                                                  .Select(p => p.DeckId)
+                                                  .ToListAsync();
+            query = query.Where(d => !ignoredDeckIds.Contains(d.DeckId));
+        }
+
         query = query.Include(d => d.Children)
                      .Include(d => d.Links)
                      .Include(d => d.Titles);
@@ -212,6 +274,7 @@ public class MediaDeckController(
 
         Dictionary<int, float> coverageDict = new();
         Dictionary<int, float> uniqueCoverageDict = new();
+        Dictionary<int, UserDeckPreference> preferencesDict = new();
 
         if (currentUserService.IsAuthenticated)
         {
@@ -224,6 +287,12 @@ public class MediaDeckController(
                                                 .ToListAsync();
             coverageDict = coverageList.ToDictionary(x => x.DeckId, x => (float)x.Coverage);
             uniqueCoverageDict = coverageList.ToDictionary(x => x.DeckId, x => (float)x.UniqueCoverage);
+
+            var preferencesList = await userContext.UserDeckPreferences
+                                                   .AsNoTracking()
+                                                   .Where(p => p.UserId == userId && allDeckIds.Contains(p.DeckId))
+                                                   .ToListAsync();
+            preferencesDict = preferencesList.ToDictionary(p => p.DeckId);
 
             if ((sortBy is "coverage" or "uCoverage"))
             {
@@ -255,6 +324,12 @@ public class MediaDeckController(
             {
                 if (coverageDict.TryGetValue(dto.DeckId, out var c)) dto.Coverage = c;
                 if (uniqueCoverageDict.TryGetValue(dto.DeckId, out var uc)) dto.UniqueCoverage = uc;
+                if (preferencesDict.TryGetValue(dto.DeckId, out var pref))
+                {
+                    dto.Status = pref.Status;
+                    dto.IsFavourite = pref.IsFavourite;
+                    dto.IsIgnored = pref.IsIgnored;
+                }
             }
         }
 
@@ -699,12 +774,31 @@ public class MediaDeckController(
                                        .ToList();
             var coverageDict = coverages.ToDictionary(x => x.DeckId, x => (float)x.Coverage);
             var uCoverageDict = coverages.ToDictionary(x => x.DeckId, x => (float)x.UniqueCoverage);
+
+            var preferences = userContext.UserDeckPreferences.AsNoTracking()
+                                         .Where(p => p.UserId == userId && ids.Contains(p.DeckId))
+                                         .ToList();
+            var preferencesDict = preferences.ToDictionary(p => p.DeckId);
+
             if (coverageDict.TryGetValue(mainDeckDto.DeckId, out var mc)) mainDeckDto.Coverage = mc;
             if (uCoverageDict.TryGetValue(mainDeckDto.DeckId, out var muc)) mainDeckDto.UniqueCoverage = muc;
+            if (preferencesDict.TryGetValue(mainDeckDto.DeckId, out var mpref))
+            {
+                mainDeckDto.Status = mpref.Status;
+                mainDeckDto.IsFavourite = mpref.IsFavourite;
+                mainDeckDto.IsIgnored = mpref.IsIgnored;
+            }
+
             foreach (var subdeckDto in subdeckDtos)
             {
                 if (coverageDict.TryGetValue(subdeckDto.DeckId, out var c)) subdeckDto.Coverage = c;
                 if (uCoverageDict.TryGetValue(subdeckDto.DeckId, out var uc)) subdeckDto.UniqueCoverage = uc;
+                if (preferencesDict.TryGetValue(subdeckDto.DeckId, out var pref))
+                {
+                    subdeckDto.Status = pref.Status;
+                    subdeckDto.IsFavourite = pref.IsFavourite;
+                    subdeckDto.IsIgnored = pref.IsIgnored;
+                }
             }
         }
 

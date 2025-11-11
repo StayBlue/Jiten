@@ -1,11 +1,15 @@
 <script setup lang="ts">
-  import { type Deck, MediaType } from '~/types';
+  import { type Deck, MediaType, DeckStatus } from '~/types';
   import Card from 'primevue/card';
+  import TieredMenu from 'primevue/tieredmenu';
   import { getChildrenCountText, getMediaTypeText } from '~/utils/mediaTypeMapper';
   import { getLinkTypeText } from '~/utils/linkTypeMapper';
+  import { getDeckStatusText } from '~/utils/deckStatusMapper';
   import { useJitenStore } from '~/stores/jitenStore';
   import { formatDateAsYyyyMmDd } from '~/utils/formatDateAsYyyyMmDd';
   import { useAuthStore } from '~/stores/authStore';
+
+  const { $api } = useNuxtApp();
 
   const props = defineProps<{
     deck: Deck;
@@ -13,9 +17,15 @@
     hideControl?: boolean;
   }>();
 
+  const emit = defineEmits<{
+    'update:deck': [deck: Deck];
+  }>();
+
   const showDownloadDialog = ref(false);
   const showIssueDialog = ref(false);
   const isDescriptionExpanded = ref(false);
+  const showIgnoreOverlay = ref(false);
+  const menu = ref();
 
   const store = useJitenStore();
   const authStore = useAuthStore();
@@ -23,6 +33,127 @@
   const displayAdminFunctions = computed(() => store.displayAdminFunctions);
   const readingSpeed = computed(() => store.readingSpeed);
   const readingDuration = computed(() => Math.round(props.deck.characterCount / readingSpeed.value));
+
+  const toggleMenu = (event: Event) => {
+    menu.value.toggle(event);
+  };
+
+  const toggleFavourite = async () => {
+    try {
+      const newFavouriteState = !props.deck.isFavourite;
+      await $api(`/user/deck-preferences/${props.deck.deckId}/favourite`, {
+        method: 'POST',
+        body: { isFavourite: newFavouriteState },
+      });
+
+      emit('update:deck', { ...props.deck, isFavourite: newFavouriteState });
+    } catch (error) {
+      console.error('Failed to toggle favourite:', error);
+    }
+  };
+
+  const toggleIgnore = async () => {
+    try {
+      const newIgnoreState = !props.deck.isIgnored;
+      await $api(`/user/deck-preferences/${props.deck.deckId}/ignore`, {
+        method: 'POST',
+        body: { isIgnored: newIgnoreState },
+      });
+
+      emit('update:deck', { ...props.deck, isIgnored: newIgnoreState });
+
+      if (newIgnoreState) {
+        showIgnoreOverlay.value = true;
+      } else {
+        showIgnoreOverlay.value = false;
+      }
+    } catch (error) {
+      console.error('Failed to toggle ignore:', error);
+    }
+  };
+
+  const cancelIgnore = async () => {
+    try {
+      await $api(`/user/deck-preferences/${props.deck.deckId}/ignore`, {
+        method: 'POST',
+        body: { isIgnored: false },
+      });
+
+      emit('update:deck', { ...props.deck, isIgnored: false });
+      showIgnoreOverlay.value = false;
+    } catch (error) {
+      console.error('Failed to cancel ignore:', error);
+    }
+  };
+
+  const setStatus = async (status: DeckStatus) => {
+    try {
+      await $api(`/user/deck-preferences/${props.deck.deckId}/status`, {
+        method: 'POST',
+        body: { status },
+      });
+
+      emit('update:deck', { ...props.deck, status });
+    } catch (error) {
+      console.error('Failed to set status:', error);
+    }
+  };
+
+  const menuItems = computed(() => [
+    {
+      label: props.deck.isFavourite ? 'Unfavourite' : 'Favourite',
+      icon: props.deck.isFavourite ? 'pi pi-star-fill' : 'pi pi-star',
+      command: toggleFavourite,
+    },
+    {
+      label: props.deck.isIgnored ? 'Unignore' : 'Ignore',
+      icon: props.deck.isIgnored ? 'pi pi-eye' : 'pi pi-eye-slash',
+      command: toggleIgnore,
+    },
+    {
+      label: 'Set status',
+      icon: 'pi pi-flag',
+      items: [
+        {
+          label: 'None',
+          command: () => setStatus(DeckStatus.None),
+        },
+        {
+          label: 'Planning',
+          command: () => setStatus(DeckStatus.Planning),
+        },
+        {
+          label: 'Ongoing',
+          command: () => setStatus(DeckStatus.Ongoing),
+        },
+        {
+          label: 'Completed',
+          command: () => setStatus(DeckStatus.Completed),
+        },
+        {
+          label: 'Dropped',
+          command: () => setStatus(DeckStatus.Dropped),
+        },
+      ],
+    },
+  ]);
+
+  const statusColor = computed(() => {
+    if (!props.deck.status || props.deck.status === DeckStatus.None) return '';
+
+    switch (props.deck.status) {
+      case DeckStatus.Planning:
+        return 'text-gray-500';
+      case DeckStatus.Ongoing:
+        return 'text-yellow-500';
+      case DeckStatus.Completed:
+        return 'text-green-500';
+      case DeckStatus.Dropped:
+        return 'text-red-500';
+      default:
+        return '';
+    }
+  });
 
   const sortedLinks = computed(() => {
     return [...props.deck.links].sort((a, b) => {
@@ -53,8 +184,46 @@
 </script>
 
 <template>
-  <Card class="p-2" :style="{ outline: borderColor }">
-    <template #title>{{ localiseTitle(deck) }}</template>
+  <div class="relative">
+    <div
+      v-if="showIgnoreOverlay"
+      class="absolute inset-0 z-50 flex items-center justify-center backdrop-blur-lg bg-black/50 rounded-lg ignore-overlay"
+      @click.stop
+    >
+      <div class="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-md mx-4 shadow-xl">
+        <p class="text-center text-gray-800 dark:text-gray-200 mb-4">
+          This media will be ignored and no longer appear in search results.
+        </p>
+        <div class="text-center">
+          <a
+            href="#"
+            class="text-primary-500 hover:text-primary-700 dark:hover:text-primary-400 font-semibold underline-offset-2 hover:underline"
+            @click.prevent="cancelIgnore"
+          >
+            Cancel
+          </a>
+        </div>
+      </div>
+    </div>
+
+    <Card class="p-2" :style="{ outline: borderColor }">
+      <template #title>
+      <div class="flex justify-between items-start">
+        <span>{{ localiseTitle(deck) }}</span>
+        <div v-if="authStore.isAuthenticated" class="flex flex-row items-center gap-1 h-6">
+          <div class="flex items-center gap-2">
+            <i v-if="deck.isFavourite" class="pi pi-star-fill text-yellow-500 text-lg" />
+            <i v-if="deck.isIgnored" class="pi pi-eye-slash text-gray-800 dark:text-gray-300 text-lg" />
+            <span v-if="deck.status && deck.status !== DeckStatus.None" :class="['text-sm font-bold', statusColor]">
+              {{ getDeckStatusText(deck.status) }}
+            </span>
+          </div>
+          <button type="button" class="p-1.5 rounded hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors" @click="toggleMenu">
+            <i class="pi pi-ellipsis-v text-gray-600 dark:text-gray-300" />
+          </button>
+        </div>
+      </div>
+    </template>
     <template v-if="!isCompact" #subtitle>{{ getMediaTypeText(deck.mediaType) }}</template>
     <template #content>
       <div class="flex-gap-6">
@@ -127,14 +296,13 @@
                     <span class="tabular-nums font-semibold">{{ deck.averageSentenceLength.toFixed(1) }}</span>
                   </div>
                   <div v-if="deck.difficulty != -1" class="flex justify-between flex-wrap stat-row">
-                    <Tooltip :content="'This is a work in progress.\nIf you find scores that are way higher or lower than they should be, please report them so the algorithm can be refined further.'">
-                    <span
-
-                      class="text-gray-600 dark:text-gray-300 truncate pr-2 font-medium"
+                    <Tooltip
+                      :content="'This is a work in progress.\nIf you find scores that are way higher or lower than they should be, please report them so the algorithm can be refined further.'"
                     >
-                      Difficulty
-                      <span class="text-purple-500 text-xs align-super"> beta </span>
-                    </span>
+                      <span class="text-gray-600 dark:text-gray-300 truncate pr-2 font-medium">
+                        Difficulty
+                        <span class="text-purple-500 text-xs align-super"> beta </span>
+                      </span>
                     </Tooltip>
                     <DifficultyDisplay :difficulty="deck.difficulty" :difficulty-raw="deck.difficultyRaw" />
                   </div>
@@ -154,7 +322,6 @@
                     <span class="tabular-nums font-semibold">{{ deck.childrenDeckCount.toLocaleString() }}</span>
                   </div>
 
-
                   <div
                     v-if="
                       deck.mediaType == MediaType.Novel ||
@@ -164,15 +331,19 @@
                     "
                     class="flex justify-between flex-wrap stat-row"
                   >
-                    <Tooltip :content=" 'Based on your reading speed of:\n ' +
+                    <Tooltip
+                      :content="
+                        'Based on your reading speed of:\n ' +
                         '<strong>' +
                         readingSpeed +
                         '</strong>' +
-                        ' characters per hour.\n<i>You can adjust it in the quick settings cog at the top right.</i>'">
-                    <span class="text-gray-600 dark:text-gray-300 truncate pr-2 font-medium">
-                      Duration
-                      <i class="pi pi-info-circle cursor-pointer text-primary-500" />
-                    </span>
+                        ' characters per hour.\n<i>You can adjust it in the quick settings cog at the top right.</i>'
+                      "
+                    >
+                      <span class="text-gray-600 dark:text-gray-300 truncate pr-2 font-medium">
+                        Duration
+                        <i class="pi pi-info-circle cursor-pointer text-primary-500" />
+                      </span>
                     </Tooltip>
 
                     <span class="tabular-nums font-semibold">{{ readingDuration > 0 ? readingDuration : '<1' }} h</span>
@@ -212,7 +383,12 @@
                   <Button as="router-link" :to="`/decks/media/${deck.deckId}/vocabulary`" label="View vocabulary" class="" />
                   <Button label="Download deck" class="" @click="showDownloadDialog = true" />
                   <Button v-if="!isCompact && displayAdminFunctions" as="router-link" :to="`/dashboard/media/${deck.deckId}`" label="Edit" class="" />
-                  <Button v-if="!isCompact && authStore.isAuthenticated" @click="showIssueDialog = true" label=" Report an issue" icon="pi pi-exclamation-triangle"/>
+                  <Button
+                    v-if="!isCompact && authStore.isAuthenticated"
+                    @click="showIssueDialog = true"
+                    label=" Report an issue"
+                    icon="pi pi-exclamation-triangle"
+                  />
                 </div>
               </div>
             </div>
@@ -220,10 +396,13 @@
         </div>
       </div>
     </template>
-  </Card>
+    </Card>
 
-  <MediaDeckDownloadDialog :deck="deck" :visible="showDownloadDialog" @update:visible="showDownloadDialog = $event" />
-  <ReportIssueDialog :visible="showIssueDialog" @update:visible="showIssueDialog = $event" :deck="deck" />
+    <MediaDeckDownloadDialog :deck="deck" :visible="showDownloadDialog" @update:visible="showDownloadDialog = $event" />
+    <ReportIssueDialog :visible="showIssueDialog" @update:visible="showIssueDialog = $event" :deck="deck" />
+
+    <TieredMenu ref="menu" :model="menuItems" popup />
+  </div>
 </template>
 
 <style scoped>
@@ -272,5 +451,18 @@
 
   :deep(.dark) .stat-row:hover {
     background-color: rgba(255, 255, 255, 0.05);
+  }
+
+  .ignore-overlay {
+    animation: fadeIn 0.3s ease-in-out;
+  }
+
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
   }
 </style>

@@ -88,6 +88,18 @@
     'addedDate',
   ];
 
+  const statusFilterOptions = ref([
+    { label: 'Show All', value: 'none' },
+    { label: 'Only Favourited', value: 'fav' },
+    { label: 'Only Ignored', value: 'ignore' },
+    { label: 'Only Planning', value: 'planning' },
+    { label: 'Only Ongoing', value: 'ongoing' },
+    { label: 'Only Completed', value: 'completed' },
+    { label: 'Only Dropped', value: 'dropped' },
+  ]);
+
+  const statusFilter = ref('none');
+
   const authStore = useAuthStore();
   const isConnected = computed(() => authStore.isAuthenticated);
 
@@ -356,6 +368,7 @@
       titleFilter: debouncedTitleFilter,
       sortBy: sortBy,
       sortOrder: sortOrder,
+      status: statusFilter,
       charCountMin: computed(() => debouncedFilters.value.charCountMin),
       charCountMax: computed(() => debouncedFilters.value.charCountMax),
       releaseYearMin: computed(() => debouncedFilters.value.releaseYearMin),
@@ -389,6 +402,15 @@
     nextTick(() => {
       window.scrollTo({ top: 0, behavior: 'instant' });
     });
+  };
+
+  const updateDeckInList = (updatedDeck: Deck) => {
+    if (response.value?.data) {
+      const index = response.value.data.findIndex(d => d.deckId === updatedDeck.deckId);
+      if (index !== -1) {
+        response.value.data[index] = updatedDeck;
+      }
+    }
   };
 
   const displayStyleStore = useDisplayStyleStore();
@@ -467,6 +489,20 @@
 
       <Popover ref="filters" class="w-full max-w-3xl">
         <div class="flex flex-col gap-4 p-3 min-w-[280px]">
+          <FloatLabel v-if="isConnected" variant="on" class="w-full">
+            <Select
+              v-model="statusFilter"
+              :options="statusFilterOptions"
+              option-label="label"
+              option-value="value"
+              placeholder="Status"
+              input-id="preferenceFilter"
+              class="w-full md:w-56"
+              scroll-height="30vh"
+            />
+            <label for="sortBy">Status</label>
+          </FloatLabel>
+
           <div class="flex flex-col gap-2">
             <div class="text-sm font-medium text-gray-600 dark:text-gray-300">Character count</div>
             <div class="flex items-center gap-3">
@@ -647,7 +683,7 @@
 
         <!-- Card View -->
         <div v-else-if="displayStyle === DisplayStyle.Card" class="flex flex-col gap-2">
-          <MediaDeckCard v-for="deck in response.data" :key="deck.id" :deck="deck" />
+          <MediaDeckCard v-for="deck in response.data" :key="deck.deckId" :deck="deck" @update:deck="updateDeckInList" />
         </div>
 
         <!-- Compact View -->

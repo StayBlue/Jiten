@@ -1,6 +1,6 @@
 <script setup lang="ts">
   import { useApiFetchPaginated } from '~/composables/useApiFetch';
-  import type { DeckDetail } from '~/types';
+  import type { DeckDetail, Deck } from '~/types';
   import Card from 'primevue/card';
   import Skeleton from 'primevue/skeleton';
 
@@ -38,6 +38,21 @@
   const nextLink = computed(() => {
     return response.value?.hasNextPage ? { query: { ...route.query, offset: response.value.nextOffset } } : null;
   });
+
+  const updateMainDeck = (updatedDeck: Deck) => {
+    if (response.value?.data?.mainDeck) {
+      response.value.data.mainDeck = updatedDeck;
+    }
+  };
+
+  const updateSubDeck = (updatedDeck: Deck) => {
+    if (response.value?.data?.subDecks) {
+      const index = response.value.data.subDecks.findIndex(d => d.deckId === updatedDeck.deckId);
+      if (index !== -1) {
+        response.value.data.subDecks[index] = updatedDeck;
+      }
+    }
+  };
 
   const title = computed(() => {
     if (!response.value?.data) {
@@ -77,7 +92,7 @@
       </Card>
     </div>
     <div v-else-if="response">
-      <MediaDeckCard :deck="response.data.mainDeck" />
+      <MediaDeckCard :deck="response.data.mainDeck" @update:deck="updateMainDeck" />
 
       <div v-if="response.data.parentDeck != null" class="pt-4">
         This deck belongs to
@@ -102,7 +117,7 @@
           </div>
         </div>
         <div class="flex flex-row flex-wrap gap-2 justify-center pt-4">
-          <MediaDeckCard v-for="deck in response.data.subDecks" :key="deck.deckId" :deck="deck" :is-compact="true" />
+          <MediaDeckCard v-for="deck in response.data.subDecks" :key="deck.deckId" :deck="deck" :is-compact="true" @update:deck="updateSubDeck" />
         </div>
       </div>
       <!--      <div v-else class="pt-4">This deck has no subdecks</div>-->

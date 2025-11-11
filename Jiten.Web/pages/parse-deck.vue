@@ -9,6 +9,10 @@
   const downloadInfo = ref<{ url: string; filename: string } | null>(null);
   const deckInfo = ref<Deck | null>(null);
 
+  const updateDeck = (updatedDeck: Deck) => {
+    deckInfo.value = updatedDeck;
+  };
+
   const parseDeck = async () => {
     if (downloadInfo.value) {
       window.URL.revokeObjectURL(downloadInfo.value.url);
@@ -97,7 +101,7 @@
           </p>
         </div>
 
-        <MediaDeckCard v-if="deckInfo != null" :deck="deckInfo" :hide-control="true" />
+        <MediaDeckCard v-if="deckInfo != null" :deck="deckInfo" :hide-control="true" @update:deck="updateDeck" />
 
         <Button v-if="downloadInfo" severity="info" class="w-64 transition-colors self-center" :disabled="!downloadInfo" @click="triggerDownload">
           <Icon name="material-symbols:download" class="mr-2" />

@@ -1,4 +1,4 @@
-import { type KnownState, type MediaType, type ReadingType } from '~/types';
+import { type DeckStatus, type KnownState, type MediaType, type ReadingType } from '~/types';
 
 export interface Deck {
   deckId: number;
@@ -32,6 +32,9 @@ export interface Deck {
   hideDialoguePercentage: boolean;
   externalRating: number;
   exampleSentence?: ExampleSentence;
+  status?: DeckStatus;
+  isFavourite?: boolean;
+  isIgnored?: boolean;
 }
 
 export interface DeckDetail {

@@ -83,3 +83,11 @@ export enum DifficultyValueDisplayStyle {
   StartsAt0 = 1,
   Percentage = 2,
 }
+
+export enum DeckStatus {
+  None = 0,
+  Planning = 1,
+  Ongoing = 2,
+  Completed = 3,
+  Dropped = 4,
+}
