@@ -304,7 +304,8 @@ public class MediaDeckController(
 
         if (wordId != 0)
         {
-            return await HandleWordBasedQuery(projectedQuery!, wordId, readingIndex, sortBy, sortOrder, offset ?? 0, pageSize);
+            return await HandleWordBasedQuery(projectedQuery!, wordId, readingIndex, sortBy, sortOrder, offset ?? 0, pageSize, coverageDict,
+                                              uniqueCoverageDict, preferencesDict);
         }
 
         // Handle regular queries
@@ -501,7 +502,8 @@ public class MediaDeckController(
 
     private async Task<PaginatedResponse<List<DeckDto>>> HandleWordBasedQuery(
         IQueryable<DeckWithOccurrences> projectedQuery, int wordId, int readingIndex, string sortBy, SortOrder sortOrder, int offset,
-        int pageSize)
+        int pageSize, Dictionary<int, float> coverageDict, Dictionary<int, float> uniqueCoverageDict,
+        Dictionary<int, UserDeckPreference> preferencesDict)
     {
         // Apply sorting to the projected query
         projectedQuery = ApplySorting(projectedQuery, sortBy, sortOrder);
@@ -566,18 +568,16 @@ public class MediaDeckController(
         // Populate user coverage if authenticated
         if (currentUserService.IsAuthenticated)
         {
-            var userId = currentUserService.UserId!;
-            var ids = dtos.Select(d => d.DeckId).ToList();
-            var covs = await userContext.UserCoverages.AsNoTracking()
-                                        .Where(uc => uc.UserId == userId && ids.Contains(uc.DeckId))
-                                        .Select(uc => new { uc.DeckId, uc.Coverage, uc.UniqueCoverage })
-                                        .ToListAsync();
-            var covDict = covs.ToDictionary(x => x.DeckId, x => (float)x.Coverage);
-            var uCovDict = covs.ToDictionary(x => x.DeckId, x => (float)x.UniqueCoverage);
             foreach (var dto in dtos)
             {
-                if (covDict.TryGetValue(dto.DeckId, out var c)) dto.Coverage = c;
-                if (uCovDict.TryGetValue(dto.DeckId, out var uc)) dto.UniqueCoverage = uc;
+                if (coverageDict.TryGetValue(dto.DeckId, out var c)) dto.Coverage = c;
+                if (uniqueCoverageDict.TryGetValue(dto.DeckId, out var uc)) dto.UniqueCoverage = uc;
+                if (preferencesDict.TryGetValue(dto.DeckId, out var pref))
+                {
+                    dto.Status = pref.Status;
+                    dto.IsFavourite = pref.IsFavourite;
+                    dto.IsIgnored = pref.IsIgnored;
+                }
             }
         }
 
