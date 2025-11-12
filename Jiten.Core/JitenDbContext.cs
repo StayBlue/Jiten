@@ -63,6 +63,12 @@ public class JitenDbContext : DbContext
             entity.HasIndex(d => d.RomajiTitle).HasDatabaseName("IX_RomajiTitle");
             entity.HasIndex(d => d.EnglishTitle).HasDatabaseName("IX_EnglishTitle");
             entity.HasIndex(d => d.MediaType).HasDatabaseName("IX_MediaType");
+            entity.HasIndex(d => d.CharacterCount).HasDatabaseName("IX_CharacterCount");
+            entity.HasIndex(d => d.ReleaseDate).HasDatabaseName("IX_ReleaseDate");
+            entity.HasIndex(d => d.UniqueKanjiCount).HasDatabaseName("IX_UniqueKanjiCount");
+            entity.HasIndex(d => d.Difficulty).HasDatabaseName("IX_Difficulty");
+            entity.HasIndex(d => d.ExternalRating).HasDatabaseName("IX_ExternalRating");
+            entity.HasIndex(d => new { d.ParentDeckId, d.MediaType }).HasDatabaseName("IX_ParentDeckId_MediaType");
 
             entity.HasOne(d => d.ParentDeck)
                   .WithMany(p => p.Children)
