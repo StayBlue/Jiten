@@ -117,7 +117,6 @@ public static class MLHelper
 
     public static async Task ExtractFrequencyStats(JitenDbContext context, List<DeckWord> deckWords, ExtractedFeatures features)
     {
-        context = new JitenDbContext(context.DbOptions);
         if (!deckWords.Any()) return;
 
         var wordIdsToExclude = context.JMDictWords.Where(w => w.Priorities != null && w.Priorities.Contains("name")).Select(w => w.WordId)

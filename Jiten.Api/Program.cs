@@ -271,6 +271,9 @@ builder.Services.AddHangfire(configuration =>
                                                                         options.UseNpgsqlConnection(() => builder.Configuration
                                                                             .GetConnectionString("JitenDatabase"))));
 
+// Configure Hangfire global settings for long-running jobs
+GlobalJobFilters.Filters.Add(new AutomaticRetryAttribute { Attempts = 3 });
+
 // Hangfire servers
 // Fetchers only have 1 worker to respect rate limits
 builder.Services.AddHangfireServer((options) =>
@@ -320,6 +323,8 @@ builder.Services.AddHangfireServer((options) =>
     options.ServerName = "DefaultServer";
     options.Queues = ["default"];
     options.WorkerCount = Environment.ProcessorCount / 4;
+    options.ShutdownTimeout = TimeSpan.FromMinutes(30);
+    options.StopTimeout = TimeSpan.FromMinutes(30);
 });
 
 

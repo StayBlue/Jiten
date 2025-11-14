@@ -115,7 +115,7 @@ namespace Jiten.Parser
 
             Deconjugator deconjugator = new Deconjugator();
 
-            const int BATCH_SIZE = 1000;
+            const int BATCH_SIZE = 5000;
             List<DeckWord> allProcessedWords = new List<DeckWord>();
 
             for (int i = 0; i < wordInfos.Count; i += BATCH_SIZE)
@@ -196,7 +196,7 @@ namespace Jiten.Parser
 
             timer.Restart();
 
-            const int BATCH_SIZE = 1000;
+            const int BATCH_SIZE = 5000;
             List<DeckWord> allProcessedWords = new List<DeckWord>();
 
             for (int i = 0; i < uniqueWords.Count; i += BATCH_SIZE)
@@ -330,7 +330,7 @@ namespace Jiten.Parser
 
             Deconjugator deconjugator = new Deconjugator();
 
-            const int BATCH_SIZE = 1000;
+            const int BATCH_SIZE = 5000;
             List<DeckWord?> allProcessedWords = new();
 
             for (int i = 0; i < wordInfos.Count; i += BATCH_SIZE)
@@ -346,7 +346,7 @@ namespace Jiten.Parser
         }
 
         // Limit how many concurrent operations we perform to prevent overwhelming the system
-        private static readonly SemaphoreSlim _processSemaphore = new SemaphoreSlim(50, 50);
+        private static readonly SemaphoreSlim _processSemaphore = new SemaphoreSlim(100, 100);
 
         private static async Task<DeckWord?> ProcessWord((WordInfo wordInfo, int occurrences) wordData, Deconjugator deconjugator)
         {
