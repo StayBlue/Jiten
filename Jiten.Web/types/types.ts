@@ -198,3 +198,18 @@ export interface CompleteGoogleRegistrationRequest {
 export interface UserMetadata {
   coverageRefreshedAt?: Date;
 }
+
+export interface ApiKeyInfo {
+  id: number;
+  createdAt: string;
+  lastUsedAt?: string;
+  expiresAt?: string;
+  isRevoked: boolean;
+  keyPreview: string;
+}
+
+export interface CreateApiKeyResponse {
+  apiKey: string;
+  id: number;
+  message: string;
+}

@@ -304,8 +304,6 @@
 
 <template>
   <div class="">
-    <ConfirmDialog />
-
     <Card class="mb-4">
       <template #title>
         <div class="flex justify-between items-center">

@@ -211,8 +211,6 @@
 
 <template>
   <div class="container mx-auto p-4">
-    <ConfirmDialog />
-
     <div class="flex items-center mb-6">
       <Button icon="pi pi-arrow-left" class="p-button-text mr-2" @click="navigateTo('/dashboard')" />
       <h1 class="text-3xl font-bold">Data Management</h1>
