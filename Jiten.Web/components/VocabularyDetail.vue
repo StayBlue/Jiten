@@ -46,6 +46,11 @@
   const mediaAmountUrl = 'media-deck/decks-count';
   const { data: mediaAmountResponse } = await useApiFetch<Record<MediaType, number>>(mediaAmountUrl);
 
+  const totalMediaCount = computed(() => {
+    if (!mediaAmountResponse.value) return 0;
+    return Object.values(mediaAmountResponse.value).reduce((sum, count) => sum + count, 0);
+  });
+
   const selectedMediaType = ref<MediaType | null>(null);
   const mediaAccordionValue = ref('0');
   const selectMediaType = (type: number | string | null) => {
@@ -190,6 +195,7 @@
           </div>
           <div class="md:text-right pt-4 cursor-pointer" @click="selectMediaType(null)">
             Appears in <b>{{ response.data.mainReading.usedInMediaAmount }} media</b>
+            ({{ totalMediaCount > 0 ? ((response.data.mainReading.usedInMediaAmount / totalMediaCount) * 100).toFixed(0) : '0' }}%)
           </div>
           <ClientOnly>
             <table v-if="response.data.mainReading.usedInMediaAmount > 0">
