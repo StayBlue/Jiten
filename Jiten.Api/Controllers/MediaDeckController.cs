@@ -31,7 +31,8 @@ public class MediaDeckController(
     JitenDbContext context,
     UserDbContext userContext,
     ICurrentUserService currentUserService,
-    IConfiguration configuration) : ControllerBase
+    IConfiguration configuration,
+    ILogger<MediaDeckController> logger) : ControllerBase
 {
     private class DeckWithOccurrences
     {
@@ -929,6 +930,10 @@ public class MediaDeckController(
         if (bytes == null)
             return Results.BadRequest();
 
+        logger.LogInformation(
+            "User downloaded deck: DeckId={DeckId}, DeckTitle={DeckTitle}, Format={Format}, DownloadType={DownloadType}, WordCount={WordCount}, ExcludeKnown={ExcludeKnown}",
+            id, deck.OriginalTitle, request.Format, request.DownloadType, deckWordsRaw.Count, request.ExcludeKnownWords);
+
         return request.Format switch
         {
             DeckFormat.Anki => Results.File(bytes, "application/x-binary", $"{deck.OriginalTitle}.apkg"),
@@ -963,6 +968,10 @@ public class MediaDeckController(
         var fileResult = await GenerateDeckDownload(0, deckDownloadRequest, wordIds, deck, deckWords);
         var deckDto = new DeckDto(deck);
         var fileBase64 = Convert.ToBase64String(fileResult);
+
+        logger.LogInformation(
+            "User parsed custom deck: CharacterCount={CharacterCount}, WordCount={WordCount}, UniqueWordCount={UniqueWordCount}",
+            deck.CharacterCount, deck.WordCount, deck.UniqueWordCount);
 
         var result = new
                      {
@@ -1414,8 +1423,14 @@ public class MediaDeckController(
         var result = await httpClient.PostAsync(webhook, content);
 
         if (result.IsSuccessStatusCode)
+        {
+            logger.LogInformation("User reported deck issue: DeckId={DeckId}, IssueType={IssueType}",
+                request.DeckId, request.IssueType);
             return Ok();
+        }
 
+        logger.LogWarning("Failed to send deck issue report: DeckId={DeckId}, IssueType={IssueType}",
+            request.DeckId, request.IssueType);
         return BadRequest("Failed to send report");
 
         string SanitizeForDiscord(string input)

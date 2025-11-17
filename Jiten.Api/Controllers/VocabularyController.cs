@@ -17,7 +17,7 @@ namespace Jiten.Api.Controllers;
 [Route("api/vocabulary")]
 [EnableRateLimiting("fixed")]
 [Produces("application/json")]
-public class VocabularyController(JitenDbContext context, ICurrentUserService currentUserService) : ControllerBase
+public class VocabularyController(JitenDbContext context, ICurrentUserService currentUserService, ILogger<VocabularyController> logger) : ControllerBase
 {
     /// <summary>
     /// Gets a word by its ID and reading index, including definitions, readings, frequency and user known state.

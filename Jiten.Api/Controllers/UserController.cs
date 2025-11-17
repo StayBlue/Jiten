@@ -19,7 +19,8 @@ public class UserController(
     ICurrentUserService userService,
     JitenDbContext jitenContext,
     UserDbContext userContext,
-    IBackgroundJobClient backgroundJobs) : ControllerBase
+    IBackgroundJobClient backgroundJobs,
+    ILogger<UserController> logger) : ControllerBase
 {
     /// <summary>
     /// Get all known JMdict word IDs for the current user.
@@ -85,6 +86,7 @@ public class UserController(
 
         backgroundJobs.Enqueue<ComputationJob>(job => job.ComputeUserCoverage(userId));
 
+        logger.LogInformation("User cleared all known words: UserId={UserId}, RemovedCount={RemovedCount}", userId, entries.Count);
         return Results.Ok(new { removed = entries.Count });
     }
 
@@ -138,6 +140,8 @@ public class UserController(
 
         backgroundJobs.Enqueue<ComputationJob>(job => job.ComputeUserCoverage(userId));
 
+        logger.LogInformation("User imported words from IDs: UserId={UserId}, AddedCount={AddedCount}, SkippedCount={SkippedCount}",
+            userId, toInsert.Count, alreadyKnown.Count);
         return Results.Ok(new { added = toInsert.Count, skipped = alreadyKnown.Count });
     }
 
@@ -186,6 +190,8 @@ public class UserController(
 
         backgroundJobs.Enqueue<ComputationJob>(job => job.ComputeUserCoverage(userId));
 
+        logger.LogInformation("User imported words from Anki TXT: UserId={UserId}, ParsedCount={ParsedCount}, AddedCount={AddedCount}",
+            userId, parsedWords.Count, added);
         return Results.Ok(new { parsed = parsedWords.Count, added });
     }
 
@@ -281,6 +287,8 @@ public class UserController(
 
         backgroundJobs.Enqueue<ComputationJob>(job => job.ComputeUserCoverage(userId));
 
+        logger.LogInformation("User imported words from frequency range: UserId={UserId}, MinFreq={MinFrequency}, MaxFreq={MaxFrequency}, WordCount={WordCount}, FormCount={FormCount}",
+            userId, minFrequency, maxFrequency, jmdictWords.Count, toInsert.Count);
         return Results.Ok(new { words = jmdictWords.Count, forms = toInsert.Count });
     }
 

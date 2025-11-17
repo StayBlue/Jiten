@@ -17,6 +17,13 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.IdentityModel.Tokens;
+using OpenTelemetry;
+using OpenTelemetry.Exporter;
+using OpenTelemetry.Logs;
+using OpenTelemetry.Metrics;
+using OpenTelemetry.Resources;
+using OpenTelemetry.Trace;
+using Jiten.Api.Middleware;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -98,6 +105,145 @@ builder.Services.AddSwaggerGen(c =>
 });
 
 builder.Services.AddHttpClient();
+
+// OpenTelemetry Configuration
+var otelConfig = builder.Configuration.GetSection("OpenTelemetry");
+var serviceName = otelConfig["ServiceName"] ?? "Jiten.Api";
+var serviceVersion = otelConfig["ServiceVersion"] ?? "1.0.0";
+var enableConsoleExporter = otelConfig.GetValue<bool>("EnableConsoleExporter");
+var enableOtlpExporter = otelConfig.GetValue<bool>("EnableOtlpExporter");
+
+var resourceBuilder = ResourceBuilder.CreateDefault()
+    .AddService(serviceName: serviceName, serviceVersion: serviceVersion)
+    .AddAttributes(new Dictionary<string, object>
+    {
+        ["deployment.environment"] = builder.Environment.EnvironmentName,
+        ["host.name"] = Environment.MachineName
+    });
+
+// Configure OpenTelemetry Tracing
+builder.Services.AddOpenTelemetry()
+    .WithTracing(tracerProviderBuilder =>
+    {
+        tracerProviderBuilder
+            .SetResourceBuilder(resourceBuilder)
+            .AddAspNetCoreInstrumentation(options =>
+            {
+                options.RecordException = true;
+                options.Filter = httpContext =>
+                {
+                    // Exclude health checks and static files from tracing
+                    var path = httpContext.Request.Path.Value ?? "";
+                    return !path.Contains("/health") && !path.Contains("/static") && !path.StartsWith("/swagger");
+                };
+            })
+            .AddHttpClientInstrumentation(options =>
+            {
+                options.RecordException = true;
+            })
+            .AddEntityFrameworkCoreInstrumentation(options =>
+            {
+                options.SetDbStatementForText = true;
+            });
+
+        if (enableConsoleExporter)
+        {
+            tracerProviderBuilder.AddConsoleExporter();
+        }
+
+        if (enableOtlpExporter)
+        {
+            var otlpEndpoint = otelConfig["Otlp:Endpoint"];
+            var otlpHeaders = otelConfig["Otlp:Headers"];
+            var otlpProtocol = otelConfig["Otlp:Protocol"];
+
+            tracerProviderBuilder.AddOtlpExporter(options =>
+            {
+                if (!string.IsNullOrEmpty(otlpEndpoint))
+                {
+                    options.Endpoint = new Uri(otlpEndpoint);
+                }
+                if (!string.IsNullOrEmpty(otlpHeaders))
+                {
+                    options.Headers = otlpHeaders;
+                }
+                options.Protocol = otlpProtocol?.ToLower() == "http"
+                    ? OtlpExportProtocol.HttpProtobuf
+                    : OtlpExportProtocol.Grpc;
+            });
+        }
+    })
+    .WithMetrics(meterProviderBuilder =>
+    {
+        meterProviderBuilder
+            .SetResourceBuilder(resourceBuilder)
+            .AddAspNetCoreInstrumentation()
+            .AddHttpClientInstrumentation()
+            .AddRuntimeInstrumentation();
+
+        if (enableConsoleExporter)
+        {
+            meterProviderBuilder.AddConsoleExporter();
+        }
+
+        if (enableOtlpExporter)
+        {
+            var otlpEndpoint = otelConfig["Otlp:Endpoint"];
+            var otlpHeaders = otelConfig["Otlp:Headers"];
+            var otlpProtocol = otelConfig["Otlp:Protocol"];
+
+            meterProviderBuilder.AddOtlpExporter(options =>
+            {
+                if (!string.IsNullOrEmpty(otlpEndpoint))
+                {
+                    options.Endpoint = new Uri(otlpEndpoint);
+                }
+                if (!string.IsNullOrEmpty(otlpHeaders))
+                {
+                    options.Headers = otlpHeaders;
+                }
+                options.Protocol = otlpProtocol?.ToLower() == "http"
+                    ? OtlpExportProtocol.HttpProtobuf
+                    : OtlpExportProtocol.Grpc;
+            });
+        }
+    });
+
+// Configure OpenTelemetry Logging
+builder.Logging.AddOpenTelemetry(options =>
+{
+    options.SetResourceBuilder(resourceBuilder);
+    options.IncludeFormattedMessage = true;
+    options.IncludeScopes = true;
+    options.ParseStateValues = true;
+
+    if (enableConsoleExporter)
+    {
+        options.AddConsoleExporter();
+    }
+
+    if (enableOtlpExporter)
+    {
+        var otlpEndpoint = otelConfig["Otlp:Endpoint"];
+        var otlpHeaders = otelConfig["Otlp:Headers"];
+        var otlpProtocol = otelConfig["Otlp:Protocol"];
+
+        options.AddOtlpExporter(exporterOptions =>
+        {
+            if (!string.IsNullOrEmpty(otlpEndpoint))
+            {
+                exporterOptions.Endpoint = new Uri(otlpEndpoint);
+            }
+            if (!string.IsNullOrEmpty(otlpHeaders))
+            {
+                exporterOptions.Headers = otlpHeaders;
+            }
+            exporterOptions.Protocol = otlpProtocol?.ToLower() == "http"
+                ? OtlpExportProtocol.HttpProtobuf
+                : OtlpExportProtocol.Grpc;
+        });
+    }
+});
 
 builder.Services.AddDbContext<JitenDbContext>(options => options.UseNpgsql(builder.Configuration.GetConnectionString("JitenDatabase"),
                                                                            o =>
@@ -376,6 +522,8 @@ app.UseSwaggerUI(c =>
 });
 
 app.UseRouting();
+
+app.UseRequestLogging();
 
 app.UseCors("AllowSpecificOrigin");
 

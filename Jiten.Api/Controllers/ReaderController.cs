@@ -15,7 +15,7 @@ namespace Jiten.Api.Controllers;
 [ApiController]
 [Route("api/reader")]
 [Authorize]
-public class ReaderController(JitenDbContext context, ICurrentUserService currentUserService) : ControllerBase
+public class ReaderController(JitenDbContext context, ICurrentUserService currentUserService, ILogger<ReaderController> logger) : ControllerBase
 {
     [HttpPost("ping")]
     public IResult Ping()
@@ -130,6 +130,8 @@ public class ReaderController(JitenDbContext context, ICurrentUserService curren
             allTokens.Add(tokens);
         }
 
+        logger.LogInformation("Reader parsed text: ParagraphCount={ParagraphCount}, TotalWords={TotalWords}",
+            request.Text.Length, parsedParagraphs.Sum(p => p.Count));
         return Results.Ok(new { tokens = allTokens, vocabulary = allWords });
     }
 

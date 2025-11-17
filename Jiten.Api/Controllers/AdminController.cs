@@ -28,7 +28,8 @@ public class AdminController(
     HttpClient httpClient,
     IBackgroundJobClient backgroundJobs,
     JitenDbContext dbContext,
-    UserDbContext userContext)
+    UserDbContext userContext,
+    ILogger<AdminController> logger)
     : ControllerBase
 {
     private static readonly List<string> _supportedExtensions = [".ass", ".srt", ".ssa"];
@@ -36,6 +37,7 @@ public class AdminController(
     [HttpGet("search-media")]
     public async Task<IResult> SearchMedia(string provider, string query, string? author)
     {
+        logger.LogInformation("Admin searching media: Provider={Provider}, Query={Query}, Author={Author}", provider, query, author);
         return Results.Ok(provider switch
         {
             "AnilistManga" => await MetadataProviderHelper.AnilistMangaSearchApi(query),
@@ -157,6 +159,9 @@ public class AdminController(
 
             backgroundJobs.Enqueue<ParseJob>(job => job.Parse(metadata, model.MediaType, bool.Parse(config["StoreRawText"] ?? "false")));
 
+            logger.LogInformation("Admin added new deck: Title={Title}, MediaType={MediaType}, SubdeckCount={SubdeckCount}",
+                model.OriginalTitle, model.MediaType, metadata.Children?.Count ?? 0);
+
             return Ok(new
                       {
                           Message = "Media added successfully.", Title = model.OriginalTitle, Path = path,
@@ -165,14 +170,17 @@ public class AdminController(
         }
         catch (ArgumentException argEx)
         {
+            logger.LogWarning("Failed to add deck - invalid input: {Error}", argEx.Message);
             return BadRequest(new { Message = $"Invalid input: {argEx.Message}" });
         }
         catch (IOException ioEx)
         {
+            logger.LogError(ioEx, "Failed to add deck - IO error while saving files");
             return StatusCode(StatusCodes.Status500InternalServerError, new { Message = "An error occurred while saving files." });
         }
         catch (Exception ex)
         {
+            logger.LogError(ex, "Failed to add deck - unexpected error");
             return StatusCode(StatusCodes.Status500InternalServerError,
                               new { Message = "An unexpected error occurred while processing your request." });
         }
@@ -350,6 +358,9 @@ public class AdminController(
         if (model.Reparse)
             backgroundJobs.Enqueue<ReparseJob>(job => job.Reparse(deck.DeckId));
 
+        logger.LogInformation("Admin updated deck: DeckId={DeckId}, Title={Title}, Reparse={Reparse}",
+            deck.DeckId, deck.OriginalTitle, model.Reparse);
+
         return Ok(new { Message = $"Media deck {deck.DeckId} updated successfully" });
 
         async Task<string> GetTextFromFile(IFormFile file)
@@ -407,6 +418,7 @@ public class AdminController(
             count++;
         }
 
+        logger.LogInformation("Admin queued reparse for media type: MediaType={MediaType}, Count={Count}", mediaType, count);
         return Ok(new { Message = $"Reparsing {count} media items of type {mediaType}", Count = count });
     }
 
@@ -415,6 +427,7 @@ public class AdminController(
     {
         backgroundJobs.Enqueue<ComputationJob>(job => job.RecomputeFrequencies());
 
+        logger.LogInformation("Admin queued recompute frequencies job");
         return Ok(new { Message = "Recomputing frequencies job has been queued" });
     }
 
@@ -426,6 +439,7 @@ public class AdminController(
         foreach (var userId in userIds)
             backgroundJobs.Enqueue<ComputationJob>(job => job.ComputeUserCoverage(userId));
 
+        logger.LogInformation("Admin queued recompute coverages for all users: UserCount={UserCount}", userIds.Count);
         return Ok(new { Message = "Recomputing user coverages for all users has been queued" });
     }
 
@@ -433,6 +447,7 @@ public class AdminController(
     public IActionResult RecomputeUserCoverage(string userId)
     {
         backgroundJobs.Enqueue<ComputationJob>(job => job.ComputeUserCoverage(userId));
+        logger.LogInformation("Admin queued recompute coverage for user: UserId={UserId}", userId);
         return Ok(new { Message = $"Recomputing user coverage for user {userId} has been queued" });
     }
 
@@ -714,9 +729,10 @@ public class AdminController(
         var connection = await ConnectionMultiplexer.ConnectAsync(config.GetConnectionString("Redis")!);
         var redisDb = connection.GetDatabase();
         redisDb.Execute("FLUSHALL");
-        
+
         await connection.CloseAsync();
 
+        logger.LogWarning("Admin flushed Redis cache");
         return Results.Ok();
     }
 }

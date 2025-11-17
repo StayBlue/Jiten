@@ -12,7 +12,7 @@ namespace Jiten.Api.Controllers;
 [ApiController]
 [Route("api/srs")]
 [Authorize]
-public class SrsController(JitenDbContext context, UserDbContext userContext, ICurrentUserService currentUserService) : ControllerBase
+public class SrsController(JitenDbContext context, UserDbContext userContext, ICurrentUserService currentUserService, ILogger<SrsController> logger) : ControllerBase
 {
     /// <summary>
     /// Rate (review) a word using the FSRS scheduler.
@@ -55,6 +55,8 @@ public class SrsController(JitenDbContext context, UserDbContext userContext, IC
         await userContext.FsrsReviewLogs.AddAsync(cardAndLog.ReviewLog);
         await userContext.SaveChangesAsync();
 
+        logger.LogInformation("User reviewed SRS card: WordId={WordId}, ReadingIndex={ReadingIndex}, Rating={Rating}, NewState={NewState}",
+            request.WordId, request.ReadingIndex, request.Rating, cardAndLog.UpdatedCard.State);
         return Results.Json(new { success = true });
     }
 
@@ -134,6 +136,8 @@ public class SrsController(JitenDbContext context, UserDbContext userContext, IC
         }
 
         await userContext.SaveChangesAsync();
+        logger.LogInformation("User set vocabulary state: WordId={WordId}, ReadingIndex={ReadingIndex}, State={State}",
+            request.WordId, request.ReadingIndex, request.State);
         return Results.Json(new { success = true });
     }
 }

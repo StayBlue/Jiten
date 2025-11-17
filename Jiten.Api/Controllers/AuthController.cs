@@ -33,6 +33,7 @@ public class AuthController : ControllerBase
     private readonly UrlEncoder _urlEncoder;
     private readonly IMemoryCache _memoryCache;
     private readonly ApiKeyService _apiKeyService;
+    private readonly ILogger<AuthController> _logger;
 
     public AuthController(
         UserManager<User> userManager,
@@ -44,7 +45,8 @@ public class AuthController : ControllerBase
         IConfiguration configuration,
         UrlEncoder urlEncoder,
         IMemoryCache memoryCache,
-        ApiKeyService apiKeyService)
+        ApiKeyService apiKeyService,
+        ILogger<AuthController> logger)
     {
         _userManager = userManager;
         _signInManager = signInManager;
@@ -56,6 +58,7 @@ public class AuthController : ControllerBase
         _urlEncoder = urlEncoder;
         _memoryCache = memoryCache;
         _apiKeyService = apiKeyService;
+        _logger = logger;
     }
 
     [HttpPost("register")]
@@ -91,6 +94,7 @@ public class AuthController : ControllerBase
         var result = await _userManager.CreateAsync(user, model.Password);
         if (!result.Succeeded)
         {
+            _logger.LogWarning("User registration failed: Username={Username}", userName);
             return BadRequest(new
                               {
                                   message =
@@ -111,6 +115,7 @@ public class AuthController : ControllerBase
                                           $"Please confirm your account by <a href='{HtmlEncoder.Default.Encode(callbackUrl)}'>clicking here</a>." +
                                           $"<br/>Do not share this link with anyone.<br/>If you did not request an account creation, please ignore this email.");
 
+        _logger.LogInformation("User registered successfully: UserId={UserId}, Username={Username}", user.Id, userName);
         return Ok(new { message = "Registration successful. Please check your email to confirm your account." });
     }
 
@@ -135,8 +140,12 @@ public class AuthController : ControllerBase
 
         var result = await _userManager.ConfirmEmailAsync(user, code);
         if (result.Succeeded)
+        {
+            _logger.LogInformation("Email confirmed: UserId={UserId}", userId);
             return Ok(new { message = "Email confirmed successfully. You can now log in." });
+        }
 
+        _logger.LogWarning("Email confirmation failed: UserId={UserId}", userId);
         return BadRequest(new { message = "Email confirmation failed.", errors = result.Errors.Select(e => e.Description) });
     }
 
@@ -154,23 +163,32 @@ public class AuthController : ControllerBase
         var result = await _signInManager.PasswordSignInAsync(user, model.Password, isPersistent: false, lockoutOnFailure: true);
 
         if (result.IsLockedOut)
+        {
+            _logger.LogWarning("Login attempt for locked account: UserId={UserId}", user.Id);
             return Unauthorized(new { message = "Account locked due to too many failed login attempts. Please try again later." });
+        }
 
         if (result.IsNotAllowed)
         {
             if (!await _userManager.IsEmailConfirmedAsync(user))
             {
+                _logger.LogWarning("Login attempt with unconfirmed email: UserId={UserId}", user.Id);
                 return Unauthorized(new { message = "Email not confirmed. Please check your email or resend confirmation." });
             }
 
+            _logger.LogWarning("Login not allowed: UserId={UserId}", user.Id);
             return Unauthorized(new { message = "Login not allowed for an unknown reason." });
         }
 
         if (!result.Succeeded)
+        {
+            _logger.LogWarning("Failed login attempt: UserId={UserId}", user.Id);
             return Unauthorized(new { message = "Invalid credentials." });
+        }
 
         var tokens = await _tokenService.GenerateTokens(user);
         await _context.SaveChangesAsync(); // Save refresh token
+        _logger.LogInformation("User logged in: UserId={UserId}, Username={Username}", user.Id, user.UserName);
         return Ok(tokens);
     }
 
@@ -279,9 +297,11 @@ public class AuthController : ControllerBase
             _context.RefreshTokens.UpdateRange(userRefreshTokens);
             await _context.SaveChangesAsync();
 
+            _logger.LogInformation("Password reset successful: UserId={UserId}", user.Id);
             return Ok(new { message = "Password has been reset successfully." });
         }
 
+        _logger.LogWarning("Password reset failed: UserId={UserId}", user.Id);
         return BadRequest(new { message = "Password reset failed.", errors = result.Errors.Select(e => e.Description) });
     }
 
@@ -363,6 +383,7 @@ public class AuthController : ControllerBase
             // User already exists, proceed with normal login
             var tokens = await _tokenService.GenerateTokens(user);
             await _context.SaveChangesAsync(); // Save refresh token
+            _logger.LogInformation("User logged in via Google: UserId={UserId}, Username={Username}", user.Id, user.UserName);
             return Ok(tokens);
         }
 
@@ -376,6 +397,7 @@ public class AuthController : ControllerBase
         // Store temp data in cache (you could also use a database table)
         _memoryCache.Set($"google_registration_{tempToken}", registrationData, TimeSpan.FromMinutes(15));
 
+        _logger.LogInformation("New Google user registration started: Email={Email}", email);
         return Ok(new
                   {
                       requiresRegistration = true, tempToken = tempToken, email = email, name = payload.Name, picture = payload.Picture
@@ -448,9 +470,10 @@ public class AuthController : ControllerBase
 
         var tokens = await _tokenService.GenerateTokens(user);
         await _context.SaveChangesAsync(); // Save refresh token
+        _logger.LogInformation("User registered via Google: UserId={UserId}, Username={Username}", user.Id, user.UserName);
         return Ok(tokens);
     }
-    
+
     private async Task<bool> ValidateRecaptcha(string recaptchaToken)
     {
         var recaptchaSecret = _configuration["Google:RecapatchaSecret"];
