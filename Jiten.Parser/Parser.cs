@@ -421,10 +421,17 @@ namespace Jiten.Parser
                             var nounResult = await DeconjugateWord(wordData);
                             if (!nounResult.success || nounResult.word == null)
                             {
-                                // The word might be a verb or an adjective misparsed as a noun like らしく
-                                var oldPos = wordData.wordInfo.PartOfSpeech;
-                                wordData.wordInfo.PartOfSpeech = PartOfSpeech.Verb;
+                                // The word might be a conjugated noun + suru
                                 var verbResult = await DeconjugateVerbOrAdjective(wordData, deconjugator);
+
+                                var oldPos = wordData.wordInfo.PartOfSpeech;
+                                // The word might be a verb or an adjective misparsed as a noun like らしく
+                                if (!verbResult.success || verbResult.word == null)
+                                {
+                                    wordData.wordInfo.PartOfSpeech = PartOfSpeech.Verb;
+                                    verbResult = await DeconjugateVerbOrAdjective(wordData, deconjugator);
+                                }
+
                                 if (!verbResult.success || verbResult.word == null)
                                 {
                                     wordData.wordInfo.PartOfSpeech = PartOfSpeech.IAdjective;
