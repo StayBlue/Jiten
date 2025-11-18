@@ -379,15 +379,16 @@
               </div>
               <div v-if="!hideControl" class="mt-4">
                 <div class="flex flex-col md:flex-row gap-4">
-                  <Button as="router-link" :to="`/decks/media/${deck.deckId}/detail`" label="View details" class="" />
-                  <Button as="router-link" :to="`/decks/media/${deck.deckId}/vocabulary`" label="View vocabulary" class="" />
-                  <Button label="Download deck" class="" @click="showDownloadDialog = true" />
-                  <Button v-if="!isCompact && displayAdminFunctions" as="router-link" :to="`/dashboard/media/${deck.deckId}`" label="Edit" class="" />
+                  <Button as="router-link" :to="`/decks/media/${deck.deckId}/detail`" label="View details" class="text-center" />
+                  <Button as="router-link" :to="`/decks/media/${deck.deckId}/vocabulary`" label="View vocabulary" class="text-center" />
+                  <Button label="Download deck" class="text-center" @click="showDownloadDialog = true" />
+                  <Button v-if="!isCompact && displayAdminFunctions" as="router-link" :to="`/dashboard/media/${deck.deckId}`" label="Edit" class="text-center" />
                   <Button
                     v-if="!isCompact && authStore.isAuthenticated"
                     @click="showIssueDialog = true"
                     label=" Report an issue"
                     icon="pi pi-exclamation-triangle"
+                    class="text-center"
                   />
                 </div>
               </div>
