@@ -210,6 +210,7 @@ builder.Services.AddOpenTelemetry()
     });
 
 // Configure OpenTelemetry Logging
+builder.Logging.ClearProviders();
 builder.Logging.AddOpenTelemetry(options =>
 {
     options.SetResourceBuilder(resourceBuilder);
@@ -523,8 +524,6 @@ app.UseSwaggerUI(c =>
 
 app.UseRouting();
 
-app.UseRequestLogging();
-
 app.UseCors("AllowSpecificOrigin");
 
 app.UseResponseCaching();
@@ -553,6 +552,7 @@ app.UseHangfireDashboard("/hangfire", new DashboardOptions() { Authorization = [
 
 app.MapSwagger();
 app.UseAuthentication();
+app.UseRequestLogging();
 app.UseAuthorization();
 app.MapControllers();
 app.MapHangfireDashboard();

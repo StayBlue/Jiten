@@ -58,6 +58,10 @@ services:
       - Email__Password=${SES_SMTP_PASSWORD:-}
       - Email__From=${SES_FROM:-noreply@example.com}
       - DiscordWebhook=${DISCORD_WEBHOOK:-}
+      - OpenTelemetry__EnableConsoleExporter=${LOG_CONSOLE:-false}
+      - OpenTelemetry__EnableOtlpExporter=${LOG_OTLP:-true}
+      - OpenTelemetry__Otlp__Endpoint=${LOG_OTLP_ENDPOINT:-}
+      - OpenTelemetry__Otlp__Headers=${LOG_OTLP_HEADER:-authorization=TOKEN}
     volumes:
       - ./Shared:/app/Shared:ro
       - uploads:/app/uploads

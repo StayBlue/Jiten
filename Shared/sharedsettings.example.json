@@ -22,6 +22,14 @@
     "AccessTokenExpirationMinutes": 15,
     "RefreshTokenExpirationDays": 30
   },
+  "OpenTelemetry": {
+    "EnableConsoleExporter": true,
+    "EnableOtlpExporter": false,
+    "Otlp": {
+      "Endpoint": "http://localhost:4317",
+      "Headers": "authorization=TOKEN"
+    }
+  },
   "StaticFilesPath": "/path/to/staticFiles",
   "UseBunnyCdn": false,
   "BunnyCdnSecret": "",
