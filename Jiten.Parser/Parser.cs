@@ -553,9 +553,13 @@ namespace Jiten.Parser
                 candidates = newCandidates.Distinct().ToList();
             }
 
+            bool isStripped = false;
+
+            string textStripped = "";
             if (text.Contains('ー'))
             {
-                var textStripped = text.Replace("ー", "");
+                isStripped = true;
+                textStripped = text.Replace("ー", "");
     
                 // HEURISTIC:
                 // If the word ends with 'ー' and the stripped version is very short (<= 2 chars),
@@ -606,7 +610,8 @@ namespace Jiten.Parser
                     if (!wordCache.TryGetValue(id, out var word)) continue;
 
                     List<PartOfSpeech> pos = word.PartsOfSpeech.ToPartOfSpeech();
-                    if (!pos.Contains(wordData.wordInfo.PartOfSpeech)) continue;
+                    // Is stripped part to handle interjection like よー and こーら
+                    if (!pos.Contains(wordData.wordInfo.PartOfSpeech) && (!isStripped || isStripped && !pos.Contains(PartOfSpeech.Interjection))) continue;
 
                     matches.Add(word);
                 }
@@ -627,6 +632,12 @@ namespace Jiten.Parser
                     bestMatch.Readings.ToList();
                 byte readingIndex = (byte)normalizedReadings.IndexOf(text);
 
+                // not found, try stripped form if stripped
+                if (isStripped && readingIndex == 255)
+                {
+                    readingIndex = (byte)normalizedReadings.IndexOf(textStripped);
+                }
+                
                 // not found, try with hiragana form
                 if (readingIndex == 255)
                 {
@@ -666,6 +677,12 @@ namespace Jiten.Parser
             (WordInfo wordInfo, int occurrences) wordData, Deconjugator deconjugator)
         {
             var normalizedText = KanaNormalizer.Normalize(WanaKana.ToHiragana(wordData.wordInfo.Text));
+            
+            // Exclude full digits or single latin character
+            if (normalizedText.All(char.IsDigit) || (normalizedText.Length == 1 && normalizedText.IsAsciiOrFullWidthLetter()))
+            {
+                return (false, null);
+            }
 
             var deconjugated = deconjugator.Deconjugate(normalizedText)
                                            .OrderByDescending(d => d.Text.Length).ToList();

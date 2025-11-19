@@ -819,7 +819,7 @@ public class MorphologicalAnalyser
             // LOGIC: If current is [Hiragana]ー and next is [Hiragana], they are likely one spoken word.
             // Example: どー (Do-) + いう (Iu) -> どーいう
             // Example: だー (Da-) + かー (Ka-) -> だーかー
-            if (endsInBar && isHiraganaBase && nextIsHiragana)
+            if (endsInBar && isHiraganaBase && nextIsHiragana && nextWord.PartOfSpeech != PartOfSpeech.Particle)
             {
                 currentWord.Text += nextWord.Text;
             }
