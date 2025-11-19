@@ -26,9 +26,26 @@ public static class Program
         var optionsBuilder = new DbContextOptionsBuilder<JitenDbContext>();
         optionsBuilder.UseNpgsql(connectionString, o => { o.UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery); });
 
-        await using var context = new JitenDbContext(optionsBuilder.Options);
+        // Create a simple factory for the standalone parser
+        var factory = new SimpleDbContextFactory(optionsBuilder.Options);
 
-        await Parser.ParseTextToDeck(context, text, predictDifficulty:false);
+        await Parser.ParseTextToDeck(factory, text, predictDifficulty:false);
+    }
+
+    // Simple factory implementation for standalone usage
+    private class SimpleDbContextFactory : IDbContextFactory<JitenDbContext>
+    {
+        private readonly DbContextOptions<JitenDbContext> _options;
+
+        public SimpleDbContextFactory(DbContextOptions<JitenDbContext> options)
+        {
+            _options = options;
+        }
+
+        public JitenDbContext CreateDbContext()
+        {
+            return new JitenDbContext(_options);
+        }
 
         // Console.InputEncoding = Encoding.UTF8;
         // Console.OutputEncoding = Encoding.UTF8;

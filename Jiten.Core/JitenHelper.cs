@@ -12,7 +12,7 @@ public static class JitenHelper
 {
     // Cap concurrent PostgreSQL COPY operations to reduce server pressure/timeouts
     private static readonly SemaphoreSlim CopySemaphore = new SemaphoreSlim(6);
-    public static async Task InsertDeck(DbContextOptions<JitenDbContext> options, Deck deck, byte[] cover, bool update = false)
+    public static async Task InsertDeck(IDbContextFactory<JitenDbContext> contextFactory, Deck deck, byte[] cover, bool update = false)
     {
         var totalTimer = Stopwatch.StartNew();
         Console.WriteLine($"[{DateTime.UtcNow:O}] Inserting deck {deck.OriginalTitle}...");
@@ -36,7 +36,7 @@ public static class JitenHelper
         }
 
         // Create a context for the transactional metadata update and to get DeckId
-        await using var context = new JitenDbContext(options);
+        await using var context = await contextFactory.CreateDbContextAsync();
         // start a transaction only around the initial deck insert/update metadata
         await using var transaction = await context.Database.BeginTransactionAsync();
 
@@ -61,7 +61,7 @@ public static class JitenHelper
                 }
 
                 Console.WriteLine($"[{DateTime.UtcNow:O}] Deck {deck.OriginalTitle} exists, updating metadata...");
-                await UpdateDeck(context, existingDeck, deck);
+                await UpdateDeck(contextFactory, context, existingDeck, deck);
                 await context.SaveChangesAsync();
                 Console.WriteLine($"[{DateTime.UtcNow:O}] Update completed.");
             }
@@ -123,21 +123,21 @@ public static class JitenHelper
                 }
 
                 // Bulk insert the deck words for this deck (using a separate connection)
-                var deckWordTask = BulkInsertDeckWords(context, deckWordsToInsert, deck.DeckId);
+                var deckWordTask = BulkInsertDeckWords(contextFactory, deckWordsToInsert, deck.DeckId);
 
                 // Bulk insert example sentences
                 Task exampleSentencesTask = Task.CompletedTask;
                 if (exampleSentencesToInsert.Any())
-                    exampleSentencesTask = BulkInsertExampleSentences(context, exampleSentencesToInsert, deck.DeckId);
+                    exampleSentencesTask = BulkInsertExampleSentences(contextFactory, exampleSentencesToInsert, deck.DeckId);
 
                 // Insert child decks: we will add rows to the DB (get their IDs) then perform their heavy COPYs in parallel.
-                var childBulkTasks = InsertChildDecks(context, childrenToInsert, deck.DeckId);
+                var childBulkTasks = InsertChildDecks(contextFactory, childrenToInsert, deck.DeckId);
 
                 // Wait for all bulk operations (deck words, sentences, children) to finish
                 await Task.WhenAll(deckWordTask, exampleSentencesTask, childBulkTasks);
 
                 // Update deck entity to reflect cover url if any
-                await using var updateCtx = new JitenDbContext(options);
+                await using var updateCtx = await contextFactory.CreateDbContextAsync();
                 updateCtx.Attach(deck);
                 updateCtx.Entry(deck).State = EntityState.Modified;
 
@@ -188,7 +188,7 @@ public static class JitenHelper
         }
     }
 
-    private static async Task BulkInsertDeckWords(JitenDbContext context, ICollection<DeckWord> deckWords, int deckId)
+    private static async Task BulkInsertDeckWords(IDbContextFactory<JitenDbContext> contextFactory, ICollection<DeckWord> deckWords, int deckId)
     {
         var timer = Stopwatch.StartNew();
         Console.WriteLine($"[{DateTime.UtcNow:O}] Bulk inserting {deckWords.Count} deck words for DeckId {deckId}...");
@@ -197,7 +197,7 @@ public static class JitenHelper
         await CopySemaphore.WaitAsync();
         try
         {
-            await using (var ctx = new JitenDbContext(context.DbOptions))
+            await using (var ctx = await contextFactory.CreateDbContextAsync())
             {
                 var conn = (NpgsqlConnection)ctx.Database.GetDbConnection();
                 await conn.OpenAsync();
@@ -234,7 +234,7 @@ public static class JitenHelper
         Console.WriteLine($"[{DateTime.UtcNow:O}] Bulk insert (deck words) took {timer.ElapsedMilliseconds} ms for DeckId {deckId}.");
     }
 
-    private static async Task BulkInsertExampleSentences(JitenDbContext context, ICollection<ExampleSentence> exampleSentences, int deckId)
+    private static async Task BulkInsertExampleSentences(IDbContextFactory<JitenDbContext> contextFactory, ICollection<ExampleSentence> exampleSentences, int deckId)
     {
         var timer = Stopwatch.StartNew();
         Console.WriteLine($"[{DateTime.UtcNow:O}] Bulk inserting {exampleSentences.Count} example sentences for DeckId {deckId}...");
@@ -243,7 +243,7 @@ public static class JitenHelper
         await CopySemaphore.WaitAsync();
         try
         {
-            await using (var ctx = new JitenDbContext(context.DbOptions))
+            await using (var ctx = await contextFactory.CreateDbContextAsync())
             {
                 var conn = (NpgsqlConnection)ctx.Database.GetDbConnection();
                 await conn.OpenAsync();
@@ -336,7 +336,7 @@ public static class JitenHelper
         Console.WriteLine($"[{DateTime.UtcNow:O}] Bulk insert (example sentences+words) took {timer.ElapsedMilliseconds} ms for DeckId {deckId}.");
     }
 
-    private static async Task UpdateDeck(JitenDbContext context, Deck existingDeck, Deck deck)
+    private static async Task UpdateDeck(IDbContextFactory<JitenDbContext> contextFactory, JitenDbContext context, Deck existingDeck, Deck deck)
     {
         var deckId = existingDeck.DeckId;
 
@@ -359,24 +359,24 @@ public static class JitenHelper
         await context.Database.ExecuteSqlRawAsync($@"DELETE FROM jiten.""DeckWords"" WHERE ""DeckId"" = {{0}}", deckId);
         await context.Database.ExecuteSqlRawAsync($@"DELETE FROM jiten.""ExampleSentences"" WHERE ""DeckId"" = {{0}}", deckId);
 
-        await BulkInsertDeckWords(context, deck.DeckWords, deckId);
+        await BulkInsertDeckWords(contextFactory, deck.DeckWords, deckId);
 
         if (deck.ExampleSentences != null && deck.ExampleSentences.Any())
         {
-            await BulkInsertExampleSentences(context, deck.ExampleSentences, deckId);
+            await BulkInsertExampleSentences(contextFactory, deck.ExampleSentences, deckId);
         }
 
-        await UpdateChildDecks(context, existingDeck, deck.Children);
+        await UpdateChildDecks(contextFactory, context, existingDeck, deck.Children);
     }
 
-    private static async Task InsertChildDecks(JitenDbContext context, ICollection<Deck> children, int parentDeckId)
+    private static async Task InsertChildDecks(IDbContextFactory<JitenDbContext> contextFactory, ICollection<Deck> children, int parentDeckId)
     {
         if (children == null || !children.Any()) return;
 
         // Capture child data by object reference (not by DeckId which may be 0 before SaveChanges)
         var childPayloads = new List<(Deck child, List<DeckWord> words, List<ExampleSentence> sentences, DeckRawText? rawText)>();
 
-        await using (var ctx = new JitenDbContext(context.DbOptions))
+        await using (var ctx = await contextFactory.CreateDbContextAsync())
         {
             foreach (var child in children)
             {
@@ -416,7 +416,7 @@ public static class JitenHelper
         // Upsert RawText in one go (performs insert or update based on PK DeckId)
         if (rawTextsToUpsert.Count > 0)
         {
-            await using var rawCtx = new JitenDbContext(context.DbOptions);
+            await using var rawCtx = await contextFactory.CreateDbContextAsync();
             // Reduce fsync cost for this one batch insert/update
             await rawCtx.Database.ExecuteSqlRawAsync(@"SET LOCAL synchronous_commit = OFF");
 
@@ -450,17 +450,17 @@ public static class JitenHelper
             if (deckId <= 0) continue;
 
             if (words is { Count: > 0 })
-                bulkTasks.Add(BulkInsertDeckWords(context, words, deckId));
+                bulkTasks.Add(BulkInsertDeckWords(contextFactory, words, deckId));
 
             if (sentences is { Count: > 0 })
-                bulkTasks.Add(BulkInsertExampleSentences(context, sentences, deckId));
+                bulkTasks.Add(BulkInsertExampleSentences(contextFactory, sentences, deckId));
         }
 
         await Task.WhenAll(bulkTasks);
         Console.WriteLine($"[{DateTime.UtcNow:O}] All child bulk inserts completed.");
     }
 
-    private static async Task UpdateChildDecks(JitenDbContext context, Deck existingDeck, ICollection<Deck> children)
+    private static async Task UpdateChildDecks(IDbContextFactory<JitenDbContext> contextFactory, JitenDbContext context, Deck existingDeck, ICollection<Deck> children)
     {
         var existingChildren = await context.Decks
                                             .Where(d => d.ParentDeckId == existingDeck.DeckId)
@@ -488,7 +488,7 @@ public static class JitenHelper
                     continue;
                 }
 
-                await UpdateDeck(context, existingChild, child);
+                await UpdateDeck(contextFactory, context, existingChild, child);
             }
             else
             {
@@ -509,7 +509,7 @@ public static class JitenHelper
                 context.Decks.Add(newChildDeck);
                 await context.SaveChangesAsync(); // Save to get the ID
 
-                await BulkInsertDeckWords(context, child.DeckWords, newChildDeck.DeckId);
+                await BulkInsertDeckWords(contextFactory, child.DeckWords, newChildDeck.DeckId);
             }
         }
 
@@ -541,10 +541,10 @@ public static class JitenHelper
     /// <param name="context">The database context.</param>
     /// <param name="mediaType">The media type to compute frequencies for. If null, calculates global frequencies.</param>
     /// <returns>A list of JmDictWordFrequency objects, sorted by rank.</returns>
-    public static async Task<List<JmDictWordFrequency>> ComputeFrequencies(DbContextOptions<JitenDbContext> options,
+    public static async Task<List<JmDictWordFrequency>> ComputeFrequencies(IDbContextFactory<JitenDbContext> contextFactory,
                                                                            MediaType? mediaType = null)
     {
-        await using var context = new JitenDbContext(options);
+        await using var context = await contextFactory.CreateDbContextAsync();
 
         Dictionary<int, JmDictWordFrequency> wordFrequencies = new();
         var wordReadingCounts = await context.JMDictWords
@@ -725,9 +725,9 @@ public static class JitenHelper
         return sortedWordFrequencies;
     }
 
-    public static async Task SaveFrequenciesToDatabase(DbContextOptions<JitenDbContext> options, List<JmDictWordFrequency> frequencies)
+    public static async Task SaveFrequenciesToDatabase(IDbContextFactory<JitenDbContext> contextFactory, List<JmDictWordFrequency> frequencies)
     {
-        await using var context = new JitenDbContext(options);
+        await using var context = await contextFactory.CreateDbContextAsync();
 
         Console.WriteLine("Updating database with frequencies...");
 
@@ -778,9 +778,9 @@ public static class JitenHelper
     /// <summary>
     /// Get infos about a deck to debug the difficulty
     /// </summary>
-    public static async Task DebugDeck(DbContextOptions<JitenDbContext> options, int deckId)
+    public static async Task DebugDeck(IDbContextFactory<JitenDbContext> contextFactory, int deckId)
     {
-        await using var context = new JitenDbContext(options);
+        await using var context = await contextFactory.CreateDbContextAsync();
 
         // Retrieve the deck
         var deck = await context.Decks

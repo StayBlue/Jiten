@@ -337,7 +337,7 @@ public static class JmDictHelper
     }
 
 
-    public static async Task<bool> Import(DbContextOptions<JitenDbContext> options, string dtdPath, string dictionaryPath,
+    public static async Task<bool> Import(IDbContextFactory<JitenDbContext> contextFactory, string dtdPath, string dictionaryPath,
                                           string furiganaPath)
     {
         var wordInfos = await GetWordInfos(dtdPath, dictionaryPath);
@@ -358,7 +358,7 @@ public static class JmDictHelper
             list.Add(f);
         }
 
-        await using var context = new JitenDbContext(options);
+        await using var context = await contextFactory.CreateDbContextAsync();
         foreach (var reading in wordInfos)
         {
             List<JmDictLookup> lookups = new();
@@ -504,7 +504,7 @@ public static class JmDictHelper
         return true;
     }
 
-    public static async Task<bool> ImportJMNedict(DbContextOptions<JitenDbContext> options, string jmneDictPath)
+    public static async Task<bool> ImportJMNedict(IDbContextFactory<JitenDbContext> contextFactory, string jmneDictPath)
     {
         Console.WriteLine("Starting JMNedict import...");
 
@@ -516,7 +516,7 @@ public static class JmDictHelper
         // Dictionary to store entries by kanji element (keb) to combine entries with the same kanji
         Dictionary<string, JmDictWord> namesByKeb = new();
 
-        await using var context = new JitenDbContext(options);
+        await using var context = await contextFactory.CreateDbContextAsync();
 
         // Load existing entries from JMDict to check for duplicates
         Console.WriteLine("Loading existing JMDict entries to check for duplicates...");
@@ -1256,7 +1256,7 @@ public static class JmDictHelper
         return customWordInfos;
     }
 
-    public static async Task<bool> ImportPitchAccents(bool verbose, DbContextOptions<JitenDbContext> options,
+    public static async Task<bool> ImportPitchAccents(bool verbose, IDbContextFactory<JitenDbContext> contextFactory,
                                                       string pitchAcentsDirectoryPath)
     {
         if (!Directory.Exists(pitchAcentsDirectoryPath))
@@ -1305,7 +1305,7 @@ public static class JmDictHelper
         if (verbose)
             Console.WriteLine($"Found {pitchAccentDict.Count()} pitch accent records.");
 
-        var context = new JitenDbContext(options);
+        await using var context = await contextFactory.CreateDbContextAsync();
         var allWords = await context.JMDictWords.ToListAsync();
         int wordsUpdated = 0;
 
@@ -1335,7 +1335,7 @@ public static class JmDictHelper
         return true;
     }
 
-    public static async Task<bool> ImportVocabularyOrigin(bool verbose, DbContextOptions<JitenDbContext> options,
+    public static async Task<bool> ImportVocabularyOrigin(bool verbose, IDbContextFactory<JitenDbContext> contextFactory,
                                                           string vocabularyOriginFilePath)
     {
         if (!File.Exists(vocabularyOriginFilePath))
@@ -1376,7 +1376,7 @@ public static class JmDictHelper
         if (verbose)
             Console.WriteLine($"Loaded {wordOriginMap.Count} word origins from CSV file");
 
-        var context = new JitenDbContext(options);
+        await using var context = await contextFactory.CreateDbContextAsync();
         var jmdictWords = await context.JMDictWords.ToListAsync();
         int updatedCount = 0;
 

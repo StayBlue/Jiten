@@ -17,7 +17,7 @@ namespace Jiten.Api.Controllers;
 [Route("api/vocabulary")]
 [EnableRateLimiting("fixed")]
 [Produces("application/json")]
-public class VocabularyController(JitenDbContext context, ICurrentUserService currentUserService, ILogger<VocabularyController> logger) : ControllerBase
+public class VocabularyController(JitenDbContext context, IDbContextFactory<JitenDbContext> contextFactory, ICurrentUserService currentUserService, ILogger<VocabularyController> logger) : ControllerBase
 {
     /// <summary>
     /// Gets a word by its ID and reading index, including definitions, readings, frequency and user known state.
@@ -99,7 +99,7 @@ public class VocabularyController(JitenDbContext context, ICurrentUserService cu
         if (text.Length > 500)
             return Results.BadRequest("Text is too long");
 
-        var parsedWords = await Parser.Parser.ParseText(context, text);
+        var parsedWords = await Parser.Parser.ParseText(contextFactory, text);
 
         // We want both parsed words and unparsed ones
         var allWords = new List<DeckWordDto>();

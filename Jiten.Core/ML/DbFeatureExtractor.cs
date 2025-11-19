@@ -11,24 +11,25 @@ namespace Jiten.Cli.ML;
 
 public class DbFeatureExtractor
 {
-    private JitenDbContext _context;
+    private IDbContextFactory<JitenDbContext> _contextFactory;
     private static readonly ConcurrentBag<ExtractedFeatures> _allFeaturesList = new ConcurrentBag<ExtractedFeatures>();
     private static int _completedCount = 0;
     private static int _lastSaveCount = 0;
 
-    public DbFeatureExtractor(DbContextOptions<JitenDbContext> dbOptions)
+    public DbFeatureExtractor(IDbContextFactory<JitenDbContext> contextFactory)
     {
-        _context = new JitenDbContext(dbOptions);
+        _contextFactory = contextFactory;
     }
 
-    public async Task ExtractFeatures(Func<JitenDbContext, string, bool, bool, MediaType, Task<Deck>> parseFunction, string saveDirectory)
+    public async Task ExtractFeatures(Func<IDbContextFactory<JitenDbContext>, string, bool, bool, MediaType, Task<Deck>> parseFunction, string saveDirectory)
     {
         // Calculate static values (like ScoreHardcapValue)
         var _ = MLConfig.ScoreHardcapValue; // Access to ensure static constructor runs
         Console.WriteLine($"Calculated SCORE_HARDCAP_VALUE: {MLConfig.ScoreHardcapValue}");
 
         var mainStopwatch = Stopwatch.StartNew();
-        var decks = await _context.Decks.Where(d => (d.ParentDeck != null || (d.ParentDeck == null && d.Children.Count == 0)) && (d.MediaType == MediaType.Anime || d.MediaType == MediaType.Movie || d.MediaType == MediaType.Drama)).Include(d => d.RawText).ToListAsync();
+        await using var context = await _contextFactory.CreateDbContextAsync();
+        var decks = await context.Decks.Where(d => (d.ParentDeck != null || (d.ParentDeck == null && d.Children.Count == 0)) && (d.MediaType == MediaType.Anime || d.MediaType == MediaType.Movie || d.MediaType == MediaType.Drama)).Include(d => d.RawText).ToListAsync();
         Console.WriteLine($"Loaded {decks.Count} decks from database.");
 
         List<MLInputData> itemsToProcess = new();
@@ -122,7 +123,7 @@ public class DbFeatureExtractor
 
 
     public async Task<ExtractedFeatures> ProcessFileAsync(MLInputData mlInput,
-                                                          Func<JitenDbContext, string, bool, bool, MediaType, Task<Deck>> parseFunction)
+                                                          Func<IDbContextFactory<JitenDbContext>, string, bool, bool, MediaType, Task<Deck>> parseFunction)
     {
         var features = new ExtractedFeatures { Filename = mlInput.OriginalFileName, DifficultyRating = mlInput.DifficultyScore };
 
@@ -136,7 +137,7 @@ public class DbFeatureExtractor
             throw new Exception($"Failed to read text file: {mlInput.TextFilePath}", ex);
         }
 
-        var deck = await parseFunction(_context, content, false, false, MediaType.Novel);
+        var deck = await parseFunction(_contextFactory, content, false, false, MediaType.Novel);
 
         if (deck == null || deck.CharacterCount == 0 || deck.WordCount == 0)
             throw new Exception($"Received empty deck: {mlInput.TextFilePath}");
@@ -162,7 +163,10 @@ public class DbFeatureExtractor
         deckWords = deck.DeckWords.ToList();
 
         MLHelper.ExtractCharacterCounts(content, features);
-        await MLHelper.ExtractFrequencyStats(_context, deckWords, features);
+        await using (var context = await _contextFactory.CreateDbContextAsync())
+        {
+            await MLHelper.ExtractFrequencyStats(context, deckWords, features);
+        }
         MLHelper.ExtractConjugationStats(deckWords, features);
         MLHelper.ExtractReadabilityScore(deckWords, features);
         MLHelper.ExtractSemanticComplexity(deckWords, features);

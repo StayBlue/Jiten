@@ -15,7 +15,7 @@ namespace Jiten.Api.Controllers;
 [ApiController]
 [Route("api/reader")]
 [Authorize]
-public class ReaderController(JitenDbContext context, ICurrentUserService currentUserService, ILogger<ReaderController> logger) : ControllerBase
+public class ReaderController(JitenDbContext context, IDbContextFactory<JitenDbContext> contextFactory, ICurrentUserService currentUserService, ILogger<ReaderController> logger) : ControllerBase
 {
     [HttpPost("ping")]
     public IResult Ping()
@@ -44,7 +44,7 @@ public class ReaderController(JitenDbContext context, ICurrentUserService curren
 
         const string stopToken = "\n|\n";
         var combinedText = string.Join(stopToken, request.Text);
-        var allParsedWords = await Parser.Parser.ParseText(context, combinedText);
+        var allParsedWords = await Parser.Parser.ParseText(contextFactory, combinedText);
 
         var paragraphOffsets = new int[request.Text.Length];
         var currentOffset = 0;

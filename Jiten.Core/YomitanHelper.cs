@@ -34,10 +34,10 @@ public static class YomitanHelper
     /// <param name="context">The database context.</param>
     /// <param name="mediaType">The media type to generate the frequency deck for. null for global</param>
     /// <returns>A byte array representing the zipped dictionary file.</returns>
-    public static async Task<byte[]> GenerateYomitanFrequencyDeck(DbContextOptions<JitenDbContext> options,
+    public static async Task<byte[]> GenerateYomitanFrequencyDeck(IDbContextFactory<JitenDbContext> contextFactory,
                                                                   List<JmDictWordFrequency> frequencies, MediaType? mediaType, string indexJson)
     {
-        await using var context = new JitenDbContext(options);
+        await using var context = await contextFactory.CreateDbContextAsync();
 
         var wordIds = frequencies.Select(f => f.WordId).ToList();
         var allWords = await context.JMDictWords.AsNoTracking()
@@ -137,9 +137,9 @@ public static class YomitanHelper
     /// <param name="deck"></param>
     /// <param name="title"></param>
     /// <returns>A byte array representing the zipped dictionary file.</returns>
-    public static async Task<byte[]> GenerateYomitanFrequencyDeckFromDeck(DbContextOptions<JitenDbContext> options, Deck deck)
+    public static async Task<byte[]> GenerateYomitanFrequencyDeckFromDeck(IDbContextFactory<JitenDbContext> contextFactory, Deck deck)
     {
-        await using var context = new JitenDbContext(options);
+        await using var context = await contextFactory.CreateDbContextAsync();
         string title = "";
         if (deck.ParentDeckId != null)
         {

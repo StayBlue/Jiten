@@ -29,6 +29,7 @@ namespace Jiten.Api.Controllers;
 [SwaggerTag("Media decks and vocabulary")]
 public class MediaDeckController(
     JitenDbContext context,
+    IDbContextFactory<JitenDbContext> contextFactory,
     UserDbContext userContext,
     ICurrentUserService currentUserService,
     IConfiguration configuration,
@@ -839,7 +840,7 @@ public class MediaDeckController(
 
         if (request.Format == DeckFormat.Yomitan)
         {
-            var yomitanBytes = await YomitanHelper.GenerateYomitanFrequencyDeckFromDeck(context.DbOptions, deck);
+            var yomitanBytes = await YomitanHelper.GenerateYomitanFrequencyDeckFromDeck(contextFactory, deck);
             return Results.File(yomitanBytes, "application/zip", $"freq_{deck.OriginalTitle}.zip");
         }
 
@@ -959,7 +960,7 @@ public class MediaDeckController(
         if (request.Text.Length > 200000)
             return Results.BadRequest();
 
-        var deck = await Parser.Parser.ParseTextToDeck(context, storeRawText: true, text: request.Text);
+        var deck = await Parser.Parser.ParseTextToDeck(contextFactory, storeRawText: true, text: request.Text);
         deck.OriginalTitle = "Custom deck";
         var deckDownloadRequest = new DeckDownloadRequest() { DownloadType = DeckDownloadType.Full, Format = DeckFormat.Anki };
         var deckWords = deck.DeckWords.Select(dw => new ValueTuple<int, byte, int>(dw.WordId, dw.ReadingIndex, dw.Occurrences)).ToList();

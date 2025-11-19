@@ -11,17 +11,17 @@ namespace Jiten.Cli.ML;
 
 public class FileFeatureExtractor
 {
-    private JitenDbContext _context;
+    private IDbContextFactory<JitenDbContext> _contextFactory;
     private static readonly ConcurrentBag<ExtractedFeatures> _allFeaturesList = new ConcurrentBag<ExtractedFeatures>();
     private static int _completedCount = 0;
     private static int _lastSaveCount = 0;
 
-    public FileFeatureExtractor(DbContextOptions<JitenDbContext> dbOptions)
+    public FileFeatureExtractor(IDbContextFactory<JitenDbContext> contextFactory)
     {
-        _context = new JitenDbContext(dbOptions);
+        _contextFactory = contextFactory;
     }
 
-    public async Task ExtractFeatures(Func<JitenDbContext, string, bool, bool, MediaType, Task<Deck>> parseFunction, string inputDirectory)
+    public async Task ExtractFeatures(Func<IDbContextFactory<JitenDbContext>, string, bool, bool, MediaType, Task<Deck>> parseFunction, string inputDirectory)
     {
         // Calculate static values (like ScoreHardcapValue)
         var _ = MLConfig.ScoreHardcapValue; // Access to ensure static constructor runs
@@ -110,7 +110,7 @@ public class FileFeatureExtractor
 
 
     public async Task<ExtractedFeatures> ProcessFileAsync(MLInputData mlInput,
-                                                          Func<JitenDbContext, string, bool, bool, MediaType, Task<Deck>> parseFunction)
+                                                          Func<IDbContextFactory<JitenDbContext>, string, bool, bool, MediaType, Task<Deck>> parseFunction)
     {
         var features = new ExtractedFeatures { Filename = mlInput.OriginalFileName, DifficultyRating = mlInput.DifficultyScore };
 
@@ -124,7 +124,7 @@ public class FileFeatureExtractor
             throw new Exception($"Failed to read text file: {mlInput.TextFilePath}", ex);
         }
 
-        var deck = await parseFunction(_context, content, false, false, MediaType.Novel);
+        var deck = await parseFunction(_contextFactory, content, false, false, MediaType.Novel);
 
         if (deck == null || deck.CharacterCount == 0 || deck.WordCount == 0)
             throw new Exception($"Received empty deck: {mlInput.TextFilePath}");
@@ -150,7 +150,10 @@ public class FileFeatureExtractor
         deckWords = deck.DeckWords.ToList();
 
         MLHelper.ExtractCharacterCounts(content, features);
-        await MLHelper.ExtractFrequencyStats(_context, deckWords, features);
+        await using (var context = await _contextFactory.CreateDbContextAsync())
+        {
+            await MLHelper.ExtractFrequencyStats(context, deckWords, features);
+        }
         MLHelper.ExtractConjugationStats(deckWords, features);
         MLHelper.ExtractReadabilityScore(deckWords, features);
         MLHelper.ExtractSemanticComplexity(deckWords, features);

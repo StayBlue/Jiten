@@ -8,12 +8,14 @@ using Jiten.Cli;
 
 namespace Jiten.Api.Jobs;
 
-public class ParseJob(JitenDbContext context, UserDbContext userContext, IBackgroundJobClient backgroundJobs)
+public class ParseJob(IDbContextFactory<JitenDbContext> contextFactory, IDbContextFactory<UserDbContext> userContextFactory, IBackgroundJobClient backgroundJobs)
 {
     public async Task Parse(Metadata metadata, MediaType deckType, bool storeRawText = false)
     {
         Deck deck = new();
         string filePath = metadata.FilePath;
+
+        await using var context = await contextFactory.CreateDbContextAsync();
 
         if (!string.IsNullOrEmpty(metadata.FilePath))
         {
@@ -48,7 +50,7 @@ public class ParseJob(JitenDbContext context, UserDbContext userContext, IBackgr
                 text = await File.ReadAllTextAsync(filePath);
             }
 
-            deck = await Parser.Parser.ParseTextToDeck(context, text, storeRawText, true, deckType);
+            deck = await Parser.Parser.ParseTextToDeck(contextFactory, text, storeRawText, true, deckType);
         }
 
         // Process children recursively
@@ -89,7 +91,7 @@ public class ParseJob(JitenDbContext context, UserDbContext userContext, IBackgr
         var coverImage = await File.ReadAllBytesAsync(metadata.Image ?? throw new Exception("No cover image found."));
 
         // Insert the deck into the database
-        await JitenHelper.InsertDeck(context.DbOptions, deck, coverImage ?? [], false);
+        await JitenHelper.InsertDeck(contextFactory, deck, coverImage ?? [], false);
 
         // Queue coverage computation jobs for all users with at least 10 known words
         await QueueCoverageJobsForDeck(deck);
@@ -123,7 +125,7 @@ public class ParseJob(JitenDbContext context, UserDbContext userContext, IBackgr
                 text = await File.ReadAllTextAsync(filePath);
             }
 
-            deck = await Parser.Parser.ParseTextToDeck(context, text, storeRawText, true, deckType);
+            deck = await Parser.Parser.ParseTextToDeck(contextFactory, text, storeRawText, true, deckType);
             deck.ParentDeck = parentDeck;
             deck.DeckOrder = deckOrder;
             deck.OriginalTitle = metadata.OriginalTitle;
@@ -147,6 +149,8 @@ public class ParseJob(JitenDbContext context, UserDbContext userContext, IBackgr
 
     private async Task QueueCoverageJobsForDeck(Deck deck)
     {
+        await using var userContext = await userContextFactory.CreateDbContextAsync();
+
         var userIds = await userContext.Users
                                        .Where(u => userContext.FsrsCards.Count(c => c.UserId == u.Id) >= 10)
                                        .Select(u => u.Id)

@@ -16,15 +16,15 @@ public class DifficultyPredictor
 {
     private readonly MLContext _mlContext;
     private readonly PredictionEngine<PredictorInput, PredictorOutput> _predictionEngine;
-    private readonly DbContextOptions<JitenDbContext> _dbOptions;
+    private readonly IDbContextFactory<JitenDbContext> _contextFactory;
 
     private readonly List<string> _featureOrder;
 
     public DifficultyPredictor(
-        DbContextOptions<JitenDbContext> dbOptions,
+        IDbContextFactory<JitenDbContext> contextFactory,
         string modelPath)
     {
-        _dbOptions = dbOptions;
+        _contextFactory = contextFactory;
 
         _mlContext = new MLContext(seed: 0);
 
@@ -84,7 +84,7 @@ public class DifficultyPredictor
 
         // 2. Extract features using your existing FeatureExtractor logic
         ExtractedFeatures extractedFeatures;
-        using (var context = new JitenDbContext(_dbOptions)) // Create a new context instance
+        await using (var context = await _contextFactory.CreateDbContextAsync())
         {
             if (deck == null) throw new InvalidOperationException("Parser returned null deck.");
 

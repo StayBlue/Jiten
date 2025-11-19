@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Jiten.Api.Jobs;
 
-public class FetchMetadataJob(JitenDbContext context, IConfiguration configuration)
+public class FetchMetadataJob(IDbContextFactory<JitenDbContext> contextFactory, IConfiguration configuration)
 {
     private const float ANILIST_DELAY = 2.2f;
     private const float GOOGLE_BOOKS_DELAY = 3f;
@@ -17,6 +17,8 @@ public class FetchMetadataJob(JitenDbContext context, IConfiguration configurati
     [Queue("anilist")]
     public async Task FetchAnilistMissingMetadata(int deckId)
     {
+        await using var context = await contextFactory.CreateDbContextAsync();
+
         try
         {
             var deck = context.Decks.Include(d => d.Links).Include(deck => deck.Titles).First(d => d.DeckId == deckId);
@@ -60,6 +62,8 @@ public class FetchMetadataJob(JitenDbContext context, IConfiguration configurati
     [Queue("books")]
     public async Task FetchGoogleBooksMissingMetadata(int deckId)
     {
+        await using var context = await contextFactory.CreateDbContextAsync();
+
         try
         {
             var deck = context.Decks.Include(d => d.Links).Include(deck => deck.Titles).First(d => d.DeckId == deckId);
@@ -103,6 +107,8 @@ public class FetchMetadataJob(JitenDbContext context, IConfiguration configurati
     [Queue("vndb")]
     public async Task FetchVndbMissingMetadata(int deckId)
     {
+        await using var context = await contextFactory.CreateDbContextAsync();
+
         try
         {
             var deck = context.Decks.Include(d => d.Links).Include(deck => deck.Titles).First(d => d.DeckId == deckId);
@@ -146,6 +152,8 @@ public class FetchMetadataJob(JitenDbContext context, IConfiguration configurati
     [Queue("tmdb")]
     public async Task FetchTmdbMissingMetadata(int deckId)
     {
+        await using var context = await contextFactory.CreateDbContextAsync();
+
         try
         {
             var deck = context.Decks.Include(d => d.Links).Include(d => d.Titles).First(d => d.DeckId == deckId);
@@ -195,6 +203,8 @@ public class FetchMetadataJob(JitenDbContext context, IConfiguration configurati
     [Queue("igdb")]
     public async Task FetchIgdbMissingMetadata(int deckId)
     {
+        await using var context = await contextFactory.CreateDbContextAsync();
+
         try
         {
             var deck = context.Decks.Include(d => d.Links).Include(d => d.Titles).First(d => d.DeckId == deckId);

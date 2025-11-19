@@ -241,7 +241,7 @@ if (enableOtlpExporter)
     });
 }
 
-builder.Services.AddDbContext<JitenDbContext>(options => options.UseNpgsql(builder.Configuration.GetConnectionString("JitenDatabase"),
+builder.Services.AddDbContextFactory<JitenDbContext>(options => options.UseNpgsql(builder.Configuration.GetConnectionString("JitenDatabase"),
                                                                            o =>
                                                                            {
                                                                                o.UseQuerySplittingBehavior(QuerySplittingBehavior
@@ -250,7 +250,7 @@ builder.Services.AddDbContext<JitenDbContext>(options => options.UseNpgsql(build
 
 // Authentication
 
-builder.Services.AddDbContext<UserDbContext>(options => options.UseNpgsql(builder.Configuration.GetConnectionString("JitenDatabase"),
+builder.Services.AddDbContextFactory<UserDbContext>(options => options.UseNpgsql(builder.Configuration.GetConnectionString("JitenDatabase"),
                                                                           o =>
                                                                           {
                                                                               o.UseQuerySplittingBehavior(QuerySplittingBehavior

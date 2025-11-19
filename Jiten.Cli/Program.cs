@@ -32,8 +32,25 @@ public class Program
                                                            };
 
     private static DbContextOptions<JitenDbContext> _dbOptions;
+    private static IDbContextFactory<JitenDbContext> _contextFactory;
 
     private static bool _storeRawText;
+
+    // Simple factory implementation for CLI usage
+    private class SimpleDbContextFactory : IDbContextFactory<JitenDbContext>
+    {
+        private readonly DbContextOptions<JitenDbContext> _options;
+
+        public SimpleDbContextFactory(DbContextOptions<JitenDbContext> options)
+        {
+            _options = options;
+        }
+
+        public JitenDbContext CreateDbContext()
+        {
+            return new JitenDbContext(_options);
+        }
+    }
 
     public class Options
     {
@@ -153,6 +170,7 @@ public class Program
         var optionsBuilder = new DbContextOptionsBuilder<JitenDbContext>();
         optionsBuilder.UseNpgsql(connectionString, o => { o.UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery); });
         _dbOptions = optionsBuilder.Options;
+        _contextFactory = new SimpleDbContextFactory(_dbOptions);
         _storeRawText = configuration.GetValue<bool>("StoreRawText");
 
         await Parser.Default.ParseArguments<Options>(args)
@@ -177,8 +195,8 @@ public class Program
                             }
 
                             Console.WriteLine("Importing JMdict...");
-                            await JmDictHelper.Import(_dbOptions, o.XmlPath, o.DictionaryPath, o.FuriganaPath);
-                            await JmDictHelper.ImportJMNedict(_dbOptions, o.NameDictionaryPath);
+                            await JmDictHelper.Import(_contextFactory, o.XmlPath, o.DictionaryPath, o.FuriganaPath);
+                            await JmDictHelper.ImportJMNedict(_contextFactory, o.NameDictionaryPath);
                         }
 
                         if (o.ExtractFilePath != null)
@@ -226,12 +244,12 @@ public class Program
 
                         if (o.ComputeFrequencies)
                         {
-                            await JitenHelper.ComputeFrequencies(_dbOptions);
+                            await JitenHelper.ComputeFrequencies(_contextFactory);
                         }
 
                         if (o.DebugDeck != null)
                         {
-                            await JitenHelper.DebugDeck(_dbOptions, o.DebugDeck.Value);
+                            await JitenHelper.DebugDeck(_contextFactory, o.DebugDeck.Value);
                         }
 
                         if (!string.IsNullOrEmpty(o.UserDicMassAdd))
@@ -272,29 +290,29 @@ public class Program
                         if (!string.IsNullOrEmpty(o.ImportPitchAccents))
                         {
                             Console.WriteLine("Importing pitch accents...");
-                            await JmDictHelper.ImportPitchAccents(o.Verbose, _dbOptions, o.ImportPitchAccents);
+                            await JmDictHelper.ImportPitchAccents(o.Verbose, _contextFactory, o.ImportPitchAccents);
                             Console.WriteLine("Pitch accents imported.");
                         }
 
                         if (!string.IsNullOrEmpty(o.ImportVocabularyOrigin))
                         {
                             Console.WriteLine("Importing vocabulary origin...");
-                            await JmDictHelper.ImportVocabularyOrigin(o.Verbose, _dbOptions, o.ImportVocabularyOrigin);
+                            await JmDictHelper.ImportVocabularyOrigin(o.Verbose, _contextFactory, o.ImportVocabularyOrigin);
                             Console.WriteLine("Vocabulary origin imported.");
                         }
 
                         if (!string.IsNullOrEmpty(o.ExtractFeatures))
                         {
                             Console.WriteLine("Extracting features...");
-                            var featureExtractor = new FileFeatureExtractor(_dbOptions);
+                            var featureExtractor = new FileFeatureExtractor(_contextFactory);
                             await featureExtractor.ExtractFeatures(Jiten.Parser.Parser.ParseTextToDeck, o.ExtractFeatures);
                             Console.WriteLine("All features extracted.");
                         }
-                        
+
                         if (!string.IsNullOrEmpty(o.ExtractFeaturesDb))
                         {
                             Console.WriteLine("Extracting features...");
-                            var featureExtractor = new DbFeatureExtractor(_dbOptions);
+                            var featureExtractor = new DbFeatureExtractor(_contextFactory);
                             await featureExtractor.ExtractFeatures(Jiten.Parser.Parser.ParseTextToDeck, o.ExtractFeaturesDb);
                             Console.WriteLine("All features extracted.");
                         }
@@ -369,7 +387,7 @@ public class Program
             coverOptimized.Quality = 85;
             coverOptimized.Format = ImageMagick.MagickFormat.Jpeg;
 
-            await JitenHelper.InsertDeck(_dbOptions, deck, coverOptimized.ToByteArray(), options.UpdateDecks);
+            await JitenHelper.InsertDeck(_contextFactory, deck, coverOptimized.ToByteArray(), options.UpdateDecks);
 
             if (options.Verbose)
                 Console.WriteLine($"Deck {deck.OriginalTitle} inserted into the database.");
@@ -463,7 +481,7 @@ public class Program
         {
             Deck deck = new();
             string filePath = metadata.FilePath;
-            await using var context = new JitenDbContext(_dbOptions);
+            await using var context = await _contextFactory.CreateDbContextAsync();
 
             if (!string.IsNullOrEmpty(metadata.FilePath))
             {
@@ -518,7 +536,7 @@ public class Program
                     }
                 }
 
-                deck = await Jiten.Parser.Parser.ParseTextToDeck(context, string.Join(Environment.NewLine, lines), _storeRawText, true,
+                deck = await Jiten.Parser.Parser.ParseTextToDeck(_contextFactory, string.Join(Environment.NewLine, lines), _storeRawText, true,
                                                                  deckType);
                 deck.ParentDeck = parentDeck;
                 deck.DeckOrder = deckOrder;
@@ -823,7 +841,7 @@ public class Program
 
         excludeSet.UnionWith(existingXmlFirstTokens);
 
-        await using var context = new JitenDbContext(_dbOptions);
+        await using var context = await _contextFactory.CreateDbContextAsync();
 
         // Pre-load lookups and words
         var lookups = context.Lookups.AsNoTracking().ToList();
@@ -1066,7 +1084,7 @@ public class Program
     /// <returns></returns>
     private static async Task<bool> ExtractMorphemes()
     {
-        var context = new JitenDbContext(_dbOptions);
+        await using var context = await _contextFactory.CreateDbContextAsync();
         var allWords = await context.JMDictWords.Select(w => new { w.WordId, w.Readings, w.ReadingTypes }).ToListAsync();
         int error = 0;
         int noMorphemes = 0;
@@ -1112,7 +1130,7 @@ public class Program
             var batchText = String.Join(" \n", batchReadings);
 
 
-            var results = await Jiten.Parser.Parser.ParseMorphenes(context, batchText);
+            var results = await Jiten.Parser.Parser.ParseMorphenes(_contextFactory, batchText);
 
             int currentMorphemeIndex = batchStart;
             bool lastWasNull = false;
@@ -1165,7 +1183,7 @@ public class Program
 
     private static async Task PruneSudachiCsvFiles(string folderPath)
     {
-        await using var context = new JitenDbContext(_dbOptions);
+        await using var context = await _contextFactory.CreateDbContextAsync();
         var allReadings = context.JMDictWords
                                  .SelectMany(w => w.Readings)
                                  .ToHashSet();

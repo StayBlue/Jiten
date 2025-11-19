@@ -13,17 +13,17 @@ public class RedisJmDictCache : IJmDictCache
     private readonly JsonSerializerOptions _jsonOptions = new(JsonSerializerDefaults.Web);
     private readonly TimeSpan _cacheExpiry = TimeSpan.FromDays(30); // Long cache time for dictionary data
     private const string InitializedKey = "jmdict:initialized";
-    private readonly DbContextOptions<JitenDbContext> _dbOptions;
+    private readonly IDbContextFactory<JitenDbContext> _contextFactory;
 
     // Semaphore to limit concurrent database access
     private static readonly SemaphoreSlim DbSemaphore = new SemaphoreSlim(10, 10);
     private static readonly Random Jitter = new Random();
-    
-    public RedisJmDictCache(IConfiguration configuration, DbContextOptions<JitenDbContext> dbOptions)
+
+    public RedisJmDictCache(IConfiguration configuration, IDbContextFactory<JitenDbContext> contextFactory)
     {
         var connection = ConnectionMultiplexer.Connect(configuration.GetConnectionString("Redis")!);
         _redisDb = connection.GetDatabase();
-        _dbOptions = dbOptions;
+        _contextFactory = contextFactory;
     }
 
     private string BuildLookupKey(string lookupText)
@@ -42,7 +42,7 @@ public class RedisJmDictCache : IJmDictCache
         var json = await _redisDb.StringGetAsync(redisKey);
         if (json.IsNullOrEmpty)
         {
-            await using var dbContext = new JitenDbContext(_dbOptions);
+            await using var dbContext = await _contextFactory.CreateDbContextAsync();
             // Fetch the lookup from database
             var lookupIds = await dbContext.Lookups
                                            .AsNoTracking()
@@ -98,7 +98,7 @@ public class RedisJmDictCache : IJmDictCache
         // 3. If any keys were not in the cache, fetch them from the database in a single query
         if (missedKeys.Any())
         {
-            await using var dbContext = new JitenDbContext(_dbOptions);
+            await using var dbContext = await _contextFactory.CreateDbContextAsync();
 
             var dbLookups = await dbContext.Lookups
                                            .AsNoTracking()
@@ -134,7 +134,7 @@ public class RedisJmDictCache : IJmDictCache
         var json = await _redisDb.StringGetAsync(redisKey);
         if (json.IsNullOrEmpty)
         {
-            await using var dbContext = new JitenDbContext(_dbOptions);
+            await using var dbContext = await _contextFactory.CreateDbContextAsync();
 
             // Fetch the word from database
             var word = await dbContext.JMDictWords
@@ -213,8 +213,8 @@ public class RedisJmDictCache : IJmDictCache
                     {
                         try
                         {
-                            await using var dbContext = new JitenDbContext(_dbOptions);
-                            
+                            await using var dbContext = await _contextFactory.CreateDbContextAsync();
+
                             // Set a timeout for the command to avoid long-running queries
                             dbContext.Database.SetCommandTimeout(TimeSpan.FromSeconds(5));
                             

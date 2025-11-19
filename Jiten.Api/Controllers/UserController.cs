@@ -18,6 +18,7 @@ namespace Jiten.Api.Controllers;
 public class UserController(
     ICurrentUserService userService,
     JitenDbContext jitenContext,
+    IDbContextFactory<JitenDbContext> contextFactory,
     UserDbContext userContext,
     IBackgroundJobClient backgroundJobs,
     ILogger<UserController> logger) : ControllerBase
@@ -185,7 +186,7 @@ public class UserController(
             return Results.BadRequest("No valid words found in file");
 
         var combinedText = string.Join(Environment.NewLine, validWords);
-        var parsedWords = await Parser.Parser.ParseText(jitenContext, combinedText);
+        var parsedWords = await Parser.Parser.ParseText(contextFactory, combinedText);
         var added = await userService.AddKnownWords(parsedWords);
 
         backgroundJobs.Enqueue<ComputationJob>(job => job.ComputeUserCoverage(userId));

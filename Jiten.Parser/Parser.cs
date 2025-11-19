@@ -22,7 +22,7 @@ namespace Jiten.Parser
         private static IDeckWordCache DeckWordCache;
         private static IJmDictCache JmDictCache;
 
-        private static JitenDbContext _dbContext;
+        private static IDbContextFactory<JitenDbContext> _contextFactory;
         private static Dictionary<string, List<int>> _lookups;
 
 
@@ -38,20 +38,22 @@ namespace Jiten.Parser
                                 .AddEnvironmentVariables()
                                 .Build();
 
+            await using var context = await _contextFactory.CreateDbContextAsync();
+
             var optionsBuilder = new DbContextOptionsBuilder<JitenDbContext>();
-            optionsBuilder.UseNpgsql(_dbContext.Database.GetConnectionString());
+            optionsBuilder.UseNpgsql(context.Database.GetConnectionString());
 
 
             DeckWordCache = new RedisDeckWordCache(configuration);
-            JmDictCache = new RedisJmDictCache(configuration, optionsBuilder.Options);
+            JmDictCache = new RedisJmDictCache(configuration, _contextFactory);
 
-            _lookups = await JmDictHelper.LoadLookupTable(_dbContext);
+            _lookups = await JmDictHelper.LoadLookupTable(context);
 
             // Check if cache is already initialized
             if (!await JmDictCache.IsCacheInitializedAsync())
             {
                 // Cache not initialized, load from database and populate Redis
-                var allWords = await JmDictHelper.LoadAllWords(_dbContext);
+                var allWords = await JmDictHelper.LoadAllWords(context);
 
                 const int BATCH_SIZE = 10000;
 
@@ -75,9 +77,9 @@ namespace Jiten.Parser
             }
         }
 
-        public static async Task<List<DeckWord>> ParseText(JitenDbContext context, string text)
+        public static async Task<List<DeckWord>> ParseText(IDbContextFactory<JitenDbContext> contextFactory, string text)
         {
-            _dbContext = context;
+            _contextFactory = contextFactory;
             if (!_initialized)
             {
                 await _initSemaphore.WaitAsync();
@@ -130,12 +132,12 @@ namespace Jiten.Parser
             return allProcessedWords;
         }
 
-        public static async Task<Deck> ParseTextToDeck(JitenDbContext context, string text,
+        public static async Task<Deck> ParseTextToDeck(IDbContextFactory<JitenDbContext> contextFactory, string text,
                                                        bool storeRawText = false,
                                                        bool predictDifficulty = true,
                                                        MediaType mediatype = MediaType.Novel)
         {
-            _dbContext = context;
+            _contextFactory = contextFactory;
             if (!_initialized)
             {
                 await _initSemaphore.WaitAsync();
@@ -288,7 +290,7 @@ namespace Jiten.Parser
                     model = "difficulty_prediction_model_shows.onnx";
 
                 DifficultyPredictor difficultyPredictor =
-                    new(_dbContext.DbOptions, Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "resources", model));
+                    new(_contextFactory, Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "resources", model));
                 deck.Difficulty = await difficultyPredictor.PredictDifficulty(deck, mediatype);
                 // DifficultyPredictorVae difficultyPredictor =
                 //     new(_dbContext.DbOptions,
@@ -301,9 +303,9 @@ namespace Jiten.Parser
             return deck;
         }
 
-        public static async Task<List<DeckWord?>> ParseMorphenes(JitenDbContext context, string text)
+        public static async Task<List<DeckWord?>> ParseMorphenes(IDbContextFactory<JitenDbContext> contextFactory, string text)
         {
-            _dbContext = context;
+            _contextFactory = contextFactory;
             if (!_initialized)
             {
                 await _initSemaphore.WaitAsync();
