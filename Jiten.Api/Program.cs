@@ -516,7 +516,9 @@ app.UseForwardedHeaders(new ForwardedHeadersOptions
                                 new IPNetwork(System.Net.IPAddress.Parse("172.16.0.0"), 12),
                                 new IPNetwork(System.Net.IPAddress.Parse("10.0.0.0"), 8)
                             },
-                            KnownProxies = { }, RequireHeaderSymmetry = false
+                            KnownProxies = { },
+                            RequireHeaderSymmetry = false,
+                            ForwardLimit = 2
                         });
 
 // Configure the HTTP request pipeline.
