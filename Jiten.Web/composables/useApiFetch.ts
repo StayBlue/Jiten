@@ -18,6 +18,23 @@ export function useApiFetch<T>(
   // Set default headers
   const headers = new Headers(opts?.headers || {});
 
+  if (import.meta.server) {
+    const proxyHeaders = useRequestHeaders(['x-forwarded-for', 'cf-connecting-ip', 'user-agent']);
+
+    // Forward the IP chain
+    if (proxyHeaders['x-forwarded-for']) {
+      headers.set('X-Forwarded-For', proxyHeaders['x-forwarded-for']);
+    }
+    // Forward Cloudflare real IP (if present)
+    if (proxyHeaders['cf-connecting-ip']) {
+      headers.set('CF-Connecting-IP', proxyHeaders['cf-connecting-ip']);
+    }
+    // Forward User-Agent (optional, but good for logs)
+    if (proxyHeaders['user-agent']) {
+      headers.set('User-Agent', proxyHeaders['user-agent']);
+    }
+  }
+
   // Add authorization header if token exists
   // Use authStore.accessToken instead of cookie to get fresh token during SSR
   if (authStore.accessToken) {
@@ -58,6 +75,20 @@ export  function useApiFetchPaginated<T>(
 
   // Set default headers
   const headers = new Headers(opts?.headers || {});
+
+  if (import.meta.server) {
+    const proxyHeaders = useRequestHeaders(['x-forwarded-for', 'cf-connecting-ip', 'user-agent']);
+
+    if (proxyHeaders['x-forwarded-for']) {
+      headers.set('X-Forwarded-For', proxyHeaders['x-forwarded-for']);
+    }
+    if (proxyHeaders['cf-connecting-ip']) {
+      headers.set('CF-Connecting-IP', proxyHeaders['cf-connecting-ip']);
+    }
+    if (proxyHeaders['user-agent']) {
+      headers.set('User-Agent', proxyHeaders['user-agent']);
+    }
+  }
 
   // Add authorization header if token exists
   // Use authStore.accessToken instead of cookie to get fresh token during SSR
