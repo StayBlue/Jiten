@@ -52,6 +52,9 @@ public class MorphologicalAnalyser
 
     private readonly HashSet<char> _sentenceEnders = ['。', '！', '？', '」'];
 
+    private static readonly HashSet<string> MisparsesRemove =
+        ["そ", "ー", "る", "ま", "ふ", "ち", "ほ", "す", "じ", "なさ", "い", "ぴ", "ふあ", "ぷ", "ちゅ", "にっ", "じら"];
+
     public async Task<List<SentenceInfo>> Parse(string text, bool morphemesOnly = false)
     {
         var configuration = new ConfigurationBuilder()
@@ -93,16 +96,18 @@ public class MorphologicalAnalyser
             return [new SentenceInfo("") { Words = wordInfos.Select(w => (w, (byte)0, (byte)0)).ToList() }];
 
         wordInfos = ProcessSpecialCases(wordInfos);
-        wordInfos = CombinePrefixes(wordInfos);
+
+        // Disabled this, seems like it's doing more harm than good
+        // wordInfos = CombinePrefixes(wordInfos);
 
         wordInfos = CombineAmounts(wordInfos);
         wordInfos = CombineTte(wordInfos);
         wordInfos = CombineAuxiliaryVerbStem(wordInfos);
         wordInfos = CombineAdverbialParticle(wordInfos);
         wordInfos = CombineSuffix(wordInfos);
+        wordInfos = CombineConjunctiveParticle(wordInfos);
         wordInfos = CombineAuxiliary(wordInfos);
         wordInfos = CombineVerbDependant(wordInfos);
-        wordInfos = CombineConjunctiveParticle(wordInfos);
         wordInfos = CombineParticles(wordInfos);
 
         wordInfos = CombineHiraganaElongation(wordInfos);
@@ -135,7 +140,7 @@ public class MorphologicalAnalyser
 
             if (word is { Text: "つ", PartOfSpeech: PartOfSpeech.Suffix })
                 word.PartOfSpeech = PartOfSpeech.Counter;
-            
+
             if (word.Text is "だー" or "だあ")
             {
                 word.Text = "だ";
@@ -144,7 +149,7 @@ public class MorphologicalAnalyser
             }
 
 
-            if (word.Text is "そ" or "ー" or "る" or "ま" or "ふ" or "ち" or "ほ" or "す" or "じ" or "なさ" or "い" ||
+            if (MisparsesRemove.Contains(word.Text) ||
                 word.PartOfSpeech == PartOfSpeech.Noun && (
                     (word.Text.Length == 1 && WanaKana.IsKana(word.Text)) ||
                     word.Text.Length == 2 && WanaKana.IsKana(word.Text[0].ToString()) && word.Text[1] == 'ー'
@@ -312,6 +317,82 @@ public class MorphologicalAnalyser
                 continue;
             }
 
+            if (w1.Text == "見降ろし")
+            {
+                var mi = new WordInfo
+                         {
+                             Text = "見", DictionaryForm = "見", PartOfSpeech = PartOfSpeech.Noun,
+                             PartOfSpeechSection1 = PartOfSpeechSection.None, Reading = "見"
+                         };
+                var oroshi = new WordInfo
+                             {
+                                 Text = "降ろし", DictionaryForm = "降ろす", PartOfSpeech = PartOfSpeech.Verb,
+                                 PartOfSpeechSection1 = PartOfSpeechSection.None, Reading = "降ろし"
+                             };
+
+                newList.Add(mi);
+                newList.Add(oroshi);
+                i++;
+                continue;
+            }
+            
+            if (w1.Text == "斬り裂い")
+            {
+                var kiru = new WordInfo
+                         {
+                             Text = "斬り", DictionaryForm = "斬る", PartOfSpeech = PartOfSpeech.Verb,
+                             PartOfSpeechSection1 = PartOfSpeechSection.None, Reading = "斬り"
+                         };
+                var saku = new WordInfo
+                             {
+                                 Text = "裂い", DictionaryForm = "裂く", PartOfSpeech = PartOfSpeech.Verb,
+                                 PartOfSpeechSection1 = PartOfSpeechSection.None, Reading = "裂い"
+                             };
+
+                newList.Add(kiru);
+                newList.Add(saku);
+                i++;
+                continue;
+            }
+            
+            if (w1.Text == "斬り裂く")
+            {
+                var kiru = new WordInfo
+                           {
+                               Text = "斬り", DictionaryForm = "斬る", PartOfSpeech = PartOfSpeech.Verb,
+                               PartOfSpeechSection1 = PartOfSpeechSection.None, Reading = "斬り"
+                           };
+                var saku = new WordInfo
+                           {
+                               Text = "裂く", DictionaryForm = "裂く", PartOfSpeech = PartOfSpeech.Verb,
+                               PartOfSpeechSection1 = PartOfSpeechSection.None, Reading = "裂く"
+                           };
+
+                newList.Add(kiru);
+                newList.Add(saku);
+                i++;
+                continue;
+            }
+            
+            if (w1.Text == "砕き割れ")
+            {
+                var kudaku = new WordInfo
+                           {
+                               Text = "砕き", DictionaryForm = "砕く", PartOfSpeech = PartOfSpeech.Verb,
+                               PartOfSpeechSection1 = PartOfSpeechSection.None, Reading = "砕き"
+                           };
+                var ware = new WordInfo
+                           {
+                               Text = "割れ", DictionaryForm = "割れる", PartOfSpeech = PartOfSpeech.Verb,
+                               PartOfSpeechSection1 = PartOfSpeechSection.None, Reading = "割れ"
+                           };
+
+                newList.Add(kudaku);
+                newList.Add(ware);
+                i++;
+                continue;
+            }
+            
             // TODO: prune from dictionary
             if (w1.NormalizedForm == "囁き合う")
             {
@@ -335,6 +416,29 @@ public class MorphologicalAnalyser
                 }
             }
 
+            if (w1.NormalizedForm.StartsWith("垣間見"))
+            {
+                int miIndex = w1.Text.IndexOf('見');
+                if (miIndex > 0)
+                {
+                    var kakima = new WordInfo
+                                 {
+                                     Text = w1.Text[..(miIndex)], DictionaryForm = "垣間", PartOfSpeech = PartOfSpeech.Noun,
+                                     Reading = "垣間"
+                                 };
+                    var mi = new WordInfo
+                             {
+                                 Text = w1.Text[(miIndex)..], DictionaryForm = "見える", PartOfSpeech = PartOfSpeech.Verb,
+                                 Reading = w1.Text[(miIndex)..]
+                             };
+                    newList.Add(kakima);
+                    newList.Add(mi);
+                    i++;
+                    continue;
+                }
+            }
+
+
             // Always process な as the particle and not the vegetable
             // Always process に as the particle and not the baggage
             if (w1.Text is "な" or "に")
@@ -346,7 +450,7 @@ public class MorphologicalAnalyser
 
             if (w1.Text is "十五")
                 w1.PartOfSpeech = PartOfSpeech.Numeral;
-            
+
             newList.Add(w1);
             i++;
         }
@@ -365,7 +469,9 @@ public class MorphologicalAnalyser
         for (int i = 1; i < wordInfos.Count; i++)
         {
             var nextWord = wordInfos[i];
-            if (currentWord.PartOfSpeech == PartOfSpeech.Prefix && currentWord.NormalizedForm != "御" && currentWord.NormalizedForm != "大" && currentWord.NormalizedForm != "下" && currentWord.NormalizedForm != "約")
+            if (currentWord.PartOfSpeech == PartOfSpeech.Prefix && currentWord.NormalizedForm != "御" && currentWord.NormalizedForm != "大" &&
+                currentWord.NormalizedForm != "下" && currentWord.NormalizedForm != "約" && currentWord.NormalizedForm != "秋" &&
+                currentWord.NormalizedForm != "本" && currentWord.NormalizedForm != "中")
             {
                 var newText = currentWord.Text + nextWord.Text;
                 currentWord = new WordInfo(nextWord);
@@ -680,6 +786,9 @@ public class MorphologicalAnalyser
                 && currentWord.DictionaryForm != "たり"
                 && currentWord.Text != "だろう"
                 && currentWord.Text != "で"
+                && currentWord.Text != "や"
+                && currentWord.Text != "やろ"
+                && currentWord.Text != "し"
                )
             {
                 previousWord.Text += currentWord.Text;
@@ -796,7 +905,7 @@ public class MorphologicalAnalyser
 
         return newList;
     }
-    
+
     private List<WordInfo> CombineHiraganaElongation(List<WordInfo> wordInfos)
     {
         if (wordInfos.Count < 2) return wordInfos;

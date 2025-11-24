@@ -38,8 +38,11 @@ public class JmDictWord
         if (Priorities.Contains("news2"))
             score += 10;
 
-        if (Priorities.Contains("gai1") || Priorities.Contains("gai2"))
-            score += 5;
+        if (Priorities.Contains("gai1"))
+            score += 15;
+
+        if (Priorities.Contains("gai2"))
+            score += 10;
 
         var nf = Priorities.FirstOrDefault(p => p.StartsWith("nf"));
         if (nf != null)

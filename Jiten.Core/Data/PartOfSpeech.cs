@@ -106,7 +106,7 @@ public static class PartOfSpeechExtension
             "副詞" or "adv" => PartOfSpeech.Adverb,
             "助詞" or "prt" => PartOfSpeech.Particle,
             "接続詞" or "conj" => PartOfSpeech.Conjunction,
-            "助動詞" or "aux" or "aux-v" => PartOfSpeech.Auxiliary,
+            "助動詞" or "aux" or "aux-v" or "aux-adj" => PartOfSpeech.Auxiliary,
             "感動詞" or "int" => PartOfSpeech.Interjection,
             "記号" => PartOfSpeech.Symbol,
             "接頭詞" or "接頭辞" or "pref" => PartOfSpeech.Prefix,

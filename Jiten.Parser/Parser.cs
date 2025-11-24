@@ -43,7 +43,6 @@ namespace Jiten.Parser
             var optionsBuilder = new DbContextOptionsBuilder<JitenDbContext>();
             optionsBuilder.UseNpgsql(context.Database.GetConnectionString());
 
-
             DeckWordCache = new RedisDeckWordCache(configuration);
             JmDictCache = new RedisJmDictCache(configuration, _contextFactory);
 
@@ -397,6 +396,7 @@ namespace Jiten.Parser
                 int attemptCount = 0;
                 const int maxAttempts = 3; // Limit how many attempts we make to prevent infinite loops
 
+                var baseWord = wordData.wordInfo.Text;
                 do
                 {
                     attemptCount++;
@@ -470,9 +470,26 @@ namespace Jiten.Parser
                             wordData.wordInfo.Text = wordData.wordInfo.Text[1..];
                         }
                         // Let's try without any long vowel mark
-                        else if (wordData.wordInfo.Text.Contains("ー"))
+                        else if (wordData.wordInfo.Text.Contains('ー'))
                         {
                             wordData.wordInfo.Text = wordData.wordInfo.Text.Replace("ー", "");
+                        }
+                        // Let's try without small っ
+                        else if (wordData.wordInfo.Text.Contains('っ') || wordData.wordInfo.Text.Contains('ッ'))
+                        {
+                            wordData.wordInfo.Text = baseWord.Replace("っ", "").Replace("ッ", "");
+                        }
+                        // Let's try stripping any small kana
+                        else if (wordData.wordInfo.Text.Contains('ゃ') || wordData.wordInfo.Text.Contains('ゅ') ||
+                                 wordData.wordInfo.Text.Contains('ょ') || wordData.wordInfo.Text.Contains('ぁ') ||
+                                 wordData.wordInfo.Text.Contains('ぃ') || wordData.wordInfo.Text.Contains('ぅ') ||
+                                 wordData.wordInfo.Text.Contains('ぇ') || wordData.wordInfo.Text.Contains('ぉ'))
+                        {
+                            wordData.wordInfo.Text = baseWord.Replace("ゃ", "").Replace("ゅ", "")
+                                                             .Replace("ょ", "").Replace("ぁ", "")
+                                                             .Replace("ぃ", "").Replace("ぅ", "")
+                                                             .Replace("ぇ", "").Replace("ぉ", "")
+                                                             .Replace("っ", "").Replace("ッ", "");
                         }
                         else
                         {
@@ -562,7 +579,7 @@ namespace Jiten.Parser
             {
                 isStripped = true;
                 textStripped = text.Replace("ー", "");
-    
+
                 // HEURISTIC:
                 // If the word ends with 'ー' and the stripped version is very short (<= 2 chars),
                 // it is almost certainly a slang adjective (e.g., すげー -> すげ, やべー -> やべ).
@@ -613,7 +630,8 @@ namespace Jiten.Parser
 
                     List<PartOfSpeech> pos = word.PartsOfSpeech.ToPartOfSpeech();
                     // Is stripped part to handle interjection like よー and こーら
-                    if (!pos.Contains(wordData.wordInfo.PartOfSpeech) && (!isStripped || isStripped && !pos.Contains(PartOfSpeech.Interjection))) continue;
+                    if (!pos.Contains(wordData.wordInfo.PartOfSpeech) &&
+                        (!isStripped || isStripped && !pos.Contains(PartOfSpeech.Interjection))) continue;
 
                     matches.Add(word);
                 }
@@ -639,7 +657,7 @@ namespace Jiten.Parser
                 {
                     readingIndex = (byte)normalizedReadings.IndexOf(textStripped);
                 }
-                
+
                 // not found, try with hiragana form
                 if (readingIndex == 255)
                 {
@@ -679,7 +697,7 @@ namespace Jiten.Parser
             (WordInfo wordInfo, int occurrences) wordData, Deconjugator deconjugator)
         {
             var normalizedText = KanaNormalizer.Normalize(WanaKana.ToHiragana(wordData.wordInfo.Text));
-            
+
             // Exclude full digits or single latin character
             if (normalizedText.All(char.IsDigit) || (normalizedText.Length == 1 && normalizedText.IsAsciiOrFullWidthLetter()))
             {
