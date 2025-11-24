@@ -451,6 +451,61 @@ public class AdminController(
         return Ok(new { Message = $"Recomputing user coverage for user {userId} has been queued" });
     }
 
+    [HttpPost("recalculate-parent-deck-unique-counts")]
+    public async Task<IActionResult> RecalculateParentDeckUniqueCounts()
+    {
+        var totalParentDecks = await dbContext.Decks.CountAsync(d => d.ParentDeckId == null);
+        int updatedCount = 0;
+        const int batchSize = 100;
+
+        for (int offset = 0; offset < totalParentDecks; offset += batchSize)
+        {
+            var parentDeckIds = await dbContext.Decks
+                .Where(d => d.ParentDeckId == null)
+                .OrderBy(d => d.DeckId)
+                .Skip(offset)
+                .Take(batchSize)
+                .Select(d => d.DeckId)
+                .ToListAsync();
+
+            foreach (var deckId in parentDeckIds)
+            {
+                var deck = await dbContext.Decks.FindAsync(deckId);
+                if (deck == null) continue;
+
+                var oldUniqueCount = deck.UniqueWordCount;
+                var oldUniqueUsedOnceCount = deck.UniqueWordUsedOnceCount;
+
+                // Calculate unique word count using database aggregation
+                deck.UniqueWordCount = await dbContext.DeckWords
+                    .Where(dw => dw.DeckId == deckId)
+                    .Select(dw => new { dw.WordId, dw.ReadingIndex })
+                    .Distinct()
+                    .CountAsync();
+
+                deck.UniqueWordUsedOnceCount = await dbContext.DeckWords
+                    .Where(dw => dw.DeckId == deckId && dw.Occurrences == 1)
+                    .Select(dw => new { dw.WordId, dw.ReadingIndex })
+                    .Distinct()
+                    .CountAsync();
+
+                if (oldUniqueCount != deck.UniqueWordCount || oldUniqueUsedOnceCount != deck.UniqueWordUsedOnceCount)
+                {
+                    updatedCount++;
+                    logger.LogInformation("Updated deck {DeckId} '{Title}': UniqueWordCount {Old} -> {New}, UniqueWordUsedOnceCount {OldOnce} -> {NewOnce}",
+                        deck.DeckId, deck.OriginalTitle, oldUniqueCount, deck.UniqueWordCount, oldUniqueUsedOnceCount, deck.UniqueWordUsedOnceCount);
+                }
+            }
+
+            await dbContext.SaveChangesAsync();
+            logger.LogInformation("Processed batch: {Offset}-{End} of {Total}", offset, Math.Min(offset + batchSize, totalParentDecks), totalParentDecks);
+        }
+
+        logger.LogInformation("Admin recalculated parent deck unique counts: TotalParentDecks={Total}, UpdatedDecks={Updated}",
+            totalParentDecks, updatedCount);
+
+        return Ok(new { Message = $"Recalculated unique word counts for {totalParentDecks} parent decks", UpdatedCount = updatedCount, TotalCount = totalParentDecks });
+    }
 
     [HttpGet("issues")]
     public async Task<IActionResult> GetIssues()

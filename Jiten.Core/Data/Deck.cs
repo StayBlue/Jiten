@@ -205,8 +205,8 @@ public class Deck
 
         CharacterCount = Children.Sum(c => c.CharacterCount);
         WordCount = Children.Sum(c => c.WordCount);
-        UniqueWordCount = DeckWords.Select(dw => dw.WordId).Distinct().Count();
-        UniqueWordUsedOnceCount = DeckWords.Where(dw => dw.Occurrences == 1).Select(dw => dw.WordId).Distinct().Count();
+        UniqueWordCount = DeckWords.Select(dw => new { dw.WordId, dw.ReadingIndex }).Distinct().Count();
+        UniqueWordUsedOnceCount = DeckWords.Where(dw => dw.Occurrences == 1).Select(dw => new { dw.WordId, dw.ReadingIndex }).Distinct().Count();
         SentenceCount = Children.Sum(c => c.SentenceCount);
         Difficulty = Children.Average(c => c.Difficulty);
         DialoguePercentage = Children.Sum(c => c.DialoguePercentage) / Children.Count;
