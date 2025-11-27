@@ -4,12 +4,20 @@ import type { AsyncDataRequestStatus, UseFetchOptions } from '#app';
 export function useApiFetch<T>(
   request: string | (() => string),
   opts?: any
-): Promise<{
+): {
   data: Ref<T | null>;
   status: Ref<AsyncDataRequestStatus>;
   error: Ref<Error | null>;
-}> {
+  refresh: (opts?: any) => Promise<void>;
+  execute: (opts?: any) => Promise<void>;
+} {
   const authStore = useAuthStore();
+  const isHandling401 = ref(false);
+
+  // Proactively ensure token is valid before making request (client-side only)
+  const tokenCheckPromise = import.meta.client && authStore.isAuthenticated
+    ? authStore.ensureValidToken()
+    : Promise.resolve(true);
 
   // Create a unique key for this request to prevent duplicates
   const key = generateRequestKey(request);
@@ -48,26 +56,89 @@ export function useApiFetch<T>(
     key: uniqueKey,
     server: opts?.server ?? true,
     lazy: opts?.lazy ?? false,
+    // Await token validation before making request
+    async onRequest({ options }) {
+      await tokenCheckPromise;
+      // Update Authorization header with fresh token after refresh
+      if (authStore.accessToken) {
+        options.headers.set('Authorization', `Bearer ${authStore.accessToken}`);
+      }
+    }
   };
 
-  const { data, status, error } = useFetch<T>(request, { 
+  const { data, status, error, refresh, execute } = useFetch<T>(request, {
     baseURL: useRuntimeConfig().public.baseURL,
     ...options
   });
 
-  return { data, status, error };
+  // Client-side only: watch for 401 errors and retry after token refresh
+  if (import.meta.client) {
+    watch(error, async (newError) => {
+      if (!newError || isHandling401.value) return;
+
+      const fetchError = newError as any;
+      const is401 = fetchError.status === 401 || fetchError.statusCode === 401;
+
+      if (!is401) return;
+
+      isHandling401.value = true;
+
+      try {
+        const url = typeof request === 'function' ? request() : request;
+        const isAuthEndpoint = url.includes('/auth/');
+
+        if (isAuthEndpoint) {
+          console.log('401 on auth endpoint, not retrying');
+          return;
+        }
+
+        if (!authStore.isRefreshing) {
+          console.log('Received 401 in useApiFetch, attempting token refresh...');
+          const refreshSuccess = await authStore.refreshAccessToken();
+
+          if (!refreshSuccess) {
+            console.log('Token refresh failed');
+            return;
+          }
+          console.log('Token refreshed successfully');
+        } else {
+          // Wait for concurrent refresh to complete
+          while (authStore.isRefreshing) {
+            await new Promise(resolve => setTimeout(resolve, 100));
+          }
+        }
+
+        // Clear the error and retry
+        error.value = null;
+        await execute();
+
+      } finally {
+        isHandling401.value = false;
+      }
+    });
+  }
+
+  return { data, status, error, refresh, execute };
 }
 
 export  function useApiFetchPaginated<T>(
   request: string | (() => string),
   opts?: any
-): Promise<{
+): {
   data: Ref<PaginatedResponse<T> | null>;
   status: Ref<AsyncDataRequestStatus>;
   error: Ref<Error | null>;
-}> {
+  refresh: (opts?: any) => Promise<void>;
+  execute: (opts?: any) => Promise<void>;
+} {
   const config = useRuntimeConfig();
   const authStore = useAuthStore();
+  const isHandling401 = ref(false);
+
+  // Proactively ensure token is valid before making request (client-side only)
+  const tokenCheckPromise = import.meta.client && authStore.isAuthenticated
+    ? authStore.ensureValidToken()
+    : Promise.resolve(true);
 
   // Create a unique key for this request to prevent duplicates
   const key = generateRequestKey(request);
@@ -103,13 +174,68 @@ export  function useApiFetchPaginated<T>(
     key: uniqueKey, // This prevents duplicate requests
     server: opts?.server ?? true,
     lazy: opts?.lazy ?? false,
+    // Await token validation before making request
+    async onRequest({ options }) {
+      await tokenCheckPromise;
+      // Update Authorization header with fresh token after refresh
+      if (authStore.accessToken) {
+        options.headers.set('Authorization', `Bearer ${authStore.accessToken}`);
+      }
+    }
   };
 
   // Use useFetch without await, keeping the data reactive
-  const { data, status, error } = useFetch<PaginatedResponse<T>>(request, {
+  const { data, status, error, refresh, execute } = useFetch<PaginatedResponse<T>>(request, {
     baseURL: config.public.baseURL,
     ...options,
   });
+
+  // Client-side only: watch for 401 errors and retry after token refresh
+  if (import.meta.client) {
+    watch(error, async (newError) => {
+      if (!newError || isHandling401.value) return;
+
+      const fetchError = newError as any;
+      const is401 = fetchError.status === 401 || fetchError.statusCode === 401;
+
+      if (!is401) return;
+
+      isHandling401.value = true;
+
+      try {
+        const url = typeof request === 'function' ? request() : request;
+        const isAuthEndpoint = url.includes('/auth/');
+
+        if (isAuthEndpoint) {
+          console.log('401 on auth endpoint, not retrying');
+          return;
+        }
+
+        if (!authStore.isRefreshing) {
+          console.log('Received 401 in useApiFetchPaginated, attempting token refresh...');
+          const refreshSuccess = await authStore.refreshAccessToken();
+
+          if (!refreshSuccess) {
+            console.log('Token refresh failed');
+            return;
+          }
+          console.log('Token refreshed successfully');
+        } else {
+          // Wait for concurrent refresh to complete
+          while (authStore.isRefreshing) {
+            await new Promise(resolve => setTimeout(resolve, 100));
+          }
+        }
+
+        // Clear the error and retry
+        error.value = null;
+        await execute();
+
+      } finally {
+        isHandling401.value = false;
+      }
+    });
+  }
 
   const paginatedData = computed(() => {
     if (data.value) {
@@ -127,6 +253,8 @@ export  function useApiFetchPaginated<T>(
     data: paginatedData,
     status,
     error,
+    refresh,
+    execute,
   };
 }
 
