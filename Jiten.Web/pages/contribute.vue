@@ -4,7 +4,7 @@
   const discordUrl = getDiscordLink();
 
   const globalStatsUrl = 'stats/get-global-stats';
-  const { data: response, status, error } = await useApiFetch<GlobalStats>(globalStatsUrl);
+  const { data: response, status, error } = useApiFetch<GlobalStats>(globalStatsUrl);
 </script>
 
 <template>

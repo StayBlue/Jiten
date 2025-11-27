@@ -70,7 +70,7 @@
   });
 
   const updateDebounced = debounce(async () => {
-    const { data: response } = await useApiFetch<number>(`media-deck/${props.deck.deckId}/vocabulary-count-frequency`, {
+    const { data: response } = useApiFetch<number>(`media-deck/${props.deck.deckId}/vocabulary-count-frequency`, {
       query: {
         minFrequency: frequencyRange.value![0],
         maxFrequency: frequencyRange.value![1],

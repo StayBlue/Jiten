@@ -16,7 +16,7 @@
     middleware: ['auth'],
   });
 
-  const { data: issuesData, status, error } = await useApiFetch<Issues>('admin/issues');
+  const { data: issuesData, status, error } = useApiFetch<Issues>('admin/issues');
 
   const showIssuesDialog = ref(false);
   const selectedIssueType = ref<string>('');

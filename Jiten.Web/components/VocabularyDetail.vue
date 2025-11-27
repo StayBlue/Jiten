@@ -35,16 +35,16 @@
   const currentReadingIndex = ref(props.readingIndex);
   const url = computed(() => `vocabulary/${props.wordId}/${currentReadingIndex.value}`);
 
-  const { data: response } = await useAsyncData(() => useApiFetch<Word>(url.value), { immediate: true, watch: false });
+  const { data } = useApiFetch<Word>(url.value);
 
   const getSortedReadings = () => {
-    return response.value?.data?.alternativeReadings.sort((a, b) => b.frequencyPercentage - a.frequencyPercentage) || [];
+    return data.value?.alternativeReadings.sort((a, b) => b.frequencyPercentage - a.frequencyPercentage) || [];
   };
 
   const sortedReadings = computed(() => getSortedReadings());
 
   const mediaAmountUrl = 'media-deck/decks-count';
-  const { data: mediaAmountResponse } = await useApiFetch<Record<MediaType, number>>(mediaAmountUrl);
+  const { data: mediaAmountResponse } = useApiFetch<Record<MediaType, number>>(mediaAmountUrl);
 
   const totalMediaCount = computed(() => {
     if (!mediaAmountResponse.value) return 0;
@@ -70,7 +70,7 @@
     canLoadExampleSentences.value = true;
     await getRandomExampleSentences();
     const result = await $api<Word>(url.value);
-    response.value = { data: result };
+    data.value = result;
   };
 
   const selectReading = async (index: number) => {
@@ -89,7 +89,7 @@
   );
 
   watch(
-    () => response.value?.data?.mainReading.text,
+    () => data.value?.mainReading.text,
     (newText) => {
       emit('mainReadingTextChanged', newText);
     },
@@ -136,27 +136,27 @@
 
 <template>
   <Card class="p-4">
-    <template v-if="response?.data" #content>
+    <template v-if="data" #content>
       <div class="flex flex-col justify-between md:flex-row">
         <div class="flex flex-col gap-4 max-w-2xl">
           <div class="flex justify-between">
             <div>
               <div v-if="conjugationString != null" class="text-gray-500 text-xs font-noto-sans">(Conjugation: {{ conjugationString }})</div>
               <NuxtLink v-if="showRedirect" :to="`/vocabulary/${wordId}/${currentReadingIndex}`">
-                <div class="text-3xl font-noto-sans" v-html="convertToRuby(response.data.mainReading.text)" />
+                <div class="text-3xl font-noto-sans" v-html="convertToRuby(data.mainReading.text)" />
               </NuxtLink>
-              <div v-if="!showRedirect" class="text-3xl font-noto-sans" v-html="convertToRuby(response.data.mainReading.text)" />
+              <div v-if="!showRedirect" class="text-3xl font-noto-sans" v-html="convertToRuby(data.mainReading.text)" />
             </div>
             <div class="flex flex-col md:flex-row items-end md:hidden">
-              <div class="text-gray-500 dark:text-gray-300 text-right">Rank #{{ response.data.mainReading.frequencyRank.toLocaleString() }}</div>
-              <VocabularyStatus :word="response.data" />
+              <div class="text-gray-500 dark:text-gray-300 text-right">Rank #{{ data.mainReading.frequencyRank.toLocaleString() }}</div>
+              <VocabularyStatus :word="data" />
             </div>
           </div>
 
           <div>
             <h1 class="text-gray-500 dark:text-gray-300 text-sm">Meanings</h1>
             <div class="pl-2">
-              <VocabularyDefinitions :definitions="response.data.definitions" :is-compact="false" />
+              <VocabularyDefinitions :definitions="data.definitions" :is-compact="false" />
             </div>
           </div>
 
@@ -175,12 +175,12 @@
           </div>
 
           <ClientOnly>
-            <div v-if="response.data.pitchAccents && response.data.pitchAccents.length > 0">
+            <div v-if="data.pitchAccents && data.pitchAccents.length > 0">
               <h1 class="text-gray-500 dark:text-gray-300 font-noto-sans text-sm">Pitch accents</h1>
               <div class="pl-2 flex flex-row flex-wrap gap-8">
-                <span v-for="pitchAccent in response.data.pitchAccents" :key="pitchAccent">
+                <span v-for="pitchAccent in data.pitchAccents" :key="pitchAccent">
                   <div>
-                    <PitchDiagram :reading="response.data.mainReading.text" :pitch-accent="pitchAccent" />
+                    <PitchDiagram :reading="data.mainReading.text" :pitch-accent="pitchAccent" />
                   </div>
                 </span>
               </div>
@@ -190,15 +190,15 @@
 
         <div class="md:min-w-64">
           <div class="text-gray-500 dark:text-gray-300 text-right hidden md:block">
-            <VocabularyStatus :word="response.data" />
-            Rank #{{ response.data.mainReading.frequencyRank }}
+            <VocabularyStatus :word="data" />
+            Rank #{{ data.mainReading.frequencyRank }}
           </div>
           <div class="md:text-right pt-4 cursor-pointer" @click="selectMediaType(null)">
-            Appears in <b>{{ response.data.mainReading.usedInMediaAmount }} media</b>
-            ({{ totalMediaCount > 0 ? ((response.data.mainReading.usedInMediaAmount / totalMediaCount) * 100).toFixed(0) : '0' }}%)
+            Appears in <b>{{ data.mainReading.usedInMediaAmount }} media</b>
+            ({{ totalMediaCount > 0 ? ((data.mainReading.usedInMediaAmount / totalMediaCount) * 100).toFixed(0) : '0' }}%)
           </div>
           <ClientOnly>
-            <table v-if="response.data.mainReading.usedInMediaAmount > 0">
+            <table v-if="data.mainReading.usedInMediaAmount > 0">
               <thead>
                 <tr>
                   <th />
@@ -207,7 +207,7 @@
                 </tr>
               </thead>
               <tr
-                v-for="(amount, mediaType) in response.data.mainReading.usedInMediaAmountByType"
+                v-for="(amount, mediaType) in data.mainReading.usedInMediaAmountByType"
                 :key="mediaType"
                 class="cursor-pointer hover:bg-primary-100 dark:hover:bg-primary-900/30 transition-colors"
                 @click="selectMediaType(mediaType)"
@@ -241,15 +241,15 @@
         </div>
       </ClientOnly>
 
-      <Accordion v-if="response.data.mainReading.usedInMediaAmount > 0" :value="mediaAccordionValue" lazy>
+      <Accordion v-if="data.mainReading.usedInMediaAmount > 0" :value="mediaAccordionValue" lazy>
         <AccordionPanel value="1">
           <AccordionHeader>
             <div class="cursor-pointer">
-              View the <b>{{ response.data.mainReading.usedInMediaAmount }}</b> media it appears in
+              View the <b>{{ data.mainReading.usedInMediaAmount }}</b> media it appears in
             </div>
           </AccordionHeader>
           <AccordionContent>
-            <MediaList :word="response.data" :default-media-type="selectedMediaType" />
+            <MediaList :word="data" :default-media-type="selectedMediaType" />
           </AccordionContent>
         </AccordionPanel>
       </Accordion>

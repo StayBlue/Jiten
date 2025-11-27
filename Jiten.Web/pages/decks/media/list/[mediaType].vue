@@ -7,7 +7,7 @@
   const mediaType = Number(route.params.mediaType);
   const url = computed(() => `media-deck/get-media-decks-by-type/${mediaType}`);
 
-  const { data: response, status, error } = await useApiFetch<Deck>(url.value, {});
+  const { data: response, status, error } = useApiFetch<Deck>(url.value, {});
 </script>
 
 <template>

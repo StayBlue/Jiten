@@ -56,7 +56,7 @@
     data: response,
     status,
     error,
-  } = await useApiFetchPaginated<DeckVocabularyList>(url.value, {
+  } = useApiFetchPaginated<DeckVocabularyList>(url.value, {
     query: {
       offset: offset,
       sortBy: sortBy,

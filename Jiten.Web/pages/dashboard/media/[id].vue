@@ -126,7 +126,7 @@
     }
   });
 
-  const { data: response, status, error } = await useApiFetch<DeckDetail>(`admin/deck/${mediaId}`);
+  const { data: response, status, error } = useApiFetch<DeckDetail>(`admin/deck/${mediaId}`);
 
   watchEffect(() => {
     if (error.value) {
