@@ -1,6 +1,6 @@
 <script setup lang="ts">
   import { useApiFetchPaginated } from '~/composables/useApiFetch';
-  import { type Deck, MediaType, SortOrder, type Word, DisplayStyle } from '~/types';
+  import { type Deck, MediaType, SortOrder, type Word, DisplayStyle, type Tag } from '~/types';
   import Skeleton from 'primevue/skeleton';
   import Card from 'primevue/card';
   import InputText from 'primevue/inputtext';
@@ -9,6 +9,10 @@
   import MediaDeckCompactView from '~/components/MediaDeckCompactView.vue';
   import MediaDeckTableView from '~/components/MediaDeckTableView.vue';
   import { useAuthStore } from '~/stores/authStore';
+  import { getAllGenres } from '~/utils/genreMapper';
+  import TriStateTag from '~/components/TriStateTag.vue';
+  import type { TagState } from '~/components/TriStateTag.vue';
+  import ScrollPanel from 'primevue/scrollpanel';
 
   // Helpers for numeric parsing
   const toNumOrNull = (v: unknown) => {
@@ -171,6 +175,32 @@
     },
   });
 
+  // Genre and Tag filter state
+  const includeGenres = ref<number[]>([]);
+  const excludeGenres = ref<number[]>([]);
+  const includeTags = ref<number[]>([]);
+  const excludeTags = ref<number[]>([]);
+
+  // Search filter state
+  const genreSearchQuery = ref('');
+  const tagSearchQuery = ref('');
+
+  // Parse genre/tag filters from URL
+  const parseNumberArray = (v: unknown): number[] => {
+    if (!v) return [];
+    const str = Array.isArray(v) ? v[0] : v;
+    if (typeof str !== 'string') return [];
+    return str
+      .split(',')
+      .map((s) => Number(s.trim()))
+      .filter((n) => Number.isFinite(n) && n > 0);
+  };
+
+  includeGenres.value = parseNumberArray(route.query.genres);
+  excludeGenres.value = parseNumberArray(route.query.excludeGenres);
+  includeTags.value = parseNumberArray(route.query.tags);
+  excludeTags.value = parseNumberArray(route.query.excludeTags);
+
   // Ensure min is not higher than max and values stay within bounds
   const clamp = (val: number, min: number, max: number) => Math.min(max, Math.max(min, val));
   const normalizePair = (minRef: any, maxRef: any, floor: number, ceil: number) => {
@@ -200,6 +230,10 @@
     subdeckCountMax: subdeckCountMax.value,
     extRatingMin: extRatingMin.value,
     extRatingMax: extRatingMax.value,
+    includeGenres: includeGenres.value,
+    excludeGenres: excludeGenres.value,
+    includeTags: includeTags.value,
+    excludeTags: excludeTags.value,
   });
 
   const updateFiltersDebounced = debounce(
@@ -215,9 +249,15 @@
         subdeckCountMax: subdeckCountMax.value,
         extRatingMin: extRatingMin.value,
         extRatingMax: extRatingMax.value,
+        includeGenres: includeGenres.value,
+        excludeGenres: excludeGenres.value,
+        includeTags: includeTags.value,
+        excludeTags: excludeTags.value,
       };
 
       const toUndef = (v: number | null) => (v === null ? undefined : v);
+      const arrayToString = (arr: number[]) => (arr.length > 0 ? arr.join(',') : undefined);
+
       router.replace({
         query: {
           ...route.query,
@@ -231,6 +271,10 @@
           subdeckCountMax: toUndef(subdeckCountMax.value) as any,
           extRatingMin: toUndef(extRatingMin.value) as any,
           extRatingMax: toUndef(extRatingMax.value) as any,
+          genres: arrayToString(includeGenres.value) as any,
+          excludeGenres: arrayToString(excludeGenres.value) as any,
+          tags: arrayToString(includeTags.value) as any,
+          excludeTags: arrayToString(excludeTags.value) as any,
           offset: 0 as any,
         },
       });
@@ -244,6 +288,14 @@
     () => {
       updateFiltersDebounced();
     }
+  );
+
+  watch(
+    [includeGenres, excludeGenres, includeTags, excludeTags],
+    () => {
+      updateFiltersDebounced();
+    },
+    { deep: true }
   );
 
   watch(
@@ -293,6 +345,74 @@
   };
 
   updateOptions();
+
+  // Fetch available tags for filtering
+  const { data: availableTags } = useApiFetch<Tag[]>('media-deck/tags', {
+    server: true,
+    lazy: false,
+  });
+
+  const tags = computed(() => availableTags.value || []);
+
+  // Get all genres from enum
+  const genres = computed(() => getAllGenres());
+
+  // Filtered lists based on search queries
+  const filteredGenres = computed(() => {
+    if (!genreSearchQuery.value) return genres.value;
+
+    const query = genreSearchQuery.value.toLowerCase();
+    return genres.value.filter((genre) => genre.label.toLowerCase().includes(query));
+  });
+
+  const filteredTags = computed(() => {
+    if (!tagSearchQuery.value) return tags.value;
+
+    const query = tagSearchQuery.value.toLowerCase();
+    return tags.value.filter((tag) => tag.name.toLowerCase().includes(query));
+  });
+
+  // Count computeds for display
+  const genreFilteredCount = computed(() => filteredGenres.value.length);
+  const genreTotalCount = computed(() => genres.value.length);
+  const tagFilteredCount = computed(() => filteredTags.value.length);
+  const tagTotalCount = computed(() => tags.value.length);
+
+  // Update genre state based on tri-state click
+  const updateGenreState = (genreId: number, state: TagState) => {
+    if (state === 'include') {
+      if (!includeGenres.value.includes(genreId)) {
+        includeGenres.value.push(genreId);
+      }
+      excludeGenres.value = excludeGenres.value.filter((id) => id !== genreId);
+    } else if (state === 'exclude') {
+      includeGenres.value = includeGenres.value.filter((id) => id !== genreId);
+      if (!excludeGenres.value.includes(genreId)) {
+        excludeGenres.value.push(genreId);
+      }
+    } else {
+      includeGenres.value = includeGenres.value.filter((id) => id !== genreId);
+      excludeGenres.value = excludeGenres.value.filter((id) => id !== genreId);
+    }
+  };
+
+  // Update tag state based on tri-state click
+  const updateTagState = (tagId: number, state: TagState) => {
+    if (state === 'include') {
+      if (!includeTags.value.includes(tagId)) {
+        includeTags.value.push(tagId);
+      }
+      excludeTags.value = excludeTags.value.filter((id) => id !== tagId);
+    } else if (state === 'exclude') {
+      includeTags.value = includeTags.value.filter((id) => id !== tagId);
+      if (!excludeTags.value.includes(tagId)) {
+        excludeTags.value.push(tagId);
+      }
+    } else {
+      includeTags.value = includeTags.value.filter((id) => id !== tagId);
+      excludeTags.value = excludeTags.value.filter((id) => id !== tagId);
+    }
+  };
 
   watch(
     () => props.word,
@@ -359,7 +479,7 @@
     data: response,
     status,
     error,
-  } = await useApiFetchPaginated<Deck[]>(url, {
+  } = useApiFetchPaginated<Deck[]>(url, {
     query: {
       offset: offset,
       mediaType: mediaType,
@@ -379,6 +499,10 @@
       subdeckCountMax: computed(() => debouncedFilters.value.subdeckCountMax),
       extRatingMin: computed(() => debouncedFilters.value.extRatingMin),
       extRatingMax: computed(() => debouncedFilters.value.extRatingMax),
+      genres: computed(() => (debouncedFilters.value.includeGenres.length > 0 ? debouncedFilters.value.includeGenres.join(',') : undefined)),
+      excludeGenres: computed(() => (debouncedFilters.value.excludeGenres.length > 0 ? debouncedFilters.value.excludeGenres.join(',') : undefined)),
+      tags: computed(() => (debouncedFilters.value.includeTags.length > 0 ? debouncedFilters.value.includeTags.join(',') : undefined)),
+      excludeTags: computed(() => (debouncedFilters.value.excludeTags.length > 0 ? debouncedFilters.value.excludeTags.join(',') : undefined)),
     },
     watch: [offset, mediaType],
   });
@@ -406,7 +530,7 @@
 
   const updateDeckInList = (updatedDeck: Deck) => {
     if (response.value?.data) {
-      const index = response.value.data.findIndex(d => d.deckId === updatedDeck.deckId);
+      const index = response.value.data.findIndex((d) => d.deckId === updatedDeck.deckId);
       if (index !== -1) {
         response.value.data[index] = updatedDeck;
       }
@@ -650,6 +774,60 @@
                 placeholder="Max"
               />
             </div>
+          </div>
+
+          <!-- Genres Filter -->
+          <div class="flex flex-col gap-2">
+            <div class="flex items-center justify-between gap-2">
+              <div class="text-sm font-medium text-gray-600 dark:text-gray-300">Genres ({{ genreFilteredCount }}/{{ genreTotalCount }})</div>
+              <IconField class="flex-1">
+                <InputIcon>
+                  <Icon name="material-symbols:search-rounded" />
+                </InputIcon>
+                <InputText v-model="genreSearchQuery" type="text" placeholder="Search genres..." class="w-full" />
+                <InputIcon v-if="genreSearchQuery" class="cursor-pointer" @click="genreSearchQuery = ''">
+                  <Icon name="material-symbols:close" />
+                </InputIcon>
+              </IconField>
+            </div>
+            <ScrollPanel class="w-full" style="height: 150px">
+              <div class="flex flex-wrap gap-2 p-2">
+                <TriStateTag
+                  v-for="genre in filteredGenres"
+                  :key="genre.value"
+                  :label="genre.label"
+                  :state="includeGenres.includes(genre.value) ? 'include' : excludeGenres.includes(genre.value) ? 'exclude' : 'neutral'"
+                  @update:state="(state) => updateGenreState(genre.value, state)"
+                />
+              </div>
+            </ScrollPanel>
+          </div>
+
+          <!-- Tags Filter -->
+          <div class="flex flex-col gap-2">
+            <div class="flex items-center justify-between gap-2">
+              <div class="text-sm font-medium text-gray-600 dark:text-gray-300">Tags ({{ tagFilteredCount }}/{{ tagTotalCount }})</div>
+              <IconField class="flex-1">
+                <InputIcon>
+                  <Icon name="material-symbols:search-rounded" />
+                </InputIcon>
+                <InputText v-model="tagSearchQuery" type="text" placeholder="Search tags..." class="w-full" />
+                <InputIcon v-if="tagSearchQuery" class="cursor-pointer" @click="tagSearchQuery = ''">
+                  <Icon name="material-symbols:close" />
+                </InputIcon>
+              </IconField>
+            </div>
+            <ScrollPanel class="w-full" style="height: 150px">
+              <div class="flex flex-wrap gap-2 p-2">
+                <TriStateTag
+                  v-for="tag in filteredTags"
+                  :key="tag.tagId"
+                  :label="tag.name"
+                  :state="includeTags.includes(tag.tagId) ? 'include' : excludeTags.includes(tag.tagId) ? 'exclude' : 'neutral'"
+                  @update:state="(state) => updateTagState(tag.tagId, state)"
+                />
+              </div>
+            </ScrollPanel>
           </div>
         </div>
       </Popover>

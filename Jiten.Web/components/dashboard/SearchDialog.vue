@@ -111,6 +111,19 @@ function closeDialog() {
               <div v-if="metadata.romajiTitle" class="text-sm">{{ metadata.romajiTitle }}</div>
               <div v-if="metadata.englishTitle" class="text-sm italic">{{ metadata.englishTitle }}</div>
             </div>
+            <div v-if="metadata.genres && metadata.genres.length > 0" class="text-xs text-gray-600 mb-2">
+              <span
+                v-for="genre in metadata.genres.slice(0, 3)"
+                :key="genre"
+                class="inline-block bg-purple-100 text-purple-800 px-2 py-1 rounded mr-1 mb-1"
+              >
+                {{ genre }}
+              </span>
+              <span v-if="metadata.genres.length > 3" class="text-gray-500">+{{ metadata.genres.length - 3 }}</span>
+            </div>
+            <div v-if="metadata.isAdultOnly" class="text-xs mb-2">
+              <span class="inline-block bg-red-100 text-red-800 px-2 py-1 rounded">18+</span>
+            </div>
             <Button label="Select" class="w-full p-button-sm" @click="selectMetadata(metadata)" />
           </div>
         </div>

@@ -170,7 +170,17 @@ public class Deck
     /// </summary>
     public ICollection<DeckTitle> Titles { get; set; } = new List<DeckTitle>();
 
-    
+    /// <summary>
+    /// List of genres associated with this deck
+    /// </summary>
+    public ICollection<DeckGenre> DeckGenres { get; set; } = new List<DeckGenre>();
+
+    /// <summary>
+    /// List of tags associated with this deck
+    /// </summary>
+    public ICollection<DeckTag> DeckTags { get; set; } = new List<DeckTag>();
+
+
     private float _dialoguePercentage;
 
     public float GetDifficulty() => DifficultyOverride > -1 ? DifficultyOverride : Difficulty;

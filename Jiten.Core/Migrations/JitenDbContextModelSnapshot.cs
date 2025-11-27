@@ -143,6 +143,25 @@ namespace Jiten.Core.Migrations
                     b.ToTable("Decks", "jiten");
                 });
 
+            modelBuilder.Entity("Jiten.Core.Data.DeckGenre", b =>
+                {
+                    b.Property<int>("DeckId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Genre")
+                        .HasColumnType("integer");
+
+                    b.HasKey("DeckId", "Genre");
+
+                    b.HasIndex("DeckId")
+                        .HasDatabaseName("IX_DeckGenres_DeckId");
+
+                    b.HasIndex("Genre")
+                        .HasDatabaseName("IX_DeckGenres_Genre");
+
+                    b.ToTable("DeckGenres", "jiten");
+                });
+
             modelBuilder.Entity("Jiten.Core.Data.DeckRawText", b =>
                 {
                     b.Property<int>("DeckId")
@@ -158,6 +177,31 @@ namespace Jiten.Core.Migrations
                         .HasDatabaseName("IX_DeckRawText_DeckId");
 
                     b.ToTable("DeckRawTexts", "jiten");
+                });
+
+            modelBuilder.Entity("Jiten.Core.Data.DeckTag", b =>
+                {
+                    b.Property<int>("DeckId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("TagId")
+                        .HasColumnType("integer");
+
+                    b.Property<byte>("Percentage")
+                        .HasColumnType("smallint");
+
+                    b.HasKey("DeckId", "TagId");
+
+                    b.HasIndex("Percentage")
+                        .HasDatabaseName("IX_DeckTags_Percentage");
+
+                    b.HasIndex("TagId")
+                        .HasDatabaseName("IX_DeckTags_TagId");
+
+                    b.ToTable("DeckTags", "jiten", t =>
+                        {
+                            t.HasCheckConstraint("CK_DeckTags_Percentage", "\"Percentage\" >= 0 AND \"Percentage\" <= 100");
+                        });
                 });
 
             modelBuilder.Entity("Jiten.Core.Data.DeckTitle", b =>
@@ -273,6 +317,70 @@ namespace Jiten.Core.Migrations
                         .HasDatabaseName("IX_ExampleSentenceWord_WordIdReadingIndex");
 
                     b.ToTable("ExampleSentenceWords", "jiten");
+                });
+
+            modelBuilder.Entity("Jiten.Core.Data.ExternalGenreMapping", b =>
+                {
+                    b.Property<int>("ExternalGenreMappingId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("ExternalGenreMappingId"));
+
+                    b.Property<string>("ExternalGenreName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<int>("JitenGenre")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Provider")
+                        .HasColumnType("integer");
+
+                    b.HasKey("ExternalGenreMappingId");
+
+                    b.HasIndex("Provider", "ExternalGenreName")
+                        .HasDatabaseName("IX_ExternalGenreMapping_Provider_ExternalName");
+
+                    b.HasIndex("Provider", "ExternalGenreName", "JitenGenre")
+                        .IsUnique()
+                        .HasDatabaseName("IX_ExternalGenreMapping_Provider_ExternalName_JitenGenre");
+
+                    b.ToTable("ExternalGenreMappings", "jiten");
+                });
+
+            modelBuilder.Entity("Jiten.Core.Data.ExternalTagMapping", b =>
+                {
+                    b.Property<int>("ExternalTagMappingId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("ExternalTagMappingId"));
+
+                    b.Property<string>("ExternalTagName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<int>("Provider")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("TagId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("ExternalTagMappingId");
+
+                    b.HasIndex("TagId");
+
+                    b.HasIndex("Provider", "ExternalTagName")
+                        .HasDatabaseName("IX_ExternalTagMapping_Provider_ExternalName");
+
+                    b.HasIndex("Provider", "ExternalTagName", "TagId")
+                        .IsUnique()
+                        .HasDatabaseName("IX_ExternalTagMapping_Provider_ExternalName_TagId");
+
+                    b.ToTable("ExternalTagMappings", "jiten");
                 });
 
             modelBuilder.Entity("Jiten.Core.Data.JMDict.JmDictDefinition", b =>
@@ -440,6 +548,28 @@ namespace Jiten.Core.Migrations
                     b.ToTable("Links", "jiten");
                 });
 
+            modelBuilder.Entity("Jiten.Core.Data.Tag", b =>
+                {
+                    b.Property<int>("TagId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("TagId"));
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.HasKey("TagId");
+
+                    b.HasIndex("Name")
+                        .IsUnique()
+                        .HasDatabaseName("IX_Tags_Name");
+
+                    b.ToTable("Tags", "jiten");
+                });
+
             modelBuilder.Entity("Jiten.Core.Data.Deck", b =>
                 {
                     b.HasOne("Jiten.Core.Data.Deck", "ParentDeck")
@@ -448,6 +578,17 @@ namespace Jiten.Core.Migrations
                         .OnDelete(DeleteBehavior.Restrict);
 
                     b.Navigation("ParentDeck");
+                });
+
+            modelBuilder.Entity("Jiten.Core.Data.DeckGenre", b =>
+                {
+                    b.HasOne("Jiten.Core.Data.Deck", "Deck")
+                        .WithMany("DeckGenres")
+                        .HasForeignKey("DeckId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Deck");
                 });
 
             modelBuilder.Entity("Jiten.Core.Data.DeckRawText", b =>
@@ -459,6 +600,25 @@ namespace Jiten.Core.Migrations
                         .IsRequired();
 
                     b.Navigation("Deck");
+                });
+
+            modelBuilder.Entity("Jiten.Core.Data.DeckTag", b =>
+                {
+                    b.HasOne("Jiten.Core.Data.Deck", "Deck")
+                        .WithMany("DeckTags")
+                        .HasForeignKey("DeckId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Jiten.Core.Data.Tag", "Tag")
+                        .WithMany("DeckTags")
+                        .HasForeignKey("TagId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Deck");
+
+                    b.Navigation("Tag");
                 });
 
             modelBuilder.Entity("Jiten.Core.Data.DeckTitle", b =>
@@ -513,6 +673,17 @@ namespace Jiten.Core.Migrations
                     b.Navigation("Word");
                 });
 
+            modelBuilder.Entity("Jiten.Core.Data.ExternalTagMapping", b =>
+                {
+                    b.HasOne("Jiten.Core.Data.Tag", "Tag")
+                        .WithMany()
+                        .HasForeignKey("TagId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Tag");
+                });
+
             modelBuilder.Entity("Jiten.Core.Data.JMDict.JmDictDefinition", b =>
                 {
                     b.HasOne("Jiten.Core.Data.JMDict.JmDictWord", null)
@@ -555,6 +726,10 @@ namespace Jiten.Core.Migrations
                 {
                     b.Navigation("Children");
 
+                    b.Navigation("DeckGenres");
+
+                    b.Navigation("DeckTags");
+
                     b.Navigation("DeckWords");
 
                     b.Navigation("ExampleSentences");
@@ -576,6 +751,11 @@ namespace Jiten.Core.Migrations
                     b.Navigation("Definitions");
 
                     b.Navigation("Lookups");
+                });
+
+            modelBuilder.Entity("Jiten.Core.Data.Tag", b =>
+                {
+                    b.Navigation("DeckTags");
                 });
 #pragma warning restore 612, 618
         }

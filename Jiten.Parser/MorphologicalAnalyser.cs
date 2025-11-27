@@ -53,7 +53,7 @@ public class MorphologicalAnalyser
     private readonly HashSet<char> _sentenceEnders = ['。', '！', '？', '」'];
 
     private static readonly HashSet<string> MisparsesRemove =
-        ["そ", "ー", "る", "ま", "ふ", "ち", "ほ", "す", "じ", "なさ", "い", "ぴ", "ふあ", "ぷ", "ちゅ", "にっ", "じら"];
+        ["そ", "ー", "る", "ま", "ふ", "ち", "ほ", "す", "じ", "なさ", "い", "ぴ", "ふあ", "ぷ", "ちゅ", "にっ", "じら", "タ"];
 
     public async Task<List<SentenceInfo>> Parse(string text, bool morphemesOnly = false)
     {
@@ -211,6 +211,14 @@ public class MorphologicalAnalyser
             if (w1 is { PartOfSpeech: PartOfSpeech.Conjunction or PartOfSpeech.Auxiliary, Text: "で" })
             {
                 w1.PartOfSpeech = PartOfSpeech.Particle;
+                newList.Add(w1);
+                i++;
+                continue;
+            }
+            
+            if (w1 is { PartOfSpeech: PartOfSpeech.Prefix, Text: "今" })
+            {
+                w1.PartOfSpeech = PartOfSpeech.Adverb;
                 newList.Add(w1);
                 i++;
                 continue;
@@ -389,6 +397,25 @@ public class MorphologicalAnalyser
 
                 newList.Add(kudaku);
                 newList.Add(ware);
+                i++;
+                continue;
+            }
+
+            if (w1.Text == "溶け崩れ")
+            {
+                var toke = new WordInfo
+                             {
+                                 Text = "溶け", DictionaryForm = "溶ける", PartOfSpeech = PartOfSpeech.Verb,
+                                 PartOfSpeechSection1 = PartOfSpeechSection.None, Reading = "溶け"
+                             };
+                var kuzure = new WordInfo
+                           {
+                               Text = "崩れ", DictionaryForm = "崩れる", PartOfSpeech = PartOfSpeech.Verb,
+                               PartOfSpeechSection1 = PartOfSpeechSection.None, Reading = "崩れ"
+                           };
+
+                newList.Add(toke);
+                newList.Add(kuzure);
                 i++;
                 continue;
             }
@@ -788,6 +815,7 @@ public class MorphologicalAnalyser
                 && currentWord.Text != "で"
                 && currentWord.Text != "や"
                 && currentWord.Text != "やろ"
+                && currentWord.Text != "やしない"
                 && currentWord.Text != "し"
                )
             {

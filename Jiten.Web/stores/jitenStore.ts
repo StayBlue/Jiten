@@ -80,6 +80,7 @@ export const useJitenStore = defineStore('jiten', () => {
     displayAllNsfwCookie.value = newValue;
   });
 
+  // Hide vocabulary definition
   const hideVocabularyDefinitionsCookie = useCookie<boolean>('jiten-hide-vocabulary-definitions', {
     default: () => false,
     watch: true,
@@ -93,6 +94,7 @@ export const useJitenStore = defineStore('jiten', () => {
     hideVocabularyDefinitionsCookie.value = newValue;
   });
 
+  // Borders display
   const hideCoverageBordersCookie = useCookie<boolean>('jiten-hide-coverage-borders', {
     default: () => false,
     watch: true,
@@ -104,6 +106,34 @@ export const useJitenStore = defineStore('jiten', () => {
 
   watch(hideCoverageBorders, (newValue) => {
     hideCoverageBordersCookie.value = newValue;
+  });
+
+  // Genres display
+  const hideGenresCookie = useCookie<boolean>('jiten-hide-genres', {
+    default: () => false,
+    watch: true,
+    maxAge: 60 * 60 * 24 * 365, // 1 year
+    path: '/',
+  });
+
+  const hideGenres = ref<boolean>(hideGenresCookie.value);
+
+  watch(hideGenres, (newValue) => {
+    hideGenresCookie.value = newValue;
+  });
+
+  // Tags display
+  const hideTagsCookie = useCookie<boolean>('jiten-hide-tags', {
+    default: () => false,
+    watch: true,
+    maxAge: 60 * 60 * 24 * 365, // 1 year
+    path: '/',
+  });
+
+  const hideTags = ref<boolean>(hideTagsCookie.value);
+
+  watch(hideTags, (newValue) => {
+    hideTagsCookie.value = newValue;
   });
 
   const difficultyDisplayStyleCookie = useCookie<DifficultyDisplayStyle>('jiten-difficulty-display-style', {
@@ -173,6 +203,8 @@ export const useJitenStore = defineStore('jiten', () => {
     displayAllNsfw,
     hideVocabularyDefinitions,
     hideCoverageBorders,
+    hideGenres,
+    hideTags,
     difficultyDisplayStyle,
     difficultyValueDisplayStyle
   };

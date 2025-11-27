@@ -23,6 +23,13 @@ public class JitenDbContext : DbContext
     public DbSet<ExampleSentence> ExampleSentences { get; set; }
     public DbSet<ExampleSentenceWord> ExampleSentenceWords { get; set; }
 
+    public DbSet<Tag> Tags { get; set; }
+    public DbSet<DeckGenre> DeckGenres { get; set; }
+    public DbSet<DeckTag> DeckTags { get; set; }
+
+    public DbSet<ExternalGenreMapping> ExternalGenreMappings { get; set; }
+    public DbSet<ExternalTagMapping> ExternalTagMappings { get; set; }
+
     public JitenDbContext()
     {
     }
@@ -232,14 +239,108 @@ public class JitenDbContext : DbContext
         {
             entity.ToTable("ExampleSentenceWords", "jiten");
             entity.HasKey(e => new { e.ExampleSentenceId, e.WordId, e.Position });
-            
+
             entity.HasIndex(dw => new { dw.WordId, dw.ReadingIndex }).HasDatabaseName("IX_ExampleSentenceWord_WordIdReadingIndex");
-            
+
             entity.HasOne(e => e.Word)
                   .WithMany()
                   .HasForeignKey(e => e.WordId);
         });
-        
+
+        modelBuilder.Entity<Tag>(entity =>
+        {
+            entity.ToTable("Tags", "jiten");
+            entity.HasKey(t => t.TagId);
+            entity.Property(t => t.TagId).ValueGeneratedOnAdd();
+            entity.Property(t => t.Name).IsRequired().HasMaxLength(50);
+
+            entity.HasIndex(t => t.Name)
+                  .IsUnique()
+                  .HasDatabaseName("IX_Tags_Name");
+        });
+
+        modelBuilder.Entity<DeckGenre>(entity =>
+        {
+            entity.ToTable("DeckGenres", "jiten");
+            entity.HasKey(dg => new { dg.DeckId, dg.Genre });
+
+            entity.HasIndex(dg => dg.Genre)
+                  .HasDatabaseName("IX_DeckGenres_Genre");
+
+            entity.HasIndex(dg => dg.DeckId)
+                  .HasDatabaseName("IX_DeckGenres_DeckId");
+
+            entity.HasOne(dg => dg.Deck)
+                  .WithMany(d => d.DeckGenres)
+                  .HasForeignKey(dg => dg.DeckId)
+                  .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<DeckTag>(entity =>
+        {
+            entity.ToTable("DeckTags", "jiten");
+            entity.HasKey(dt => new { dt.DeckId, dt.TagId });
+
+            entity.HasIndex(dt => dt.TagId)
+                  .HasDatabaseName("IX_DeckTags_TagId");
+
+            entity.HasIndex(dt => dt.Percentage)
+                  .HasDatabaseName("IX_DeckTags_Percentage");
+
+            entity.HasOne(dt => dt.Deck)
+                  .WithMany(d => d.DeckTags)
+                  .HasForeignKey(dt => dt.DeckId)
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(dt => dt.Tag)
+                  .WithMany(t => t.DeckTags)
+                  .HasForeignKey(dt => dt.TagId)
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            entity.ToTable(t => t.HasCheckConstraint("CK_DeckTags_Percentage", "\"Percentage\" >= 0 AND \"Percentage\" <= 100"));
+        });
+
+        modelBuilder.Entity<ExternalGenreMapping>(entity =>
+        {
+            entity.ToTable("ExternalGenreMappings", "jiten");
+            entity.HasKey(e => e.ExternalGenreMappingId);
+            entity.Property(e => e.ExternalGenreMappingId).ValueGeneratedOnAdd();
+
+            entity.Property(e => e.Provider).IsRequired();
+            entity.Property(e => e.ExternalGenreName).IsRequired().HasMaxLength(100);
+            entity.Property(e => e.JitenGenre).IsRequired();
+
+            entity.HasIndex(e => new { e.Provider, e.ExternalGenreName, e.JitenGenre })
+                  .IsUnique()
+                  .HasDatabaseName("IX_ExternalGenreMapping_Provider_ExternalName_JitenGenre");
+
+            entity.HasIndex(e => new { e.Provider, e.ExternalGenreName })
+                  .HasDatabaseName("IX_ExternalGenreMapping_Provider_ExternalName");
+        });
+
+        modelBuilder.Entity<ExternalTagMapping>(entity =>
+        {
+            entity.ToTable("ExternalTagMappings", "jiten");
+            entity.HasKey(e => e.ExternalTagMappingId);
+            entity.Property(e => e.ExternalTagMappingId).ValueGeneratedOnAdd();
+
+            entity.Property(e => e.Provider).IsRequired();
+            entity.Property(e => e.ExternalTagName).IsRequired().HasMaxLength(100);
+            entity.Property(e => e.TagId).IsRequired();
+
+            entity.HasIndex(e => new { e.Provider, e.ExternalTagName, e.TagId })
+                  .IsUnique()
+                  .HasDatabaseName("IX_ExternalTagMapping_Provider_ExternalName_TagId");
+
+            entity.HasIndex(e => new { e.Provider, e.ExternalTagName })
+                  .HasDatabaseName("IX_ExternalTagMapping_Provider_ExternalName");
+
+            entity.HasOne(e => e.Tag)
+                  .WithMany()
+                  .HasForeignKey(e => e.TagId)
+                  .OnDelete(DeleteBehavior.Cascade);
+        });
+
         base.OnModelCreating(modelBuilder);
     }
 }

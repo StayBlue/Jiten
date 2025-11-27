@@ -1,4 +1,4 @@
-import { type DeckStatus, type KnownState, type MediaType, type ReadingType } from '~/types';
+import { type DeckStatus, type FsrsRating, type FsrsState, type Genre, type KnownState, type LinkType, type MediaType, type ReadingType } from '~/types';
 
 export interface Deck {
   deckId: number;
@@ -32,6 +32,8 @@ export interface Deck {
   hideDialoguePercentage: boolean;
   externalRating: number;
   exampleSentence?: ExampleSentence;
+  genres?: Genre[];
+  tags?: TagWithPercentage[];
   status?: DeckStatus;
   isFavourite?: boolean;
   isIgnored?: boolean;
@@ -63,6 +65,17 @@ export interface Link {
   url: string;
   linkType: string;
   deckId: number;
+}
+
+export interface TagWithPercentage {
+  tagId: number;
+  name: string;
+  percentage: number;
+}
+
+export interface MetadataTag {
+  name: string;
+  percentage: number;
 }
 
 export interface Word {
@@ -141,6 +154,9 @@ export interface Metadata {
   links: Link[];
   aliases: string[];
   rating: number;
+  genres?: string[];
+  tags?: MetadataTag[];
+  isAdultOnly?: boolean;
 }
 
 export interface Issues {
@@ -149,6 +165,8 @@ export interface Issues {
   zeroCharacters: number[];
   missingReleaseDate: number[];
   missingDescription: number[];
+  missingGenres: number[];
+  missingTags: number[];
 }
 
 export interface LoginRequest {
@@ -212,4 +230,71 @@ export interface CreateApiKeyResponse {
   apiKey: string;
   id: number;
   message: string;
+}
+
+export interface FsrsReviewLogExportDto {
+  rating: FsrsRating;
+  reviewDateTime: Date;
+  reviewDuration?: number;
+}
+
+export interface FsrsCardExportDto {
+  wordId: number;
+  readingIndex: number;
+  state: FsrsState;
+  step?: number;
+  stability?: number;
+  difficulty?: number;
+  due: Date;
+  lastReview?: Date;
+  reviewLogs: FsrsReviewLogExportDto[];
+}
+
+export interface FsrsExportDto {
+  exportDate: Date;
+  userId: string;
+  totalCards: number;
+  totalReviews: number;
+  cards: FsrsCardExportDto[];
+}
+
+export interface FsrsImportResultDto {
+  cardsImported: number;
+  cardsSkipped: number;
+  cardsUpdated: number;
+  reviewLogsImported: number;
+  validationErrors: string[];
+}
+
+export interface Tag {
+  tagId: number;
+  name: string;
+}
+
+export interface TagUsage {
+  deckCount: number;
+  mappingCount: number;
+}
+
+export interface GenreMapping {
+  externalGenreMappingId: number;
+  provider: LinkType;
+  providerName: string;
+  externalGenreName: string;
+  jitenGenre: Genre;
+  jitenGenreName: string;
+}
+
+export interface TagMapping {
+  externalTagMappingId: number;
+  provider: LinkType;
+  providerName: string;
+  externalTagName: string;
+  tagId: number;
+  tagName: string;
+}
+
+export interface TagMappingSummary {
+  totalMappings: number;
+  mappingsByProvider: Record<string, number>;
 }

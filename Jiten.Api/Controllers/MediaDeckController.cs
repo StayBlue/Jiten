@@ -113,7 +113,9 @@ public class MediaDeckController(
                                                                       int? releaseYearMin = null, int? releaseYearMax = null,
                                                                       int? uniqueKanjiMin = null, int? uniqueKanjiMax = null,
                                                                       int? subdeckCountMin = null, int? subdeckCountMax = null,
-                                                                      int? extRatingMin = null, int? extRatingMax = null)
+                                                                      int? extRatingMin = null, int? extRatingMax = null,
+                                                                      string? genres = null, string? excludeGenres = null,
+                                                                      string? tags = null, string? excludeTags = null)
     {
         int pageSize = 50;
         var query = context.Decks.AsNoTracking();
@@ -181,6 +183,70 @@ public class MediaDeckController(
 
         if (extRatingMax != null)
             query = query.Where(d => d.ExternalRating <= extRatingMax);
+
+        // Genre filters
+        if (!string.IsNullOrEmpty(genres))
+        {
+            var genreIds = genres.Split(',', StringSplitOptions.RemoveEmptyEntries)
+                                 .Select(g => int.TryParse(g, out var genreId) ? (Genre?)genreId : null)
+                                 .Where(g => g.HasValue)
+                                 .Select(g => g!.Value)
+                                 .ToList();
+
+            if (genreIds.Any())
+            {
+                foreach (var genreId in genreIds)
+                {
+                    query = query.Where(d => d.DeckGenres.Any(dg => dg.Genre == genreId));
+                }
+            }
+        }
+
+        if (!string.IsNullOrEmpty(excludeGenres))
+        {
+            var excludeGenreIds = excludeGenres.Split(',', StringSplitOptions.RemoveEmptyEntries)
+                                               .Select(g => int.TryParse(g, out var genreId) ? (Genre?)genreId : null)
+                                               .Where(g => g.HasValue)
+                                               .Select(g => g!.Value)
+                                               .ToList();
+
+            if (excludeGenreIds.Any())
+            {
+                query = query.Where(d => !d.DeckGenres.Any(dg => excludeGenreIds.Contains(dg.Genre)));
+            }
+        }
+
+        // Tag filters
+        if (!string.IsNullOrEmpty(tags))
+        {
+            var tagIds = tags.Split(',', StringSplitOptions.RemoveEmptyEntries)
+                             .Select(t => int.TryParse(t, out var tagId) ? (int?)tagId : null)
+                             .Where(t => t.HasValue)
+                             .Select(t => t!.Value)
+                             .ToList();
+
+            if (tagIds.Any())
+            {
+                foreach (var tagId in tagIds)
+                {
+                    query = query.Where(d => d.DeckTags.Any(dt => dt.TagId == tagId));
+                }
+            }
+        }
+
+        if (!string.IsNullOrEmpty(excludeTags))
+        {
+            var excludeTagIds = excludeTags.Split(',', StringSplitOptions.RemoveEmptyEntries)
+                                           .Select(t => int.TryParse(t, out var tagId) ? (int?)tagId : null)
+                                           .Where(t => t.HasValue)
+                                           .Select(t => t!.Value)
+                                           .ToList();
+
+            if (excludeTagIds.Any())
+            {
+                query = query.Where(d => !d.DeckTags.Any(dt => excludeTagIds.Contains(dt.TagId)));
+            }
+        }
 
         // Filter by word
         if (wordId != 0)
@@ -255,7 +321,10 @@ public class MediaDeckController(
 
         query = query.Include(d => d.Children)
                      .Include(d => d.Links)
-                     .Include(d => d.Titles);
+                     .Include(d => d.Titles)
+                     .Include(d => d.DeckGenres)
+                     .Include(d => d.DeckTags)
+                     .ThenInclude(dt => dt.Tag);
 
         // Create projected query for word-based searches
         IQueryable<DeckWithOccurrences>? projectedQuery = null;
@@ -744,13 +813,21 @@ public class MediaDeckController(
     {
         int pageSize = 25;
 
-        var deck = context.Decks.AsNoTracking().Include(d => d.Children).Include(d => d.Links).FirstOrDefault(d => d.DeckId == id);
+        var deck = context.Decks.AsNoTracking()
+                          .Include(d => d.Children)
+                          .Include(d => d.Links)
+                          .Include(d => d.DeckGenres)
+                          .Include(d => d.DeckTags)
+                          .ThenInclude(dt => dt.Tag)
+                          .FirstOrDefault(d => d.DeckId == id);
 
         if (deck == null)
             return new PaginatedResponse<DeckDetailDto?>(null, 0, pageSize, offset ?? 0);
 
-        var parentDeck = context.Decks.AsNoTracking().FirstOrDefault(d => d.DeckId == deck.ParentDeckId);
-        var subDecks = context.Decks.AsNoTracking().Where(d => d.ParentDeckId == id);
+        var parentDeck = context.Decks.AsNoTracking().Include(d => d.DeckGenres).Include(d => d.DeckTags).ThenInclude(dt => dt.Tag)
+                                .FirstOrDefault(d => d.DeckId == deck.ParentDeckId);
+        var subDecks = context.Decks.AsNoTracking().Include(d => d.DeckGenres).Include(d => d.DeckTags).ThenInclude(dt => dt.Tag)
+                              .Where(d => d.ParentDeckId == id);
         int totalCount = subDecks.Count();
 
         subDecks = subDecks
@@ -932,8 +1009,8 @@ public class MediaDeckController(
             return Results.BadRequest();
 
         logger.LogInformation(
-            "User downloaded deck: DeckId={DeckId}, DeckTitle={DeckTitle}, Format={Format}, DownloadType={DownloadType}, WordCount={WordCount}, ExcludeKnown={ExcludeKnown}",
-            id, deck.OriginalTitle, request.Format, request.DownloadType, deckWordsRaw.Count, request.ExcludeKnownWords);
+                              "User downloaded deck: DeckId={DeckId}, DeckTitle={DeckTitle}, Format={Format}, DownloadType={DownloadType}, WordCount={WordCount}, ExcludeKnown={ExcludeKnown}",
+                              id, deck.OriginalTitle, request.Format, request.DownloadType, deckWordsRaw.Count, request.ExcludeKnownWords);
 
         return request.Format switch
         {
@@ -971,8 +1048,8 @@ public class MediaDeckController(
         var fileBase64 = Convert.ToBase64String(fileResult);
 
         logger.LogInformation(
-            "User parsed custom deck: CharacterCount={CharacterCount}, WordCount={WordCount}, UniqueWordCount={UniqueWordCount}",
-            deck.CharacterCount, deck.WordCount, deck.UniqueWordCount);
+                              "User parsed custom deck: CharacterCount={CharacterCount}, WordCount={WordCount}, UniqueWordCount={UniqueWordCount}",
+                              deck.CharacterCount, deck.WordCount, deck.UniqueWordCount);
 
         var result = new
                      {
@@ -1377,6 +1454,23 @@ public class MediaDeckController(
     }
 
     /// <summary>
+    /// Returns all available tags for filtering (only tags with at least one associated media).
+    /// </summary>
+    [HttpGet("tags")]
+    [ResponseCache(Duration = 3600)]
+    [SwaggerOperation(Summary = "Get all tags")]
+    [ProducesResponseType(typeof(List<TagDto>), StatusCodes.Status200OK)]
+    public async Task<List<TagDto>> GetAllTags()
+    {
+        return await context.Tags
+                            .AsNoTracking()
+                            .Where(t => t.DeckTags.Any())
+                            .OrderBy(t => t.Name)
+                            .Select(t => new TagDto { TagId = t.TagId, Name = t.Name })
+                            .ToListAsync();
+    }
+
+    /// <summary>
     /// Report an issue with a deck
     /// </summary>
     /// <param name="request">Issue type and comment.</param>
@@ -1426,12 +1520,12 @@ public class MediaDeckController(
         if (result.IsSuccessStatusCode)
         {
             logger.LogInformation("User reported deck issue: DeckId={DeckId}, IssueType={IssueType}",
-                request.DeckId, request.IssueType);
+                                  request.DeckId, request.IssueType);
             return Ok();
         }
 
         logger.LogWarning("Failed to send deck issue report: DeckId={DeckId}, IssueType={IssueType}",
-            request.DeckId, request.IssueType);
+                          request.DeckId, request.IssueType);
         return BadRequest("Failed to send report");
 
         string SanitizeForDiscord(string input)

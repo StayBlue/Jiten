@@ -55,6 +55,18 @@
           </div>
         </template>
       </Card>
+
+      <Card class="shadow-md">
+        <template #title>Tags & Mappings</template>
+        <template #content>
+          <p class="mb-4">Manage tags, genre mappings, and tag mappings for media metadata</p>
+          <div class="flex flex-col gap-2">
+            <Button label="Manage Tags" icon="pi pi-tag" class="p-button-primary" @click="navigateTo('/dashboard/tags')" />
+            <Button label="Genre Mappings" icon="pi pi-map" class="p-button-primary" @click="navigateTo('/dashboard/genre-mappings')" />
+            <Button label="Tag Mappings" icon="pi pi-sitemap" class="p-button-primary" @click="navigateTo('/dashboard/tag-mappings')" />
+          </div>
+        </template>
+      </Card>
     </div>
   </div>
 </template>

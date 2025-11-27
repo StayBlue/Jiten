@@ -77,6 +77,16 @@
     set: (value) => (store.hideCoverageBorders = value),
   });
 
+  const hideGenres = computed({
+    get: () => store.hideGenres,
+    set: (value) => (store.hideGenres = value),
+  });
+
+  const hideTags = computed({
+    get: () => store.hideTags,
+    set: (value) => (store.hideTags = value),
+  });
+
   const displayAdminFunctions = computed({
     get: () => store.displayAdminFunctions,
     set: (value) => (store.displayAdminFunctions = value),
@@ -263,6 +273,16 @@
       <div v-if="auth.isAuthenticated" class="flex items-center gap-2 py-1">
         <Checkbox v-model="hideCoverageBorders" input-id="hideCoverageBorders" name="hideCoverageBorders" :binary="true" />
         <label for="hideCoverageBorders" class="text-sm cursor-pointer">Hide coverage borders</label>
+      </div>
+
+      <div v-if="auth.isAuthenticated" class="flex items-center gap-2 py-1">
+        <Checkbox v-model="hideGenres" input-id="hideGenres" name="hideGenres" :binary="true" />
+        <label for="hideGenres" class="text-sm cursor-pointer">Hide genres</label>
+      </div>
+
+      <div v-if="auth.isAuthenticated" class="flex items-center gap-2 py-1">
+        <Checkbox v-model="hideTags" input-id="hideTags" name="hideTags" :binary="true" />
+        <label for="hideTags" class="text-sm cursor-pointer">Hide tags</label>
       </div>
 
       <div v-if="auth.isAuthenticated && auth.isAdmin" class="flex items-center gap-2 py-1">

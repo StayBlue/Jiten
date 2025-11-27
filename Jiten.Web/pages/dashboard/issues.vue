@@ -68,6 +68,24 @@
       severity: 'warning',
       ids: issuesData.value?.missingDescription || [],
     },
+    {
+      id: 'missing-genres',
+      name: 'Media Without Genres',
+      count: issuesData.value?.missingGenres?.length || 0,
+      icon: 'pi pi-tags',
+      description: 'Media entries with no genre associations',
+      severity: 'danger',
+      ids: issuesData.value?.missingGenres || [],
+    },
+    {
+      id: 'missing-tags',
+      name: 'Media Without Tags',
+      count: issuesData.value?.missingTags?.length || 0,
+      icon: 'pi pi-tag',
+      description: 'Media entries with no tag associations',
+      severity: 'info',
+      ids: issuesData.value?.missingTags || [],
+    },
   ]);
 
   const totalIssues = computed(() => {
@@ -79,7 +97,7 @@
     datasets: [
       {
         data: issueTypes.value.map((issue) => issue.count),
-        backgroundColor: ['#FF6384', '#36A2EB', '#FFCE56', '#00AA00', '#AAAA00'],
+        backgroundColor: ['#FF6384', '#36A2EB', '#FFCE56', '#00AA00', '#AAAA00', '#9966FF', '#FF9933'],
       },
     ],
   }));

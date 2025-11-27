@@ -36,6 +36,8 @@ public class DeckDto
     public float UniqueCoverage { get; set; }
     public byte ExternalRating { get; set; }
     public ExampleSentenceDto? ExampleSentence { get; set; }
+    public List<Genre> Genres { get; set; } = new();
+    public List<TagWithPercentageDto> Tags { get; set; } = new();
     public DeckStatus? Status { get; set; }
     public bool? IsFavourite { get; set; }
     public bool? IsIgnored { get; set; }
@@ -75,6 +77,13 @@ public class DeckDto
         Aliases = deck.Titles.Where(t => t.TitleType == DeckTitleType.Alias).Select(t => t.Title).ToList();
         ExternalRating = deck.ExternalRating;
         ExampleSentence = exampleSentence;
+        Genres = deck.DeckGenres.Select(dg => dg.Genre).OrderBy(g => g.ToString()).ToList();
+        Tags = deck.DeckTags.Select(dt => new TagWithPercentageDto
+        {
+            TagId = dt.TagId,
+            Name = dt.Tag.Name,
+            Percentage = dt.Percentage
+        }).OrderByDescending(t => t.Percentage).ToList();
     }
 
     public DeckDto(Deck deck, ExampleSentenceDto? exampleSentence = null)
@@ -107,6 +116,13 @@ public class DeckDto
         Aliases = deck.Titles.Where(t => t.TitleType == DeckTitleType.Alias).Select(t => t.Title).ToList();
         ExternalRating = deck.ExternalRating;
         ExampleSentence = exampleSentence;
+        Genres = deck.DeckGenres.Select(dg => dg.Genre).OrderBy(g => g.ToString()).ToList();
+        Tags = deck.DeckTags.Select(dt => new TagWithPercentageDto
+        {
+            TagId = dt.TagId,
+            Name = dt.Tag.Name,
+            Percentage = dt.Percentage
+        }).OrderByDescending(t => t.Percentage).ToList();
     }
 
     /// <summary>

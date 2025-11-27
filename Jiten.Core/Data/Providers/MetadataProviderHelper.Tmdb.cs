@@ -31,6 +31,14 @@ public static partial class MetadataProviderHelper
                 aliases = alternativeTitles.Titles.Select(t => t.Title).ToList();
         }
 
+        List<TmdbGenre> keywords = new();
+        response = await http.GetAsync($"https://api.themoviedb.org/3/movie/{tmdbId}/keywords?api_key={tmdbApiKey}");
+        if (response.IsSuccessStatusCode)
+        {
+            content = await response.Content.ReadAsStringAsync();
+            keywords = JsonSerializer.Deserialize<TmdbGenreWrapper>(content)?.Keywords ?? [];
+        }
+
         if (result.PosterPath != null)
             result.PosterPath = $"https://image.tmdb.org/t/p/w500/{result.PosterPath}";
 
@@ -45,7 +53,9 @@ public static partial class MetadataProviderHelper
         return new Metadata
                {
                    OriginalTitle = result.OriginalTitle, EnglishTitle = result.Title, ReleaseDate = result.ReleaseDate, Links = links,
-                   Image = result.PosterPath, Description = result.Description, Aliases = aliases, Rating = (int)(result.VoteAverage * 10)
+                   Image = result.PosterPath, Description = result.Description, Aliases = aliases, Rating = (int)(result.VoteAverage * 10),
+                   IsAdultOnly = result.Adult, Genres = result.Genres.Select(g => g.Name).ToList(),
+                   Tags = keywords.Select(k => (k.Name, 100)).ToList()
                };
     }
 
@@ -73,6 +83,14 @@ public static partial class MetadataProviderHelper
                 aliases = alternativeTitles.Titles.Select(t => t.Title).ToList();
         }
 
+        List<TmdbGenre> keywords = new();
+        response = await http.GetAsync($"https://api.themoviedb.org/3/tv/{tmdbId}/keywords?api_key={tmdbApiKey}");
+        if (response.IsSuccessStatusCode)
+        {
+            content = await response.Content.ReadAsStringAsync();
+            keywords = JsonSerializer.Deserialize<TmdbGenreWrapper>(content)?.Results ?? [];
+        }
+
         if (result.PosterPath != null)
             result.PosterPath = $"https://image.tmdb.org/t/p/w500/{result.PosterPath}";
 
@@ -81,7 +99,8 @@ public static partial class MetadataProviderHelper
                    OriginalTitle = result.OriginalName, EnglishTitle = result.Name, ReleaseDate = result.FirstAirDate,
                    Image = result.PosterPath,
                    Links = [new Link { LinkType = LinkType.Tmdb, Url = $"https://www.themoviedb.org/tv/{tmdbId}" }],
-                   Description = result.Description, Aliases = aliases, Rating = (int)(result.VoteAverage * 10)
+                   Description = result.Description, Aliases = aliases, Rating = (int)(result.VoteAverage * 10), IsAdultOnly = result.Adult,
+                   Genres = result.Genres.Select(g => g.Name).ToList(), Tags = keywords.Select(k => (k.Name, 100)).ToList()
                };
     }
 }

@@ -30,4 +30,10 @@ public class IgdbGame
 
     [JsonPropertyName("rating")]
     public double Rating { get; set; }
+    
+    [JsonPropertyName("genres")]
+    public List<int> Genres { get; set; } = new();
+    
+    [JsonPropertyName("themes")]
+    public List<int> Themes { get; set; } = new();
 }

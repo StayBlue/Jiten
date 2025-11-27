@@ -181,6 +181,7 @@
     // green
     return '2px solid #4CAF50';
   });
+
 </script>
 
 <template>
@@ -191,9 +192,7 @@
       @click.stop
     >
       <div class="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-md mx-4 shadow-xl">
-        <p class="text-center text-gray-800 dark:text-gray-200 mb-4">
-          This media will be ignored and no longer appear in search results.
-        </p>
+        <p class="text-center text-gray-800 dark:text-gray-200 mb-4">This media will be ignored and no longer appear in search results.</p>
         <div class="text-center">
           <a
             href="#"
@@ -208,195 +207,208 @@
 
     <Card class="p-2" :style="{ outline: borderColor }">
       <template #title>
-      <div class="flex justify-between items-start">
-        <span>{{ localiseTitle(deck) }}</span>
-        <div v-if="authStore.isAuthenticated" class="flex flex-row items-center gap-1 h-6">
-          <div class="flex items-center gap-2">
-            <i v-if="deck.isFavourite" class="pi pi-star-fill text-yellow-500 text-lg" />
-            <i v-if="deck.isIgnored" class="pi pi-eye-slash text-gray-800 dark:text-gray-300 text-lg" />
-            <span v-if="deck.status && deck.status !== DeckStatus.None" :class="['text-sm font-bold', statusColor]">
-              {{ getDeckStatusText(deck.status) }}
-            </span>
-          </div>
-          <button type="button" class="p-1.5 rounded hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors" @click="toggleMenu">
-            <i class="pi pi-ellipsis-v text-gray-600 dark:text-gray-300" />
-          </button>
-        </div>
-      </div>
-    </template>
-    <template v-if="!isCompact" #subtitle>{{ getMediaTypeText(deck.mediaType) }}</template>
-    <template #content>
-      <div class="flex-gap-6">
-        <div class="flex-1 max-w-full overflow-hidden">
-          <div class="flex flex-col md:flex-row gap-x-4 gap-y-2 w-full">
-            <div v-if="!isCompact" class="text-left text-sm md:text-center">
-              <img
-                :src="deck.coverName == 'nocover.jpg' ? '/img/nocover.jpg' : deck.coverName"
-                :alt="deck.originalTitle"
-                class="h-48 w-34 min-w-34 object-cover"
-              />
-              <div>{{ formatDateAsYyyyMmDd(new Date(deck.releaseDate)).replace(/-/g, '/') }}</div>
-              <template v-if="authStore.isAuthenticated && (deck.coverage != 0 || deck.uniqueCoverage != 0)">
-                <div>
-                  <div class="text-gray-600 dark:text-gray-300 truncate pr-2 font-medium">Coverage</div>
-                  <div
-                    v-tooltip="`${((deck.wordCount * deck.coverage) / 100).toFixed(0)} / ${deck.wordCount}`"
-                    class="relative w-full bg-gray-400 dark:bg-gray-700 rounded-lg h-6 overflow-hidden"
-                  >
-                    <div class="bg-purple-500 h-6 rounded-lg transition-all duration-700" :style="{ width: deck.coverage.toFixed(1) + '%' }"></div>
-                    <span class="absolute inset-0 flex items-center pl-2 text-xs font-bold text-white dark:text-white"> {{ deck.coverage.toFixed(1) }}% </span>
-                  </div>
-                </div>
-                <div>
-                  <div class="text-gray-600 dark:text-gray-300 truncate pr-2 font-medium">Unique coverage</div>
-                  <div
-                    v-tooltip="`${((deck.uniqueWordCount * deck.uniqueCoverage) / 100).toFixed(0)} / ${deck.uniqueWordCount}`"
-                    class="relative w-full bg-gray-400 dark:bg-gray-700 rounded-lg h-6 overflow-hidden"
-                  >
-                    <div class="bg-purple-500 h-6 rounded-lg transition-all duration-700" :style="{ width: deck.uniqueCoverage.toFixed(1) + '%' }"></div>
-                    <span class="absolute inset-0 flex items-center pl-2 text-xs font-bold text-white dark:text-white">
-                      {{ deck.uniqueCoverage.toFixed(1) }}%
-                    </span>
-                  </div>
-                </div>
-              </template>
+        <div class="flex justify-between items-start">
+          <span>{{ localiseTitle(deck) }}</span>
+          <div v-if="authStore.isAuthenticated" class="flex flex-row items-center gap-1 h-6">
+            <div class="flex items-center gap-2">
+              <i v-if="deck.isFavourite" class="pi pi-star-fill text-yellow-500 text-lg" />
+              <i v-if="deck.isIgnored" class="pi pi-eye-slash text-gray-800 dark:text-gray-300 text-lg" />
+              <span v-if="deck.status && deck.status !== DeckStatus.None" :class="['text-sm font-bold', statusColor]">
+                {{ getDeckStatusText(deck.status) }}
+              </span>
             </div>
-            <div>
-              <div class="flex flex-col gap-x-6 gap-y-2" :class="isCompact ? '' : 'md:flex-row md:flex-wrap'">
-                <div class="w-full md:w-64">
-                  <div class="flex justify-between flex-wrap stat-row">
-                    <span class="text-gray-600 dark:text-gray-300 truncate pr-2 font-medium">Character count</span>
-                    <span class="tabular-nums font-semibold">{{ deck.characterCount.toLocaleString() }}</span>
-                  </div>
-                  <div class="flex justify-between flex-wrap stat-row">
-                    <span class="text-gray-600 dark:text-gray-300 truncate pr-2 font-medium">Word count</span>
-                    <span class="tabular-nums font-semibold">{{ deck.wordCount.toLocaleString() }}</span>
-                  </div>
-                  <div class="flex justify-between flex-wrap stat-row">
-                    <span class="text-gray-600 dark:text-gray-300 truncate pr-2 font-medium">Unique words</span>
-                    <span class="tabular-nums font-semibold">{{ deck.uniqueWordCount.toLocaleString() }}</span>
-                  </div>
-                  <div class="flex justify-between flex-wrap stat-row">
-                    <span class="text-gray-600 dark:text-gray-300 truncate pr-2 font-medium">Words (1-occurrence)</span>
-                    <span class="tabular-nums font-semibold">{{ deck.uniqueWordUsedOnceCount.toLocaleString() }}</span>
-                  </div>
-                </div>
-
-                <div class="w-full md:w-64">
-                  <div class="flex justify-between flex-wrap stat-row">
-                    <span class="text-gray-600 dark:text-gray-300 truncate pr-2 font-medium">Unique kanji</span>
-                    <span class="tabular-nums font-semibold">{{ deck.uniqueKanjiCount.toLocaleString() }}</span>
-                  </div>
-                  <div class="flex justify-between flex-wrap stat-row">
-                    <span class="text-gray-600 dark:text-gray-300 truncate pr-2 font-medium">Kanji (1-occurrence)</span>
-                    <span class="tabular-nums font-semibold">{{ deck.uniqueKanjiUsedOnceCount.toLocaleString() }}</span>
-                  </div>
-                  <div v-if="deck.averageSentenceLength !== 0" class="flex justify-between flex-wrap stat-row">
-                    <span class="text-gray-600 dark:text-gray-300 truncate pr-2 font-medium">Average sentence length</span>
-                    <span class="tabular-nums font-semibold">{{ deck.averageSentenceLength.toFixed(1) }}</span>
-                  </div>
-                  <div v-if="deck.difficulty != -1" class="flex justify-between flex-wrap stat-row">
-                    <Tooltip
-                      :content="'This is a work in progress.\nIf you find scores that are way higher or lower than they should be, please report them so the algorithm can be refined further.'"
+            <button type="button" class="p-1.5 rounded hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors" @click="toggleMenu">
+              <i class="pi pi-ellipsis-v text-gray-600 dark:text-gray-300" />
+            </button>
+          </div>
+        </div>
+      </template>
+      <template v-if="!isCompact" #subtitle>{{ getMediaTypeText(deck.mediaType) }}</template>
+      <template #content>
+        <div class="flex-gap-6">
+          <div class="flex-1 max-w-full overflow-hidden">
+            <div class="flex flex-col md:flex-row gap-x-4 gap-y-2 w-full">
+              <div v-if="!isCompact" class="text-left text-sm md:text-center">
+                <img
+                  :src="deck.coverName == 'nocover.jpg' ? '/img/nocover.jpg' : deck.coverName"
+                  :alt="deck.originalTitle"
+                  class="h-48 w-34 min-w-34 object-cover"
+                />
+                <div>{{ formatDateAsYyyyMmDd(new Date(deck.releaseDate)).replace(/-/g, '/') }}</div>
+                <template v-if="authStore.isAuthenticated && (deck.coverage != 0 || deck.uniqueCoverage != 0)">
+                  <div>
+                    <div class="text-gray-600 dark:text-gray-300 truncate pr-2 font-medium">Coverage</div>
+                    <div
+                      v-tooltip="`${((deck.wordCount * deck.coverage) / 100).toFixed(0)} / ${deck.wordCount}`"
+                      class="relative w-full bg-gray-400 dark:bg-gray-700 rounded-lg h-6 overflow-hidden"
                     >
-                      <span class="text-gray-600 dark:text-gray-300 truncate pr-2 font-medium">
-                        Difficulty
-                        <span class="text-purple-500 text-xs align-super"> beta </span>
+                      <div class="bg-purple-500 h-6 rounded-lg transition-all duration-700" :style="{ width: deck.coverage.toFixed(1) + '%' }"></div>
+                      <span class="absolute inset-0 flex items-center pl-2 text-xs font-bold text-white dark:text-white">
+                        {{ deck.coverage.toFixed(1) }}%
                       </span>
-                    </Tooltip>
-                    <DifficultyDisplay :difficulty="deck.difficulty" :difficulty-raw="deck.difficultyRaw" />
+                    </div>
                   </div>
-                </div>
-
-                <div class="w-full md:w-64">
-                  <div
-                    v-if="!deck.hideDialoguePercentage && deck.dialoguePercentage != 0 && deck.dialoguePercentage != 100"
-                    class="flex justify-between flex-wrap stat-row"
-                  >
-                    <span class="text-gray-600 dark:text-gray-300 truncate pr-2 font-medium">Dialogue</span>
-                    <span class="tabular-nums font-semibold">{{ deck.dialoguePercentage.toFixed(1) }}%</span>
+                  <div>
+                    <div class="text-gray-600 dark:text-gray-300 truncate pr-2 font-medium">Unique coverage</div>
+                    <div
+                      v-tooltip="`${((deck.uniqueWordCount * deck.uniqueCoverage) / 100).toFixed(0)} / ${deck.uniqueWordCount}`"
+                      class="relative w-full bg-gray-400 dark:bg-gray-700 rounded-lg h-6 overflow-hidden"
+                    >
+                      <div class="bg-purple-500 h-6 rounded-lg transition-all duration-700" :style="{ width: deck.uniqueCoverage.toFixed(1) + '%' }"></div>
+                      <span class="absolute inset-0 flex items-center pl-2 text-xs font-bold text-white dark:text-white">
+                        {{ deck.uniqueCoverage.toFixed(1) }}%
+                      </span>
+                    </div>
+                  </div>
+                </template>
+              </div>
+              <div>
+                <div class="flex flex-col gap-x-6 gap-y-2" :class="isCompact ? '' : 'md:flex-row md:flex-wrap'">
+                  <div class="w-full md:w-64">
+                    <div class="flex justify-between flex-wrap stat-row">
+                      <span class="text-gray-600 dark:text-gray-300 truncate pr-2 font-medium">Character count</span>
+                      <span class="tabular-nums font-semibold">{{ deck.characterCount.toLocaleString() }}</span>
+                    </div>
+                    <div class="flex justify-between flex-wrap stat-row">
+                      <span class="text-gray-600 dark:text-gray-300 truncate pr-2 font-medium">Word count</span>
+                      <span class="tabular-nums font-semibold">{{ deck.wordCount.toLocaleString() }}</span>
+                    </div>
+                    <div class="flex justify-between flex-wrap stat-row">
+                      <span class="text-gray-600 dark:text-gray-300 truncate pr-2 font-medium">Unique words</span>
+                      <span class="tabular-nums font-semibold">{{ deck.uniqueWordCount.toLocaleString() }}</span>
+                    </div>
+                    <div class="flex justify-between flex-wrap stat-row">
+                      <span class="text-gray-600 dark:text-gray-300 truncate pr-2 font-medium">Words (1-occurrence)</span>
+                      <span class="tabular-nums font-semibold">{{ deck.uniqueWordUsedOnceCount.toLocaleString() }}</span>
+                    </div>
                   </div>
 
-                  <div v-if="deck.childrenDeckCount != 0" class="flex justify-between flex-wrap stat-row">
-                    <span class="text-gray-600 dark:text-gray-300 truncate pr-2 font-medium">{{ getChildrenCountText(deck.mediaType) }}</span>
-                    <span class="tabular-nums font-semibold">{{ deck.childrenDeckCount.toLocaleString() }}</span>
+                  <div class="w-full md:w-64">
+                    <div class="flex justify-between flex-wrap stat-row">
+                      <span class="text-gray-600 dark:text-gray-300 truncate pr-2 font-medium">Unique kanji</span>
+                      <span class="tabular-nums font-semibold">{{ deck.uniqueKanjiCount.toLocaleString() }}</span>
+                    </div>
+                    <div class="flex justify-between flex-wrap stat-row">
+                      <span class="text-gray-600 dark:text-gray-300 truncate pr-2 font-medium">Kanji (1-occurrence)</span>
+                      <span class="tabular-nums font-semibold">{{ deck.uniqueKanjiUsedOnceCount.toLocaleString() }}</span>
+                    </div>
+                    <div v-if="deck.averageSentenceLength !== 0" class="flex justify-between flex-wrap stat-row">
+                      <span class="text-gray-600 dark:text-gray-300 truncate pr-2 font-medium">Average sentence length</span>
+                      <span class="tabular-nums font-semibold">{{ deck.averageSentenceLength.toFixed(1) }}</span>
+                    </div>
+                    <div v-if="deck.difficulty != -1" class="flex justify-between flex-wrap stat-row">
+                      <Tooltip
+                        :content="'This is a work in progress.\nIf you find scores that are way higher or lower than they should be, please report them so the algorithm can be refined further.'"
+                      >
+                        <span class="text-gray-600 dark:text-gray-300 truncate pr-2 font-medium">
+                          Difficulty
+                          <span class="text-purple-500 text-xs align-super"> beta </span>
+                        </span>
+                      </Tooltip>
+                      <DifficultyDisplay :difficulty="deck.difficulty" :difficulty-raw="deck.difficultyRaw" />
+                    </div>
                   </div>
 
-                  <div
-                    v-if="
-                      deck.mediaType == MediaType.Novel ||
-                      deck.mediaType == MediaType.NonFiction ||
-                      deck.mediaType == MediaType.VisualNovel ||
-                      deck.mediaType == MediaType.WebNovel
-                    "
-                    class="flex justify-between flex-wrap stat-row"
-                  >
-                    <Tooltip
-                      :content="
-                        'Based on your reading speed of:\n ' +
-                        '<strong>' +
-                        readingSpeed +
-                        '</strong>' +
-                        ' characters per hour.\n<i>You can adjust it in the quick settings cog at the top right.</i>'
+                  <div class="w-full md:w-64">
+                    <div
+                      v-if="!deck.hideDialoguePercentage && deck.dialoguePercentage != 0 && deck.dialoguePercentage != 100"
+                      class="flex justify-between flex-wrap stat-row"
+                    >
+                      <span class="text-gray-600 dark:text-gray-300 truncate pr-2 font-medium">Dialogue</span>
+                      <span class="tabular-nums font-semibold">{{ deck.dialoguePercentage.toFixed(1) }}%</span>
+                    </div>
+
+                    <div v-if="deck.childrenDeckCount != 0" class="flex justify-between flex-wrap stat-row">
+                      <span class="text-gray-600 dark:text-gray-300 truncate pr-2 font-medium">{{ getChildrenCountText(deck.mediaType) }}</span>
+                      <span class="tabular-nums font-semibold">{{ deck.childrenDeckCount.toLocaleString() }}</span>
+                    </div>
+
+                    <div
+                      v-if="
+                        deck.mediaType == MediaType.Novel ||
+                        deck.mediaType == MediaType.NonFiction ||
+                        deck.mediaType == MediaType.VisualNovel ||
+                        deck.mediaType == MediaType.WebNovel
                       "
+                      class="flex justify-between flex-wrap stat-row"
                     >
-                      <span class="text-gray-600 dark:text-gray-300 truncate pr-2 font-medium">
-                        Duration
-                        <i class="pi pi-info-circle cursor-pointer text-primary-500" />
-                      </span>
-                    </Tooltip>
+                      <Tooltip
+                        :content="
+                          'Based on your reading speed of:\n ' +
+                          '<strong>' +
+                          readingSpeed +
+                          '</strong>' +
+                          ' characters per hour.\n<i>You can adjust it in the quick settings cog at the top right.</i>'
+                        "
+                      >
+                        <span class="text-gray-600 dark:text-gray-300 truncate pr-2 font-medium">
+                          Duration
+                          <i class="pi pi-info-circle cursor-pointer text-primary-500" />
+                        </span>
+                      </Tooltip>
 
-                    <span class="tabular-nums font-semibold">{{ readingDuration > 0 ? readingDuration : '<1' }} h</span>
-                  </div>
+                      <span class="tabular-nums font-semibold">{{ readingDuration > 0 ? readingDuration : '<1' }} h</span>
+                    </div>
 
-                  <div v-if="deck.externalRating != 0" class="flex justify-between flex-wrap stat-row">
-                    <Tooltip content="Score based on user ratings from 3rd party websites, such as AniList, TMDB, VNDB or IGDB.">
-                      <span class="text-gray-600 dark:text-gray-300 truncate pr-2 font-medium">External Rating</span>
-                    </Tooltip>
-                    <span class="tabular-nums font-semibold">{{ deck.externalRating }} %</span>
-                  </div>
+                    <div v-if="deck.externalRating != 0" class="flex justify-between flex-wrap stat-row">
+                      <Tooltip content="Score based on user ratings from 3rd party websites, such as AniList, TMDB, VNDB or IGDB.">
+                        <span class="text-gray-600 dark:text-gray-300 truncate pr-2 font-medium">External Rating</span>
+                      </Tooltip>
+                      <span class="tabular-nums font-semibold">{{ deck.externalRating }} %</span>
+                    </div>
 
-                  <div v-if="deck.selectedWordOccurrences != 0" class="flex justify-between flex-wrap stat-row">
-                    <span class="text-gray-600 dark:text-gray-300 truncate pr-2 font-medium">Appears (times)</span>
-                    <span class="tabular-nums font-bold">{{ deck.selectedWordOccurrences.toLocaleString() }}</span>
+                    <div v-if="deck.selectedWordOccurrences != 0" class="flex justify-between flex-wrap stat-row">
+                      <span class="text-gray-600 dark:text-gray-300 truncate pr-2 font-medium">Appears (times)</span>
+                      <span class="tabular-nums font-bold">{{ deck.selectedWordOccurrences.toLocaleString() }}</span>
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              <div class="mt-2">
-                <div v-if="deck.description" class="description-container" :class="{ expanded: isDescriptionExpanded }">
-                  <p class="whitespace-pre-line mb-0 text-sm">{{ deck.description }}</p>
-                  <a v-if="deck.description.length > 50" href="#" class="text-primary-500 hover:text-primary-700 text-sm" @click.prevent="toggleDescription">
-                    {{ isDescriptionExpanded ? 'View less' : 'View more' }}
-                  </a>
+                <div class="mt-2">
+                  <div v-if="deck.description" class="description-container" :class="{ expanded: isDescriptionExpanded }">
+                    <p class="whitespace-pre-line mb-0 text-sm">{{ deck.description }}</p>
+                    <a v-if="deck.description.length > 50" href="#" class="text-primary-500 hover:text-primary-700 text-sm" @click.prevent="toggleDescription">
+                      {{ isDescriptionExpanded ? 'View less' : 'View more' }}
+                    </a>
+                  </div>
                 </div>
-              </div>
 
-              <ExampleSentenceEntry v-if="deck.exampleSentence != undefined" :example-sentence="deck.exampleSentence" />
+                <ExampleSentenceEntry v-if="deck.exampleSentence != undefined" :example-sentence="deck.exampleSentence" />
 
-              <div class="mt-4 flex flex-col md:flex-row gap-4">
-                <a v-for="link in sortedLinks" :key="link.url" :href="link.url" target="_blank">{{ getLinkTypeText(Number(link.linkType)) }}</a>
-              </div>
-              <div v-if="!hideControl" class="mt-4">
-                <div class="flex flex-col md:flex-row gap-4">
-                  <Button as="router-link" :to="`/decks/media/${deck.deckId}/detail`" label="View details" class="text-center" />
-                  <Button as="router-link" :to="`/decks/media/${deck.deckId}/vocabulary`" label="View vocabulary" class="text-center" />
-                  <Button label="Download deck" class="text-center" @click="showDownloadDialog = true" />
-                  <Button v-if="!isCompact && displayAdminFunctions" as="router-link" :to="`/dashboard/media/${deck.deckId}`" label="Edit" class="text-center" />
-                  <Button
-                    v-if="!isCompact && authStore.isAuthenticated"
-                    @click="showIssueDialog = true"
-                    label=" Report an issue"
-                    icon="pi pi-exclamation-triangle"
-                    class="text-center"
-                  />
+                <div v-if="deck.genres?.length || deck.tags?.length" class="mt-4 space-y-2">
+                  <GenreTagDisplay v-if="!store.hideGenres && deck.genres?.length" :genres="deck.genres" label="Genres" />
+                  <GenreTagDisplay v-if="!store.hideTags && deck.tags?.length" :tags="deck.tags" label="Tags" />
+                </div>
+
+                <div class="mt-4 flex flex-col md:flex-row gap-4">
+                  <a v-for="link in sortedLinks" :key="link.url" :href="link.url" target="_blank">{{ getLinkTypeText(Number(link.linkType)) }}</a>
+                </div>
+                <div v-if="!hideControl" class="mt-4">
+                  <div class="flex flex-col md:flex-row gap-4">
+                    <Button as="router-link" :to="`/decks/media/${deck.deckId}/detail`" label="View details" class="text-center" />
+                    <Button as="router-link" :to="`/decks/media/${deck.deckId}/vocabulary`" label="View vocabulary" class="text-center" />
+                    <Button label="Download deck" class="text-center" @click="showDownloadDialog = true" />
+                    <Button
+                      v-if="!isCompact && displayAdminFunctions"
+                      as="router-link"
+                      :to="`/dashboard/media/${deck.deckId}`"
+                      label="Edit"
+                      class="text-center"
+                    />
+                    <Button
+                      v-if="!isCompact && authStore.isAuthenticated"
+                      @click="showIssueDialog = true"
+                      label=" Report an issue"
+                      icon="pi pi-exclamation-triangle"
+                      class="text-center"
+                    />
+                  </div>
                 </div>
               </div>
             </div>
           </div>
         </div>
-      </div>
-    </template>
+      </template>
     </Card>
 
     <MediaDeckDownloadDialog :deck="deck" :visible="showDownloadDialog" @update:visible="showDownloadDialog = $event" />

@@ -13,4 +13,7 @@ public class Metadata
     public List<Metadata> Children { get; set; } = new();
     public List<string> Aliases { get; set; } = new();
     public int? Rating { get; set; }
+    public List<string> Genres { get; set; } = new();
+    public List<(string, int)> Tags { get; set; } = new();
+    public bool IsAdultOnly { get; set; }
 }

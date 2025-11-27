@@ -10,8 +10,8 @@ public class FetchMetadataJob(IDbContextFactory<JitenDbContext> contextFactory, 
 {
     private const float ANILIST_DELAY = 2.2f;
     private const float GOOGLE_BOOKS_DELAY = 3f;
-    private const float VNDB_DELAY = 2f;
-    private const float TMDB_DELAY = 2f;
+    private const float VNDB_DELAY = 3.5f;
+    private const float TMDB_DELAY = 1.5f;
     private const float IGDB_DELAY = 1f;
 
     [Queue("anilist")]
@@ -21,7 +21,12 @@ public class FetchMetadataJob(IDbContextFactory<JitenDbContext> contextFactory, 
 
         try
         {
-            var deck = context.Decks.Include(d => d.Links).Include(deck => deck.Titles).First(d => d.DeckId == deckId);
+            var deck = context.Decks
+                .Include(d => d.Links)
+                .Include(deck => deck.Titles)
+                .Include(d => d.DeckGenres)
+                .Include(d => d.DeckTags)
+                .First(d => d.DeckId == deckId);
             var link = deck.Links.FirstOrDefault(l => l.LinkType == LinkType.Anilist);
 
             if (link == null)
@@ -50,7 +55,9 @@ public class FetchMetadataJob(IDbContextFactory<JitenDbContext> contextFactory, 
                 if (deck.Titles.All(t => !string.Equals(t.Title, alias, StringComparison.OrdinalIgnoreCase)))
                     deck.Titles.Add(new DeckTitle(){DeckId = deck.DeckId, Title = alias, TitleType = DeckTitleType.Alias});
             }
-            
+
+            await MetadataProviderHelper.ApplyGenreAndTagMappings(context, deck, metadata, LinkType.Anilist);
+
             await context.SaveChangesAsync();
         }
         finally
@@ -66,7 +73,12 @@ public class FetchMetadataJob(IDbContextFactory<JitenDbContext> contextFactory, 
 
         try
         {
-            var deck = context.Decks.Include(d => d.Links).Include(deck => deck.Titles).First(d => d.DeckId == deckId);
+            var deck = context.Decks
+                .Include(d => d.Links)
+                .Include(deck => deck.Titles)
+                .Include(d => d.DeckGenres)
+                .Include(d => d.DeckTags)
+                .First(d => d.DeckId == deckId);
             var link = deck.Links.FirstOrDefault(l => l.LinkType == LinkType.GoogleBooks);
 
             if (link == null)
@@ -89,13 +101,15 @@ public class FetchMetadataJob(IDbContextFactory<JitenDbContext> contextFactory, 
 
             if (metadata.Rating != null)
                 deck.ExternalRating = (byte)metadata.Rating;
-            
+
             foreach (var alias in metadata.Aliases)
             {
                 if (deck.Titles.All(t => !string.Equals(t.Title, alias, StringComparison.OrdinalIgnoreCase)))
                     deck.Titles.Add(new DeckTitle(){DeckId = deck.DeckId, Title = alias, TitleType = DeckTitleType.Alias});
             }
-            
+
+            await MetadataProviderHelper.ApplyGenreAndTagMappings(context, deck, metadata, LinkType.GoogleBooks);
+
             await context.SaveChangesAsync();
         }
         finally
@@ -111,7 +125,12 @@ public class FetchMetadataJob(IDbContextFactory<JitenDbContext> contextFactory, 
 
         try
         {
-            var deck = context.Decks.Include(d => d.Links).Include(deck => deck.Titles).First(d => d.DeckId == deckId);
+            var deck = context.Decks
+                .Include(d => d.Links)
+                .Include(deck => deck.Titles)
+                .Include(d => d.DeckGenres)
+                .Include(d => d.DeckTags)
+                .First(d => d.DeckId == deckId);
             var link = deck.Links.FirstOrDefault(l => l.LinkType == LinkType.Vndb);
 
             if (link == null)
@@ -134,13 +153,15 @@ public class FetchMetadataJob(IDbContextFactory<JitenDbContext> contextFactory, 
 
             if (metadata.Rating != null)
                 deck.ExternalRating = (byte)metadata.Rating;
-            
+
             foreach (var alias in metadata.Aliases)
             {
                 if (deck.Titles.All(t => !string.Equals(t.Title, alias, StringComparison.OrdinalIgnoreCase)))
                     deck.Titles.Add(new DeckTitle(){DeckId = deck.DeckId, Title = alias, TitleType = DeckTitleType.Alias});
             }
-            
+
+            await MetadataProviderHelper.ApplyGenreAndTagMappings(context, deck, metadata, LinkType.Vndb);
+
             await context.SaveChangesAsync();
         }
         finally
@@ -156,7 +177,12 @@ public class FetchMetadataJob(IDbContextFactory<JitenDbContext> contextFactory, 
 
         try
         {
-            var deck = context.Decks.Include(d => d.Links).Include(d => d.Titles).First(d => d.DeckId == deckId);
+            var deck = context.Decks
+                .Include(d => d.Links)
+                .Include(d => d.Titles)
+                .Include(d => d.DeckGenres)
+                .Include(d => d.DeckTags)
+                .First(d => d.DeckId == deckId);
             var link = deck.Links.FirstOrDefault(l => l.LinkType == LinkType.Tmdb);
 
             if (link == null)
@@ -185,12 +211,14 @@ public class FetchMetadataJob(IDbContextFactory<JitenDbContext> contextFactory, 
 
             if (metadata.Rating != null)
                 deck.ExternalRating = (byte)metadata.Rating;
-            
+
             foreach (var alias in metadata.Aliases)
             {
                 if (deck.Titles.All(t => !string.Equals(t.Title, alias, StringComparison.OrdinalIgnoreCase)))
                     deck.Titles.Add(new DeckTitle(){DeckId = deck.DeckId, Title = alias, TitleType = DeckTitleType.Alias});
             }
+
+            await MetadataProviderHelper.ApplyGenreAndTagMappings(context, deck, metadata, LinkType.Tmdb);
 
             await context.SaveChangesAsync();
         }
@@ -207,7 +235,12 @@ public class FetchMetadataJob(IDbContextFactory<JitenDbContext> contextFactory, 
 
         try
         {
-            var deck = context.Decks.Include(d => d.Links).Include(d => d.Titles).First(d => d.DeckId == deckId);
+            var deck = context.Decks
+                .Include(d => d.Links)
+                .Include(d => d.Titles)
+                .Include(d => d.DeckGenres)
+                .Include(d => d.DeckTags)
+                .First(d => d.DeckId == deckId);
             var link = deck.Links.FirstOrDefault(l => l.LinkType == LinkType.Igdb);
 
             if (link == null)
@@ -218,7 +251,7 @@ public class FetchMetadataJob(IDbContextFactory<JitenDbContext> contextFactory, 
             Metadata metadata = await MetadataProviderHelper.IgdbApi(url,configuration["IgdbClientId"]!, configuration["IgdbClientSecret"]!);
             if (metadata == null)
                 throw new Exception($"Metadata for IGDB URL {url} not found.");
-            
+
             if (deck.ReleaseDate == default && metadata.ReleaseDate != null)
                 deck.ReleaseDate = DateOnly.FromDateTime(metadata.ReleaseDate.Value);
 
@@ -227,12 +260,14 @@ public class FetchMetadataJob(IDbContextFactory<JitenDbContext> contextFactory, 
 
             if (metadata.Rating != null)
                 deck.ExternalRating = (byte)metadata.Rating;
-            
+
             foreach (var alias in metadata.Aliases)
             {
                 if (deck.Titles.All(t => !string.Equals(t.Title, alias, StringComparison.OrdinalIgnoreCase)))
                     deck.Titles.Add(new DeckTitle(){DeckId = deck.DeckId, Title = alias, TitleType = DeckTitleType.Alias});
             }
+
+            await MetadataProviderHelper.ApplyGenreAndTagMappings(context, deck, metadata, LinkType.Igdb);
 
             await context.SaveChangesAsync();
         }

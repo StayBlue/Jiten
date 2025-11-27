@@ -22,6 +22,27 @@ export enum LinkType {
   Syosetsu = 9,
 }
 
+export enum Genre {
+  Action = 1,
+  Adventure = 2,
+  Comedy = 3,
+  Drama = 4,
+  Ecchi = 5,
+  Fantasy = 6,
+  Horror = 7,
+  Mecha = 8,
+  Music = 9,
+  Mystery = 10,
+  Psychological = 11,
+  Romance = 12,
+  SciFi = 13,
+  SliceOfLife = 14,
+  Sports = 15,
+  Supernatural = 16,
+  Thriller = 17,
+  AdultOnly = 18
+}
+
 export enum ReadingType {
   Reading = 1,
   KanaReading = 2,
@@ -90,4 +111,18 @@ export enum DeckStatus {
   Ongoing = 2,
   Completed = 3,
   Dropped = 4,
+}
+
+export enum FsrsState {
+  Learning = 1,
+  Review = 2,
+  Relearning = 3,
+  Blacklisted = 4,
+}
+
+export enum FsrsRating {
+  Again = 1,
+  Hard = 2,
+  Good = 3,
+  Easy = 4,
 }

@@ -23,7 +23,7 @@ namespace Jiten.Api.Controllers;
 [Route("api/admin")]
 [ApiExplorerSettings(IgnoreApi = true)]
 [Authorize("RequiresAdmin")]
-public class AdminController(
+public partial class AdminController(
     IConfiguration config,
     HttpClient httpClient,
     IBackgroundJobClient backgroundJobs,
@@ -70,7 +70,10 @@ public class AdminController(
                                     ReleaseDate = model.ReleaseDate.ToDateTime(new TimeOnly()), OriginalTitle = model.OriginalTitle.Trim(),
                                     RomajiTitle = model.RomajiTitle?.Trim(), EnglishTitle = model.EnglishTitle?.Trim(),
                                     Description = model.Description?.Trim(), Image = coverImagePathOrUrl, Links = new List<Link>(),
-                                    Rating = model.Rating
+                                    Rating = model.Rating,
+                                    Genres = model.Genres,
+                                    Tags = model.Tags.Select(t => (t.Name, t.Percentage)).ToList(),
+                                    IsAdultOnly = model.IsAdultOnly
                                 };
 
             // Parse links and aliases from form data
@@ -160,7 +163,7 @@ public class AdminController(
             backgroundJobs.Enqueue<ParseJob>(job => job.Parse(metadata, model.MediaType, bool.Parse(config["StoreRawText"] ?? "false")));
 
             logger.LogInformation("Admin added new deck: Title={Title}, MediaType={MediaType}, SubdeckCount={SubdeckCount}",
-                model.OriginalTitle, model.MediaType, metadata.Children?.Count ?? 0);
+                                  model.OriginalTitle, model.MediaType, metadata.Children?.Count ?? 0);
 
             return Ok(new
                       {
@@ -193,6 +196,9 @@ public class AdminController(
                             .Include(d => d.Children)
                             .Include(d => d.Links)
                             .Include(d => d.Titles)
+                            .Include(d => d.DeckGenres)
+                            .Include(d => d.DeckTags)
+                            .ThenInclude(dt => dt.Tag)
                             .FirstOrDefault(d => d.DeckId == id);
 
         if (deck == null)
@@ -228,7 +234,11 @@ public class AdminController(
                                   .Include(d => d.Links)
                                   .Include(d => d.RawText)
                                   .Include(d => d.Children)
-                                  .ThenInclude(deck => deck.RawText).Include(deck => deck.Titles)
+                                  .ThenInclude(deck => deck.RawText)
+                                  .Include(deck => deck.Titles)
+                                  .Include(d => d.DeckGenres)
+                                  .Include(d => d.DeckTags)
+                                  .ThenInclude(dt => dt.Tag)
                                   .FirstOrDefaultAsync(d => d.DeckId == model.DeckId);
 
         if (deck == null)
@@ -312,6 +322,61 @@ public class AdminController(
             }
         }
 
+        // Update genres
+        if (model.Genres != null && model.Genres.Any())
+        {
+            var newGenres = model.Genres.ToHashSet();
+            var existingGenres = deck.DeckGenres.Select(dg => (int)dg.Genre).ToHashSet();
+
+            // Remove genres no longer present
+            var genresToRemove = deck.DeckGenres.Where(dg => !newGenres.Contains((int)dg.Genre));
+            dbContext.RemoveRange(genresToRemove);
+
+            // Add new genres
+            foreach (var genreValue in model.Genres)
+            {
+                if (!existingGenres.Contains(genreValue))
+                {
+                    deck.DeckGenres.Add(new DeckGenre { DeckId = deck.DeckId, Genre = (Genre)genreValue });
+                }
+            }
+        }
+        else if (model.Genres != null)
+        {
+            // Clear all if empty list provided
+            dbContext.RemoveRange(deck.DeckGenres);
+        }
+
+        // Update tags
+        if (model.Tags != null && model.Tags.Any())
+        {
+            var newTagIds = model.Tags.Select(t => t.TagId).ToHashSet();
+            var existingTagIds = deck.DeckTags.Select(dt => dt.TagId).ToHashSet();
+
+            // Remove tags no longer present
+            var tagsToRemove = deck.DeckTags.Where(dt => !newTagIds.Contains(dt.TagId));
+            dbContext.RemoveRange(tagsToRemove);
+
+            // Update existing and add new tags
+            foreach (var tag in model.Tags)
+            {
+                var existingTag = deck.DeckTags.FirstOrDefault(dt => dt.TagId == tag.TagId);
+                if (existingTag != null)
+                {
+                    existingTag.Percentage = tag.Percentage;
+                }
+                else
+                {
+                    deck.DeckTags.Add(new DeckTag { DeckId = deck.DeckId, TagId = tag.TagId, Percentage = tag.Percentage });
+                }
+            }
+        }
+        else if (model.Tags != null)
+        {
+            // Clear all if empty list provided
+            dbContext.RemoveRange(deck.DeckTags);
+        }
+
         // Update subdecks if provided
         if (model.Subdecks != null && model.Subdecks.Count != 0)
         {
@@ -359,7 +424,7 @@ public class AdminController(
             backgroundJobs.Enqueue<ReparseJob>(job => job.Reparse(deck.DeckId));
 
         logger.LogInformation("Admin updated deck: DeckId={DeckId}, Title={Title}, Reparse={Reparse}",
-            deck.DeckId, deck.OriginalTitle, model.Reparse);
+                              deck.DeckId, deck.OriginalTitle, model.Reparse);
 
         return Ok(new { Message = $"Media deck {deck.DeckId} updated successfully" });
 
@@ -461,12 +526,12 @@ public class AdminController(
         for (int offset = 0; offset < totalParentDecks; offset += batchSize)
         {
             var parentDeckIds = await dbContext.Decks
-                .Where(d => d.ParentDeckId == null)
-                .OrderBy(d => d.DeckId)
-                .Skip(offset)
-                .Take(batchSize)
-                .Select(d => d.DeckId)
-                .ToListAsync();
+                                               .Where(d => d.ParentDeckId == null)
+                                               .OrderBy(d => d.DeckId)
+                                               .Skip(offset)
+                                               .Take(batchSize)
+                                               .Select(d => d.DeckId)
+                                               .ToListAsync();
 
             foreach (var deckId in parentDeckIds)
             {
@@ -478,39 +543,45 @@ public class AdminController(
 
                 // Calculate unique word count using database aggregation
                 deck.UniqueWordCount = await dbContext.DeckWords
-                    .Where(dw => dw.DeckId == deckId)
-                    .Select(dw => new { dw.WordId, dw.ReadingIndex })
-                    .Distinct()
-                    .CountAsync();
+                                                      .Where(dw => dw.DeckId == deckId)
+                                                      .Select(dw => new { dw.WordId, dw.ReadingIndex })
+                                                      .Distinct()
+                                                      .CountAsync();
 
                 deck.UniqueWordUsedOnceCount = await dbContext.DeckWords
-                    .Where(dw => dw.DeckId == deckId && dw.Occurrences == 1)
-                    .Select(dw => new { dw.WordId, dw.ReadingIndex })
-                    .Distinct()
-                    .CountAsync();
+                                                              .Where(dw => dw.DeckId == deckId && dw.Occurrences == 1)
+                                                              .Select(dw => new { dw.WordId, dw.ReadingIndex })
+                                                              .Distinct()
+                                                              .CountAsync();
 
                 if (oldUniqueCount != deck.UniqueWordCount || oldUniqueUsedOnceCount != deck.UniqueWordUsedOnceCount)
                 {
                     updatedCount++;
                     logger.LogInformation("Updated deck {DeckId} '{Title}': UniqueWordCount {Old} -> {New}, UniqueWordUsedOnceCount {OldOnce} -> {NewOnce}",
-                        deck.DeckId, deck.OriginalTitle, oldUniqueCount, deck.UniqueWordCount, oldUniqueUsedOnceCount, deck.UniqueWordUsedOnceCount);
+                                          deck.DeckId, deck.OriginalTitle, oldUniqueCount, deck.UniqueWordCount, oldUniqueUsedOnceCount,
+                                          deck.UniqueWordUsedOnceCount);
                 }
             }
 
             await dbContext.SaveChangesAsync();
-            logger.LogInformation("Processed batch: {Offset}-{End} of {Total}", offset, Math.Min(offset + batchSize, totalParentDecks), totalParentDecks);
+            logger.LogInformation("Processed batch: {Offset}-{End} of {Total}", offset, Math.Min(offset + batchSize, totalParentDecks),
+                                  totalParentDecks);
         }
 
         logger.LogInformation("Admin recalculated parent deck unique counts: TotalParentDecks={Total}, UpdatedDecks={Updated}",
-            totalParentDecks, updatedCount);
+                              totalParentDecks, updatedCount);
 
-        return Ok(new { Message = $"Recalculated unique word counts for {totalParentDecks} parent decks", UpdatedCount = updatedCount, TotalCount = totalParentDecks });
+        return Ok(new
+                  {
+                      Message = $"Recalculated unique word counts for {totalParentDecks} parent decks", UpdatedCount = updatedCount,
+                      TotalCount = totalParentDecks
+                  });
     }
 
     [HttpGet("issues")]
     public async Task<IActionResult> GetIssues()
     {
-        var decks = await dbContext.Decks.AsNoTracking().Include(d => d.Links).ToListAsync();
+        var decks = await dbContext.Decks.AsNoTracking().Include(d => d.Links).Include(d => d.DeckGenres).Include(d => d.DeckTags).ToListAsync();
         var issues = new IssuesDto();
 
         // We always need the romaji title for ordering
@@ -523,6 +594,12 @@ public class AdminController(
             decks.Where(d => d.ParentDeckId == null).Where(d => d.ReleaseDate == default).Select(d => d.DeckId).ToList();
         issues.MissingDescription = decks.Where(d => d.ParentDeckId == null).Where(d => string.IsNullOrEmpty(d.Description))
                                          .Select(d => d.DeckId).ToList();
+        issues.MissingGenres = decks.Where(d => d.ParentDeckId == null)
+                                    .Where(d => d.DeckGenres.Count == 0)
+                                    .Select(d => d.DeckId).ToList();
+        issues.MissingTags = decks.Where(d => d.ParentDeckId == null)
+                                  .Where(d => d.DeckTags.Count == 0)
+                                  .Select(d => d.DeckId).ToList();
 
         return Ok(issues);
     }
@@ -567,8 +644,6 @@ public class AdminController(
     {
         var decks = await dbContext
                           .Decks.Where(d => d.ParentDeck == null)
-                          .Where(d => d.Titles.All(t => t.TitleType != DeckTitleType.Alias) || d.ReleaseDate == default ||
-                                      string.IsNullOrEmpty(d.Description) || d.ExternalRating == 0)
                           .Include(deck => deck.Links).ToListAsync();
 
         foreach (var deck in decks)

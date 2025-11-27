@@ -276,6 +276,26 @@
         }
       }
 
+      // Add genres from metadata if available
+      if (selectedMetadata.value?.genres && selectedMetadata.value.genres.length > 0) {
+        for (let i = 0; i < selectedMetadata.value.genres.length; i++) {
+          formData.append(`genres[${i}]`, selectedMetadata.value.genres[i]);
+        }
+      }
+
+      // Add tags from metadata if available
+      if (selectedMetadata.value?.tags && selectedMetadata.value.tags.length > 0) {
+        for (let i = 0; i < selectedMetadata.value.tags.length; i++) {
+          formData.append(`tags[${i}].name`, selectedMetadata.value.tags[i].name);
+          formData.append(`tags[${i}].percentage`, selectedMetadata.value.tags[i].percentage.toString());
+        }
+      }
+
+      // Add isAdultOnly from metadata if available
+      if (selectedMetadata.value?.isAdultOnly !== undefined) {
+        formData.append('isAdultOnly', selectedMetadata.value.isAdultOnly.toString());
+      }
+
       if (subdecks.value.length === 0 && selectedFile.value) {
         // If no subdecks, include the main file
         formData.append('file', selectedFile.value);

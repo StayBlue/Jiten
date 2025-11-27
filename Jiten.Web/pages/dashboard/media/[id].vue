@@ -10,10 +10,14 @@
   import Column from 'primevue/column';
   import { useToast } from 'primevue/usetoast';
   import { LinkType } from '~/types';
-  import type { DeckDetail, Link, MediaType } from '~/types';
+  import type { DeckDetail, Link, MediaType, Tag, Genre } from '~/types';
   import { getMediaTypeText, getChildrenCountText } from '~/utils/mediaTypeMapper';
   import { getLinkTypeText } from '~/utils/linkTypeMapper';
+  import { getAllGenres } from '~/utils/genreMapper';
   import Checkbox from 'primevue/checkbox';
+  import Select from 'primevue/select';
+  import MultiSelect from 'primevue/multiselect';
+  import InputNumber from 'primevue/inputnumber';
 
   const route = useRoute();
   const mediaId = route.params.id;
@@ -60,6 +64,20 @@
   const aliases = ref<string[]>([]);
   const showAddAliasDialog = ref(false);
   const newAlias = ref('');
+
+  // Genres
+  const selectedGenres = ref<number[]>([]);
+  const genreOptions = computed(() => getAllGenres());
+
+  // Tags
+  const availableTags = ref<Tag[]>([]);
+  const selectedTags = ref<Array<{ tagId: number; name: string; percentage: number }>>([]);
+  const showAddTagDialog = ref(false);
+  const newTag = ref<{ tagId: number | null; percentage: number }>({
+    tagId: null,
+    percentage: 50
+  });
+  const tagsLoading = ref(false);
 
   const newSubdeckUploaderRef = ref<InstanceType<typeof FileUpload> | null>(null);
 
@@ -133,6 +151,15 @@
 
       links.value = mainDeck.links || [];
       aliases.value = mainDeck.aliases || [];
+
+      selectedGenres.value = mainDeck.genres || [];
+      selectedTags.value = mainDeck.tags?.map(t => ({
+        tagId: t.tagId,
+        name: t.name,
+        percentage: t.percentage
+      })) || [];
+
+      loadAvailableTags();
 
       if (response.value.subDecks && response.value.subDecks.length > 0) {
         subdecks.value = response.value.subDecks.map((subdeck, index) => ({
@@ -229,6 +256,51 @@
     newSubdecks[index] = newSubdecks[index + 1];
     newSubdecks[index + 1] = temp;
     subdecks.value = newSubdecks;
+  }
+
+  async function loadAvailableTags() {
+    tagsLoading.value = true;
+    try {
+      availableTags.value = await $api<Tag[]>('admin/tags');
+    } catch (error) {
+      showToast('error', 'Error', 'Failed to load tags');
+      console.error('Error loading tags:', error);
+    } finally {
+      tagsLoading.value = false;
+    }
+  }
+
+  function openAddTagDialog() {
+    newTag.value = { tagId: null, percentage: 50 };
+    showAddTagDialog.value = true;
+  }
+
+  function addTag() {
+    if (!newTag.value.tagId) {
+      showToast('warn', 'Validation', 'Please select a tag');
+      return;
+    }
+
+    const exists = selectedTags.value.some(t => t.tagId === newTag.value.tagId);
+    if (exists) {
+      showToast('warn', 'Duplicate', 'Tag already added');
+      return;
+    }
+
+    const tag = availableTags.value.find(t => t.tagId === newTag.value.tagId);
+    if (tag) {
+      selectedTags.value.push({
+        tagId: newTag.value.tagId!,
+        name: tag.name,
+        percentage: newTag.value.percentage
+      });
+    }
+
+    showAddTagDialog.value = false;
+  }
+
+  function removeTag(index: number) {
+    selectedTags.value.splice(index, 1);
   }
 
   function moveSubdeckToPosition(id: number, targetPosition: number | null) {
@@ -390,6 +462,17 @@
           formData.append(`aliases[${i}]`, aliases.value[i]);
         }
       }
+
+      // Add genres
+      selectedGenres.value.forEach((genre, index) => {
+        formData.append(`genres[${index}]`, genre.toString());
+      });
+
+      // Add tags
+      selectedTags.value.forEach((tag, index) => {
+        formData.append(`tags[${index}].tagId`, tag.tagId.toString());
+        formData.append(`tags[${index}].percentage`, tag.percentage.toString());
+      });
 
       if (subdecks.value.length > 0) {
         for (let i = 0; i < subdecks.value.length; i++) {
@@ -658,6 +741,117 @@
             </div>
           </template>
         </Card>
+
+        <!-- Genres Section -->
+        <Card class="mt-6">
+          <template #title>Genres</template>
+          <template #content>
+            <div class="mb-4">
+              <label class="block text-sm font-medium mb-2">Select Genres</label>
+              <MultiSelect
+                v-model="selectedGenres"
+                :options="genreOptions"
+                option-label="label"
+                option-value="value"
+                placeholder="Select genres"
+                class="w-full"
+                :max-selected-labels="3"
+              />
+            </div>
+
+            <div v-if="selectedGenres.length > 0" class="flex flex-wrap gap-2">
+              <span
+                v-for="genre in selectedGenres"
+                :key="genre"
+                class="inline-flex items-center gap-2 px-3 py-1.5 bg-purple-600 text-white rounded-full text-sm"
+              >
+                {{ genreOptions.find(g => g.value === genre)?.label }}
+                <button
+                  type="button"
+                  @click="selectedGenres = selectedGenres.filter(g => g !== genre)"
+                  class="hover:opacity-75"
+                >
+                  <Icon name="material-symbols-light:close" size="1em" />
+                </button>
+              </span>
+            </div>
+          </template>
+        </Card>
+
+        <!-- Tags Section -->
+        <Card class="mt-6">
+          <template #title>
+            <div class="flex justify-between items-center">
+              <span>Tags</span>
+              <Button @click="openAddTagDialog" :loading="tagsLoading" size="small">
+                <Icon name="material-symbols-light:add-circle-outline" size="1.25em" class="mr-1" />
+                Add Tag
+              </Button>
+            </div>
+          </template>
+          <template #content>
+            <div v-if="selectedTags.length === 0" class="text-center text-gray-500 py-4">
+              No tags added. Click "Add Tag" to add one.
+            </div>
+
+            <ul v-else class="list-none p-0 space-y-2">
+              <li
+                v-for="(tag, index) in selectedTags"
+                :key="tag.tagId"
+                class="flex justify-between items-center p-3 border rounded"
+              >
+                <div class="flex items-center gap-4 flex-1">
+                  <span class="font-medium min-w-[150px]">{{ tag.name }}</span>
+                  <div class="flex items-center gap-2">
+                    <label class="text-sm font-medium">Percentage:</label>
+                    <InputNumber
+                      v-model="selectedTags[index].percentage"
+                      :min="0"
+                      :max="100"
+                      suffix="%"
+                      class="w-24"
+                    />
+                  </div>
+                </div>
+                <Button severity="danger" text @click="removeTag(index)">
+                  <Icon name="material-symbols-light:delete" size="1.5em" />
+                </Button>
+              </li>
+            </ul>
+          </template>
+        </Card>
+
+        <!-- Add Tag Dialog -->
+        <Dialog v-model:visible="showAddTagDialog" header="Add Tag" :modal="true" class="w-full md:w-1/2">
+          <div class="p-fluid">
+            <div class="mb-4">
+              <label class="block text-sm font-medium mb-2">Tag</label>
+              <Select
+                v-model="newTag.tagId"
+                :options="availableTags"
+                option-label="name"
+                option-value="tagId"
+                placeholder="Select a tag"
+                class="w-full"
+                :loading="tagsLoading"
+              />
+            </div>
+            <div class="mb-4">
+              <label class="block text-sm font-medium mb-2">Percentage</label>
+              <InputNumber
+                v-model="newTag.percentage"
+                :min="0"
+                :max="100"
+                suffix="%"
+                class="w-full"
+              />
+            </div>
+          </div>
+          <template #footer>
+            <Button label="Cancel" severity="secondary" text @click="showAddTagDialog = false" />
+            <Button label="Add" @click="addTag" />
+          </template>
+        </Dialog>
 
         <!-- Subdecks section -->
         <div class="mt-6">
