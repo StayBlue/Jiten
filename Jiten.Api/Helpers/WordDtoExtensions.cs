@@ -10,7 +10,7 @@ public static class WordDtoExtensions
     {
         foreach (var word in words)
         {
-            word.KnownState = knownWords.GetValueOrDefault((word.WordId, word.MainReading.ReadingIndex), KnownState.Unknown);
+            word.KnownState = knownWords.GetValueOrDefault((word.WordId, word.MainReading.ReadingIndex), KnownState.New);
         }
     }
 }

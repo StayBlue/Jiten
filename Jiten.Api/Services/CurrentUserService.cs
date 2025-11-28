@@ -3,13 +3,16 @@ using System.Security.Claims;
 using Jiten.Core;
 using Jiten.Core.Data;
 using Jiten.Core.Data.FSRS;
-using Jiten.Core.Data.JMDict;
 using Jiten.Core.Data.User;
 using Microsoft.EntityFrameworkCore;
 
 namespace Jiten.Api.Services;
 
-public class CurrentUserService(IHttpContextAccessor httpContextAccessor, JitenDbContext jitenDbContext, UserDbContext userContext)
+public class CurrentUserService(
+    IHttpContextAccessor httpContextAccessor,
+    JitenDbContext jitenDbContext,
+    UserDbContext userContext,
+    ISrsService srsService)
     : ICurrentUserService
 {
     public ClaimsPrincipal? Principal => httpContextAccessor.HttpContext?.User;
@@ -50,32 +53,39 @@ public class CurrentUserService(IHttpContextAccessor httpContextAccessor, JitenD
 
         var candidateDict = candidates
                             .Where(w => keysList.Contains((w.WordId, w.ReadingIndex)))
-                            .ToDictionary(w => (w.WordId, w.ReadingIndex),
-                                          w => w.State == FsrsState.Blacklisted
-                                              ? KnownState.Blacklisted
-                                              : w.LastReview == null || (getDue && (w.Due - DateTime.Now).TotalDays <= 0)
-                                                  ? KnownState.Due
-                                                  : (w.Due - w.LastReview.Value).TotalDays < 21
-                                                      ? KnownState.Young
-                                                      : KnownState.Mature);
+                            .ToDictionary<FsrsCard, (int WordId, byte ReadingIndex), KnownState>(w => (w.WordId, w.ReadingIndex), w =>
+                            {
+                                if (w.State == FsrsState.Blacklisted) return KnownState.Blacklisted;
+                                if (w.State == FsrsState.Mastered) return KnownState.Mature;
+                                if (w.State == FsrsState.New) return KnownState.New;
+
+                                if (w.LastReview == null || (getDue && w.Due <= DateTime.UtcNow))
+                                    return KnownState.Due;
+
+                                var interval = (w.Due - w.LastReview.Value).TotalDays;
+                                return interval < 21 ? KnownState.Young : KnownState.Mature;
+                            });
 
         return keysList.ToDictionary(k => k,
-                                     k => candidateDict.GetValueOrDefault(k, KnownState.Unknown));
+                                     k => candidateDict.GetValueOrDefault(k, KnownState.New));
     }
 
     public async Task<KnownState> GetKnownWordState(int wordId, byte readingIndex)
     {
         if (!IsAuthenticated)
-            return KnownState.Unknown;
+            return KnownState.New;
 
         var word = await userContext.FsrsCards.FirstOrDefaultAsync(u => u.UserId == UserId && u.WordId == wordId &&
                                                                         u.ReadingIndex == readingIndex);
 
-        if (word == null)
-            return KnownState.Unknown;
+        if (word == null || word.State == FsrsState.New)
+            return KnownState.New;
 
         if (word.State == FsrsState.Blacklisted)
             return KnownState.Blacklisted;
+
+        if (word.State == FsrsState.Mastered)
+            return KnownState.Mature;
 
         var dueIn = (word.Due - word.LastReview!.Value).TotalDays;
         return dueIn < 21 ? KnownState.Young : KnownState.Mature;
@@ -97,7 +107,7 @@ public class CurrentUserService(IHttpContextAccessor httpContextAccessor, JitenD
                                               .Select(w => new { w.WordId, w.ReadingTypes })
                                               .ToListAsync();
 
-        // Determine all (WordId, ReadingIndex) pairs to add, including KanaReading when needed
+        // Determine all (WordId, ReadingIndex) pairs to add
         var pairs = new HashSet<(int WordId, byte ReadingIndex)>();
         foreach (var jw in jmdictWords)
         {
@@ -106,11 +116,6 @@ public class CurrentUserService(IHttpContextAccessor httpContextAccessor, JitenD
             {
                 if (idx >= jw.ReadingTypes.Count) continue;
                 pairs.Add((jw.WordId, idx));
-                if (jw.ReadingTypes[idx] != JmDictReadingType.Reading) continue;
-
-                var kanaIndex = jw.ReadingTypes.FindIndex(t => t == JmDictReadingType.KanaReading);
-                if (kanaIndex >= 0)
-                    pairs.Add((jw.WordId, (byte)kanaIndex));
             }
         }
 
@@ -124,29 +129,32 @@ public class CurrentUserService(IHttpContextAccessor httpContextAccessor, JitenD
         var existingSet = existing.ToDictionary(e => (e.WordId, e.ReadingIndex));
 
         List<FsrsCard> toInsert = new();
+        var cardsToSync = new List<(int WordId, byte ReadingIndex, FsrsCard SourceCard, bool Overwrite)>();
+
         foreach (var p in pairs)
         {
             if (!existingSet.TryGetValue(p, out var existingUk))
             {
-                toInsert.Add(new FsrsCard(UserId!, p.WordId, p.ReadingIndex, due: now.AddYears(100), lastReview: now,
-                                          state: FsrsState.Review));
+                var newCard = new FsrsCard(UserId!, p.WordId, p.ReadingIndex, due: now, lastReview: now,
+                                           state: FsrsState.Mastered);
+                toInsert.Add(newCard);
+                cardsToSync.Add((newCard.WordId, newCard.ReadingIndex, newCard, true));
             }
             else
             {
-                existingUk.State = FsrsState.Review;
-                existingUk.Due = now.AddYears(100);
-                existingUk.LastReview = now;
+                existingUk.State = FsrsState.Mastered;
+                cardsToSync.Add((existingUk.WordId, existingUk.ReadingIndex, existingUk, true));
             }
         }
 
         if (toInsert.Count > 0)
             await userContext.FsrsCards.AddRangeAsync(toInsert);
 
-        var updated = existing.Any(e => e.State == FsrsState.Review && e.Due == now) ||
-                      existing.Any(e => e.State != FsrsState.Review && e.Due == now);
-        if (toInsert.Count > 0 || updated)
+        await userContext.SaveChangesAsync();
+
+        if (cardsToSync.Count > 0)
         {
-            await userContext.SaveChangesAsync();
+            await srsService.SyncKanaReadingBatch(UserId!, cardsToSync, now);
         }
 
         return (toInsert.Count);
@@ -161,26 +169,13 @@ public class CurrentUserService(IHttpContextAccessor httpContextAccessor, JitenD
     {
         if (!IsAuthenticated) return;
 
-        var jw = await jitenDbContext.JMDictWords.AsNoTracking().Where(w => w.WordId == wordId)
-                                     .Select(w => new { w.WordId, w.ReadingTypes }).FirstOrDefaultAsync();
-        if (jw == null) return;
-        if (readingIndex >= jw.ReadingTypes.Count) return;
+        var card = await userContext.FsrsCards.FirstOrDefaultAsync(u => u.UserId == UserId && u.WordId == wordId &&
+                                                                        u.ReadingIndex == readingIndex);
+        if (card == null) return;
 
-        var pairs = new HashSet<(int WordId, byte ReadingIndex)> { (wordId, readingIndex) };
-        if (jw.ReadingTypes[readingIndex] == JmDictReadingType.Reading)
-        {
-            var kanaIndex = jw.ReadingTypes.FindIndex(t => t == JmDictReadingType.KanaReading);
-            if (kanaIndex >= 0)
-                pairs.Add((wordId, (byte)kanaIndex));
-        }
+        card.State = FsrsState.New;
+        await srsService.SyncKanaReading(UserId, wordId, readingIndex, card, DateTime.UtcNow);
 
-        List<int> pairWordIds = pairs.Select(p => p.WordId).Distinct().ToList();
-        List<FsrsCard> toRemove = await userContext.FsrsCards
-                                                   .Where(uk => uk.UserId == UserId && pairWordIds.Contains(uk.WordId))
-                                                   .ToListAsync();
-        List<FsrsCard> removals = toRemove.Where(uk => pairs.Contains((uk.WordId, uk.ReadingIndex))).ToList();
-        if (removals.Count == 0) return;
-        userContext.FsrsCards.RemoveRange(removals);
         await userContext.SaveChangesAsync();
     }
 

@@ -21,6 +21,7 @@ public class UserController(
     IDbContextFactory<JitenDbContext> contextFactory,
     UserDbContext userContext,
     IBackgroundJobClient backgroundJobs,
+    ISrsService srsService,
     ILogger<UserController> logger) : ControllerBase
 {
     /// <summary>
@@ -207,56 +208,225 @@ public class UserController(
     /// </summary>
     [HttpPost("vocabulary/import-from-anki")]
     [Consumes("text/json", "application/json")]
-    public async Task<IActionResult> ImportFromAnki([FromBody] AnkiImportRequest request)
+    public async Task<IResult> ImportFromAnki([FromBody] AnkiImportRequest request)
     {
         var userId = userService.UserId;
         if (string.IsNullOrEmpty(userId)) return Results.Unauthorized();
-        
+
         if (request?.Cards == null || request.Cards.Count == 0)
-            return BadRequest("No cards provided.");
+            return Results.BadRequest("No cards provided.");
 
-        int importedCount = 0;
+        // Step 1: Parse all unique words to get WordId + ReadingIndex
+        var uniqueWords = request.Cards
+            .Select(c => c.Card.Word)
+            .Where(w => !string.IsNullOrWhiteSpace(w))
+            .Distinct()
+            .ToList();
 
-        foreach (var item in request.Cards)
+        if (uniqueWords.Count == 0)
+            return Results.BadRequest("No valid words found.");
+
+        var combinedText = string.Join(Environment.NewLine, uniqueWords);
+        var parsedWords = await Parser.Parser.ParseText(contextFactory, combinedText);
+
+        // Create lookup: original text → (WordId, ReadingIndex)
+        var wordLookup = new Dictionary<string, (int WordId, byte ReadingIndex)>();
+        foreach (var parsed in parsedWords)
         {
-            var cardData = item.Card;
-            var reviewLogs = item.ReviewLogs;
-
-            var fsrsCard = new FsrsCard
-                           {
-                               CardId = cardData.CardId,
-                               UserId = User.Identity?.Name ?? "unknown",
-                               WordId = cardData.WordId,
-                               ReadingIndex = 0,
-                               State = cardData.State,
-                               Step = null,
-                               Stability = cardData.Stability,
-                               Difficulty = Math.Clamp(10 - (cardData.Difficulty!.Value - 1300) / 170.0, 1.0, 10.0),
-                               Due = cardData.Due, // TODO: add collection creation time
-                               LastReview = DateTimeOffset.FromUnixTimeSeconds(cardData.LastReview).UtcDateTime
-                           };
-
-            _dbContext.FsrsCards.Add(fsrsCard);
-            await _dbContext.SaveChangesAsync();
-
-            foreach (var review in reviewLogs)
+            if (!wordLookup.ContainsKey(parsed.OriginalText))
             {
-                var log = new FsrsReviewLog
-                          {
-                              ReviewLogId = review.ReviewLogId,
-                              CardId = fsrsCard.CardId,
-                              ReviewDateTime = review.ReviewDateTime,
-                              ReviewDuration = review.ReviewDuration,
-                              Rating = MapRating(review.Rating)
-                          };
-                _dbContext.FsrsReviewLogs.Add(log);
+                wordLookup[parsed.OriginalText] = (parsed.WordId, parsed.ReadingIndex);
             }
-
-            await _dbContext.SaveChangesAsync();
-            importedCount++;
         }
 
-        return Ok(new { imported = importedCount });
+        // Track skipped words for user feedback
+        var skippedWords = new List<string>();
+
+        // Step 2: Get existing cards
+        var parsedWordIds = wordLookup.Values.Select(v => v.WordId).Distinct().ToList();
+        var existingCards = await userContext.FsrsCards
+            .Include(c => c.ReviewLogs)
+            .Where(c => c.UserId == userId && parsedWordIds.Contains(c.WordId))
+            .ToListAsync();
+
+        var existingCardsMap = existingCards
+            .ToDictionary(c => (c.WordId, c.ReadingIndex));
+
+        // Step 3: Process cards - separate new cards vs updates
+        var cardsToAdd = new List<FsrsCard>();
+        var cardsToUpdate = new List<FsrsCard>();
+        var cardToAnkiMap = new Dictionary<FsrsCard, AnkiCardWrapper>();
+        int skippedCount = 0;
+
+        foreach (var wrapper in request.Cards)
+        {
+            var word = wrapper.Card.Word?.Trim();
+            if (string.IsNullOrWhiteSpace(word))
+            {
+                skippedCount++;
+                continue;
+            }
+
+            // Lookup parsed word
+            if (!wordLookup.TryGetValue(word, out var wordInfo))
+            {
+                skippedWords.Add(word);
+                skippedCount++;
+                continue;
+            }
+
+            // Validate and clamp values
+            var stability = Math.Max(0, wrapper.Card.Stability ?? 0);
+            var difficulty = Math.Clamp(wrapper.Card.Difficulty ?? 5.0, 1.0, 10.0);
+            var state = wrapper.Card.State;
+
+            // Check if card already exists
+            if (existingCardsMap.TryGetValue((wordInfo.WordId, wordInfo.ReadingIndex), out var existingCard))
+            {
+                if (!request.Overwrite)
+                {
+                    skippedCount++;
+                    continue;
+                }
+
+                // Update existing card
+                existingCard.State = state;
+                existingCard.Stability = stability;
+                existingCard.Difficulty = difficulty;
+                existingCard.Due = wrapper.Card.Due;
+                existingCard.LastReview = wrapper.Card.LastReview;
+                existingCard.Step = state == FsrsState.Learning ? (byte?)0 : null;
+
+                cardsToUpdate.Add(existingCard);
+                cardToAnkiMap[existingCard] = wrapper;
+            }
+            else
+            {
+                // Create new card
+                var fsrsCard = new FsrsCard(
+                    userId,
+                    wordInfo.WordId,
+                    wordInfo.ReadingIndex,
+                    state: state,
+                    due: wrapper.Card.Due,
+                    lastReview: wrapper.Card.LastReview
+                )
+                {
+                    Stability = stability,
+                    Difficulty = difficulty,
+                    Step = state == FsrsState.Learning ? (byte?)0 : null,
+                };
+
+                cardsToAdd.Add(fsrsCard);
+                cardToAnkiMap[fsrsCard] = wrapper;
+            }
+        }
+
+        // Step 4: Bulk insert/update with transaction
+        if (cardsToAdd.Count == 0 && cardsToUpdate.Count == 0)
+        {
+            return Results.Ok(new
+            {
+                imported = 0,
+                updated = 0,
+                skipped = skippedCount,
+                reviewLogs = 0,
+                skippedWords = skippedWords.Take(50).ToList()
+            });
+        }
+
+        await using var transaction = await userContext.Database.BeginTransactionAsync();
+        try
+        {
+            // Insert new cards
+            if (cardsToAdd.Count > 0)
+            {
+                await userContext.FsrsCards.AddRangeAsync(cardsToAdd);
+                await userContext.SaveChangesAsync();
+            }
+
+            // Handle review logs
+            var logsToAdd = new List<FsrsReviewLog>();
+            var allCards = cardsToAdd.Concat(cardsToUpdate).ToList();
+
+            foreach (var card in allCards)
+            {
+                var wrapper = cardToAnkiMap[card];
+
+                // For updated cards, remove old review logs
+                if (cardsToUpdate.Contains(card))
+                {
+                    userContext.FsrsReviewLogs.RemoveRange(card.ReviewLogs);
+                }
+
+                // Add new review logs
+                foreach (var log in wrapper.ReviewLogs)
+                {
+                    // Validate rating
+                    if (log.Rating < FsrsRating.Again || log.Rating > FsrsRating.Easy)
+                        continue;
+
+                    logsToAdd.Add(new FsrsReviewLog
+                    {
+                        CardId = card.CardId,
+                        Rating = log.Rating,
+                        ReviewDateTime = log.ReviewDateTime,
+                        ReviewDuration = log.ReviewDuration,
+                    });
+                }
+            }
+
+            if (logsToAdd.Count > 0)
+            {
+                await userContext.FsrsReviewLogs.AddRangeAsync(logsToAdd);
+            }
+
+            await userContext.SaveChangesAsync();
+
+            // Sync kana readings for imported/updated kanji cards
+            var cardsToSync = new List<(int WordId, byte ReadingIndex, FsrsCard SourceCard, bool Overwrite)>();
+
+            // Process newly added cards
+            foreach (var card in cardsToAdd)
+            {
+                cardsToSync.Add((card.WordId, card.ReadingIndex, card, request.Overwrite));
+            }
+
+            // Process updated cards
+            foreach (var card in cardsToUpdate)
+            {
+                cardsToSync.Add((card.WordId, card.ReadingIndex, card, request.Overwrite));
+            }
+
+            if (cardsToSync.Count > 0)
+            {
+                await srsService.SyncKanaReadingBatch(userId, cardsToSync, DateTime.UtcNow);
+            }
+
+            await transaction.CommitAsync();
+
+            backgroundJobs.Enqueue<ComputationJob>(job => job.ComputeUserCoverage(userId));
+
+            logger.LogInformation(
+                "Anki import completed: UserId={UserId}, Imported={Imported}, Updated={Updated}, Skipped={Skipped}, Logs={Logs}, NotFound={NotFound}",
+                userId, cardsToAdd.Count, cardsToUpdate.Count, skippedCount, logsToAdd.Count, skippedWords.Count
+            );
+
+            return Results.Ok(new
+            {
+                imported = cardsToAdd.Count,
+                updated = cardsToUpdate.Count,
+                skipped = skippedCount,
+                reviewLogs = logsToAdd.Count,
+                skippedWords = skippedWords.Take(50).ToList()
+            });
+        }
+        catch (Exception ex)
+        {
+            await transaction.RollbackAsync();
+            logger.LogError(ex, "Anki import failed");
+            return Results.Problem("Import failed: " + ex.Message);
+        }
     }
 
     /// <summary>

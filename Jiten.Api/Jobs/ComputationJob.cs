@@ -193,6 +193,7 @@ public class ComputationJob(
                                           AND kw."ReadingIndex" = dw."ReadingIndex"
                                           AND (
                                               kw."State" = 4
+                                              OR kw."State" = 5
                                               OR (kw."LastReview" IS NOT NULL
                                                   AND (kw."Due" - kw."LastReview") >= INTERVAL '21 days')
                                           )

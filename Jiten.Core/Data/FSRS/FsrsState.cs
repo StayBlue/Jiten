@@ -6,6 +6,11 @@ namespace Jiten.Core.Data.FSRS;
 public enum FsrsState
 {
     /// <summary>
+    /// No state or state resetted
+    /// </summary>
+    New = 0,
+    
+    /// <summary>
     /// Card is being learned for the first time
     /// </summary>
     Learning = 1,
@@ -24,4 +29,9 @@ public enum FsrsState
     /// Card is blacklisted and will never be reviewed
     /// </summary>
     Blacklisted = 4,
+    
+    /// <summary>
+    /// Card marked as always known, will never be reviewed
+    /// </summary>
+    Mastered = 5
 }

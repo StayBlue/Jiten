@@ -148,6 +148,7 @@ public class FsrsScheduler
             FsrsState.Review => CalculateReviewInterval(card, rating),
             FsrsState.Relearning => CalculateRelearningInterval(card, rating),
             FsrsState.Blacklisted => TimeSpan.MaxValue,
+            FsrsState.Mastered => TimeSpan.Zero, 
             _ => throw new ArgumentException($"Unknown card state: {card.State}")
         };
     }

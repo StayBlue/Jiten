@@ -330,6 +330,7 @@ builder.Services.AddSingleton<ApiKeyService>();
 builder.Services.AddScoped<Microsoft.AspNetCore.Identity.UI.Services.IEmailSender, Jiten.Api.Services.EmailService>();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
+builder.Services.AddScoped<ISrsService, SrsService>();
 
 builder.Services.AddRateLimiter(options =>
 {

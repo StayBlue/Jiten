@@ -2,7 +2,7 @@ namespace Jiten.Core.Data.User;
 
 public enum KnownState
 {
-    Unknown = 0,
+    New = 0,
     Young = 1,
     Mature = 2,
     Blacklisted = 3,
