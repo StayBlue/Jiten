@@ -158,7 +158,7 @@
         } else if (card.queue === 1 || card.queue === 3) {
           // Learning cards: due is timestamp in seconds
           due = new Date(card.due * 1000);
-          console.log("learning : " + due);
+          // console.log("learning : " + due);
         } else {
           // Review cards: days since collection creation
           if (latestReview) {
@@ -173,7 +173,7 @@
             due = new Date((card.mod * 1000) + (card.interval * 86400000));
           }
 
-          console.log("review : " + due)
+          // console.log("review : " + due)
         }
 
         // Last review timestamp

@@ -202,7 +202,7 @@ public class UserController(
                               userId, parsedWords.Count, added);
         return Results.Ok(new { parsed = parsedWords.Count, added });
     }
-    
+
     /// <summary>
     /// Parse a JSON coming from AnkiConnect
     /// </summary>
@@ -218,10 +218,10 @@ public class UserController(
 
         // Step 1: Parse all unique words to get WordId + ReadingIndex
         var uniqueWords = request.Cards
-            .Select(c => c.Card.Word)
-            .Where(w => !string.IsNullOrWhiteSpace(w))
-            .Distinct()
-            .ToList();
+                                 .Select(c => c.Card.Word)
+                                 .Where(w => !string.IsNullOrWhiteSpace(w))
+                                 .Distinct()
+                                 .ToList();
 
         if (uniqueWords.Count == 0)
             return Results.BadRequest("No valid words found.");
@@ -245,9 +245,9 @@ public class UserController(
         // Step 2: Get existing cards
         var parsedWordIds = wordLookup.Values.Select(v => v.WordId).Distinct().ToList();
         var existingCards = await userContext.FsrsCards
-            .Include(c => c.ReviewLogs)
-            .Where(c => c.UserId == userId && parsedWordIds.Contains(c.WordId))
-            .ToListAsync();
+                                             .Include(c => c.ReviewLogs)
+                                             .Where(c => c.UserId == userId && parsedWordIds.Contains(c.WordId))
+                                             .ToListAsync();
 
         var existingCardsMap = existingCards
             .ToDictionary(c => (c.WordId, c.ReadingIndex));
@@ -257,6 +257,8 @@ public class UserController(
         var cardsToUpdate = new List<FsrsCard>();
         var cardToAnkiMap = new Dictionary<FsrsCard, AnkiCardWrapper>();
         int skippedCount = 0;
+
+        var processedPairs = new Dictionary<(int WordId, byte ReadingIndex), (FsrsCard Card, List<AnkiReviewLogImport> AllReviewLogs)>();
 
         foreach (var wrapper in request.Cards)
         {
@@ -275,13 +277,24 @@ public class UserController(
                 continue;
             }
 
+            var key = (wordInfo.WordId, wordInfo.ReadingIndex);
+
+            // Check for duplicates
+            if (processedPairs.TryGetValue(key, out var existing))
+            {
+                logger.LogWarning("Duplicate word detected in import request: {Word} (WordId={WordId}, ReadingIndex={ReadingIndex})",
+                                  word, wordInfo.WordId, wordInfo.ReadingIndex);
+                skippedCount++;
+                continue;
+            }
+
             // Validate and clamp values
             var stability = Math.Max(0, wrapper.Card.Stability ?? 0);
             var difficulty = Math.Clamp(wrapper.Card.Difficulty ?? 5.0, 1.0, 10.0);
             var state = wrapper.Card.State;
 
             // Check if card already exists
-            if (existingCardsMap.TryGetValue((wordInfo.WordId, wordInfo.ReadingIndex), out var existingCard))
+            if (existingCardsMap.TryGetValue(key, out var existingCard))
             {
                 if (!request.Overwrite)
                 {
@@ -299,26 +312,26 @@ public class UserController(
 
                 cardsToUpdate.Add(existingCard);
                 cardToAnkiMap[existingCard] = wrapper;
+                processedPairs[key] = (existingCard, new List<AnkiReviewLogImport>(wrapper.ReviewLogs));
             }
             else
             {
                 // Create new card
                 var fsrsCard = new FsrsCard(
-                    userId,
-                    wordInfo.WordId,
-                    wordInfo.ReadingIndex,
-                    state: state,
-                    due: wrapper.Card.Due,
-                    lastReview: wrapper.Card.LastReview
-                )
-                {
-                    Stability = stability,
-                    Difficulty = difficulty,
-                    Step = state == FsrsState.Learning ? (byte?)0 : null,
-                };
+                                            userId,
+                                            wordInfo.WordId,
+                                            wordInfo.ReadingIndex,
+                                            state: state,
+                                            due: wrapper.Card.Due,
+                                            lastReview: wrapper.Card.LastReview
+                                           )
+                               {
+                                   Stability = stability, Difficulty = difficulty, Step = state == FsrsState.Learning ? (byte?)0 : null,
+                               };
 
                 cardsToAdd.Add(fsrsCard);
                 cardToAnkiMap[fsrsCard] = wrapper;
+                processedPairs[key] = (fsrsCard, new List<AnkiReviewLogImport>(wrapper.ReviewLogs));
             }
         }
 
@@ -326,13 +339,10 @@ public class UserController(
         if (cardsToAdd.Count == 0 && cardsToUpdate.Count == 0)
         {
             return Results.Ok(new
-            {
-                imported = 0,
-                updated = 0,
-                skipped = skippedCount,
-                reviewLogs = 0,
-                skippedWords = skippedWords.Take(50).ToList()
-            });
+                              {
+                                  imported = 0, updated = 0, skipped = skippedCount, reviewLogs = 0,
+                                  skippedWords = skippedWords.Take(50).ToList()
+                              });
         }
 
         await using var transaction = await userContext.Database.BeginTransactionAsync();
@@ -351,7 +361,7 @@ public class UserController(
 
             foreach (var card in allCards)
             {
-                var wrapper = cardToAnkiMap[card];
+                var key = (card.WordId, card.ReadingIndex);
 
                 // For updated cards, remove old review logs
                 if (cardsToUpdate.Contains(card))
@@ -359,20 +369,21 @@ public class UserController(
                     userContext.FsrsReviewLogs.RemoveRange(card.ReviewLogs);
                 }
 
-                // Add new review logs
-                foreach (var log in wrapper.ReviewLogs)
+                // Get ALL review logs for this card (including from duplicates)
+                if (!processedPairs.TryGetValue(key, out var processed))
+                    continue;
+
+                foreach (var log in processed.AllReviewLogs)
                 {
                     // Validate rating
-                    if (log.Rating < FsrsRating.Again || log.Rating > FsrsRating.Easy)
+                    if (log.Rating is < FsrsRating.Again or > FsrsRating.Easy)
                         continue;
 
                     logsToAdd.Add(new FsrsReviewLog
-                    {
-                        CardId = card.CardId,
-                        Rating = log.Rating,
-                        ReviewDateTime = log.ReviewDateTime,
-                        ReviewDuration = log.ReviewDuration,
-                    });
+                                  {
+                                      CardId = card.CardId, Rating = log.Rating, ReviewDateTime = log.ReviewDateTime,
+                                      ReviewDuration = log.ReviewDuration,
+                                  });
                 }
             }
 
@@ -384,23 +395,29 @@ public class UserController(
             await userContext.SaveChangesAsync();
 
             // Sync kana readings for imported/updated kanji cards
-            var cardsToSync = new List<(int WordId, byte ReadingIndex, FsrsCard SourceCard, bool Overwrite)>();
+            var cardsToSync = new Dictionary<int, (int WordId, byte ReadingIndex, FsrsCard SourceCard, bool Overwrite)>();
 
             // Process newly added cards
             foreach (var card in cardsToAdd)
             {
-                cardsToSync.Add((card.WordId, card.ReadingIndex, card, request.Overwrite));
+                if (!cardsToSync.ContainsKey(card.WordId))
+                {
+                    cardsToSync[card.WordId] = (card.WordId, card.ReadingIndex, card, request.Overwrite);
+                }
             }
 
             // Process updated cards
             foreach (var card in cardsToUpdate)
             {
-                cardsToSync.Add((card.WordId, card.ReadingIndex, card, request.Overwrite));
+                if (!cardsToSync.ContainsKey(card.WordId))
+                {
+                    cardsToSync[card.WordId] = (card.WordId, card.ReadingIndex, card, request.Overwrite);
+                }
             }
 
             if (cardsToSync.Count > 0)
             {
-                await srsService.SyncKanaReadingBatch(userId, cardsToSync, DateTime.UtcNow);
+                await srsService.SyncKanaReadingBatch(userId, cardsToSync.Values, DateTime.UtcNow);
             }
 
             await transaction.CommitAsync();
@@ -408,18 +425,15 @@ public class UserController(
             backgroundJobs.Enqueue<ComputationJob>(job => job.ComputeUserCoverage(userId));
 
             logger.LogInformation(
-                "Anki import completed: UserId={UserId}, Imported={Imported}, Updated={Updated}, Skipped={Skipped}, Logs={Logs}, NotFound={NotFound}",
-                userId, cardsToAdd.Count, cardsToUpdate.Count, skippedCount, logsToAdd.Count, skippedWords.Count
-            );
+                                  "Anki import completed: UserId={UserId}, Imported={Imported}, Updated={Updated}, Skipped={Skipped}, Logs={Logs}, NotFound={NotFound}",
+                                  userId, cardsToAdd.Count, cardsToUpdate.Count, skippedCount, logsToAdd.Count, skippedWords.Count
+                                 );
 
             return Results.Ok(new
-            {
-                imported = cardsToAdd.Count,
-                updated = cardsToUpdate.Count,
-                skipped = skippedCount,
-                reviewLogs = logsToAdd.Count,
-                skippedWords = skippedWords.Take(50).ToList()
-            });
+                              {
+                                  imported = cardsToAdd.Count, updated = cardsToUpdate.Count, skipped = skippedCount,
+                                  reviewLogs = logsToAdd.Count, skippedWords = skippedWords.Take(50).ToList()
+                              });
         }
         catch (Exception ex)
         {
@@ -699,16 +713,15 @@ public class UserController(
                                 {
                                     WordId = c.WordId, ReadingIndex = c.ReadingIndex, State = c.State, Step = c.Step,
                                     Stability = c.Stability, Difficulty = c.Difficulty,
-                                    Due = new DateTimeOffset(c.Due).ToUnixTimeSeconds(),
-                                    LastReview = c.LastReview.HasValue
+                                    Due = new DateTimeOffset(c.Due).ToUnixTimeSeconds(), LastReview = c.LastReview.HasValue
                                         ? new DateTimeOffset(c.LastReview.Value).ToUnixTimeSeconds()
                                         : null,
                                     ReviewLogs = c.ReviewLogs.OrderBy(r => r.ReviewDateTime)
                                                   .Select(r => new FsrsReviewLogExportDto
                                                                {
-                                                                   Rating = r.Rating,
-                                                                   ReviewDateTime = new DateTimeOffset(r.ReviewDateTime)
-                                                                       .ToUnixTimeSeconds(),
+                                                                   Rating = r.Rating, ReviewDateTime =
+                                                                       new DateTimeOffset(r.ReviewDateTime)
+                                                                           .ToUnixTimeSeconds(),
                                                                    ReviewDuration = r.ReviewDuration
                                                                }).ToList()
                                 }).ToList()
@@ -807,9 +820,9 @@ public class UserController(
                     {
                         existingCard.ReviewLogs.Add(new FsrsReviewLog
                                                     {
-                                                        Rating = logDto.Rating,
-                                                        ReviewDateTime = DateTimeOffset.FromUnixTimeSeconds(logDto.ReviewDateTime)
-                                                                                       .UtcDateTime,
+                                                        Rating = logDto.Rating, ReviewDateTime = DateTimeOffset
+                                                            .FromUnixTimeSeconds(logDto.ReviewDateTime)
+                                                            .UtcDateTime,
                                                         ReviewDuration = logDto.ReviewDuration,
                                                         // EF Core handles the FK association automatically here
                                                     });
@@ -829,8 +842,7 @@ public class UserController(
                                           : null,
                                       ReviewLogs = cardDto.ReviewLogs.Select(l => new FsrsReviewLog
                                                                                   {
-                                                                                      Rating = l.Rating,
-                                                                                      ReviewDateTime = DateTimeOffset
+                                                                                      Rating = l.Rating, ReviewDateTime = DateTimeOffset
                                                                                           .FromUnixTimeSeconds(l.ReviewDateTime)
                                                                                           .UtcDateTime,
                                                                                       ReviewDuration = l.ReviewDuration
