@@ -21,8 +21,12 @@ public static class YomitanHelper
         string description = mediaType != null
             ? $"Dictionary based on frequency data of {mediaType} from jiten.moe"
             : "Dictionary based on frequency data of all media from jiten.moe";
-        string indexUrl = mediaType != null ? $"https://api.jiten.moe/api/frequency-list/index?mediaType={mediaType}" : "https://api.jiten.moe/api/frequency-list/index" ;
-        string downloadUrl = mediaType != null ? $"https://api.jiten.moe/api/frequency-list/download?mediaType={mediaType}" : "https://api.jiten.moe/api/frequency-list/download" ;
+        string indexUrl = mediaType != null
+            ? $"https://api.jiten.moe/api/frequency-list/index?mediaType={mediaType}"
+            : "https://api.jiten.moe/api/frequency-list/index";
+        string downloadUrl = mediaType != null
+            ? $"https://api.jiten.moe/api/frequency-list/download?mediaType={mediaType}"
+            : "https://api.jiten.moe/api/frequency-list/download";
 
         return
             $$"""{"title":"{{title}}","format":3,"revision":"{{revision}}","isUpdatable":true,"indexUrl":"{{indexUrl}}","downloadUrl":"{{downloadUrl}}","sequenced":false,"frequencyMode":"rank-based","author":"Jiten","url":"https://jiten.moe","description":"{{description}}"}""";
@@ -31,11 +35,9 @@ public static class YomitanHelper
     /// <summary>
     /// Generates a zipped Yomitan frequency dictionary for a given media type.
     /// </summary>
-    /// <param name="context">The database context.</param>
-    /// <param name="mediaType">The media type to generate the frequency deck for. null for global</param>
-    /// <returns>A byte array representing the zipped dictionary file.</returns>
     public static async Task<byte[]> GenerateYomitanFrequencyDeck(IDbContextFactory<JitenDbContext> contextFactory,
-                                                                  List<JmDictWordFrequency> frequencies, MediaType? mediaType, string indexJson)
+                                                                  List<JmDictWordFrequency> frequencies, MediaType? mediaType,
+                                                                  string indexJson)
     {
         await using var context = await contextFactory.CreateDbContextAsync();
 
@@ -45,70 +47,124 @@ public static class YomitanHelper
                                     .ToDictionaryAsync(w => w.WordId);
 
         var yomitanTermList = new List<List<object>>();
-        var addedEntries = new HashSet<string>(); // Prevents adding duplicate (term, reading) pairs
+        var addedEntries = new HashSet<string>();
 
         foreach (var freq in frequencies)
         {
             if (!allWords.TryGetValue(freq.WordId, out JmDictWord? word)) continue;
 
-            // Find the best (most frequent) kana reading to use as the default for kanji forms
-            string? bestKanaReading = null;
-            int bestKanaRank = int.MaxValue;
+            // Get valid readings. Includes observed readings AND the main reading (even if not observed).
+            var kanaReadings = GetKanaReadingsWithFrequencies(word, freq);
+            if (kanaReadings.Count == 0) continue;
 
-            for (int i = 0; i < word.Readings.Count; i++)
+            // The list is ordered by index, so the first one is the Main Reading.
+            string mainKanaReading = kanaReadings[0].kanaText;
+
+            // CASE 1: Create standalone kana entries
+            foreach (var (kanaText, kanaRank, kanaIndex) in kanaReadings)
             {
-                if (word.ReadingTypes[i] != JmDictReadingType.KanaReading) continue;
-                if (freq.ReadingsFrequencyRank[i] >= bestKanaRank) continue;
-                bestKanaRank = freq.ReadingsFrequencyRank[i];
-                bestKanaReading = word.Readings[i];
+                // Only generate standalone entry if it was actually observed
+                if (freq.ReadingsUsedInMediaAmount[kanaIndex] <= 0)
+                    continue;
+
+                if (addedEntries.Contains(kanaText))
+                    continue;
+
+                yomitanTermList.Add([
+                    kanaText, "freq",
+                    new Dictionary<string, object> { ["value"] = kanaRank, ["displayValue"] = $"{kanaRank}㋕" }
+                ]);
+                addedEntries.Add(kanaText);
             }
 
-            // Now, iterate through all readings and create the appropriate entries
+            // CASE 2: Create kanji entries
             for (int i = 0; i < word.Readings.Count; i++)
             {
-                // Skip if this specific reading has a frequency of 0 in the selected media
-                if (freq.ReadingsUsedInMediaAmount[i] == 0) continue;
+                if (word.ReadingTypes[i] != JmDictReadingType.Reading)
+                    continue;
 
-                var currentTerm = word.Readings[i];
-                var currentRank = freq.ReadingsFrequencyRank[i];
-                var currentType = word.ReadingTypes[i];
+                var kanjiTerm = word.Readings[i];
+                var kanjiRank = freq.ReadingsFrequencyRank[i];
 
-                // Case 1: The reading is a Kanji form
-                if (currentType == JmDictReadingType.Reading)
+                // Skip if kanji form was never observed
+                if (freq.ReadingsUsedInMediaAmount[i] <= 0)
+                    continue;
+
+                // Also skip if rank is invalid
+                if (kanjiRank is <= 0 or >= int.MaxValue - 1000)
+                    continue;
+
+                foreach (var (kanaText, kanaRank, kanaIndex) in kanaReadings)
                 {
-                    // A kanji form needs a kana reading to be valid in Yomitan freq lists.
-                    // We use the best one we found earlier.
-                    if (bestKanaReading == null) continue;
+                    bool isKanaObserved = freq.ReadingsUsedInMediaAmount[kanaIndex] > 0;
 
-                    string entryKey = $"{currentTerm}:{bestKanaReading}";
-                    if (addedEntries.Contains(entryKey)) continue;
+                    // Entry 1: Kanji term with KANA frequency
+                    // Only generate this if the specific kana reading was observed
+                    if (isKanaObserved)
+                    {
+                        string entryKey1 = $"{kanjiTerm}:{kanaText}:kana";
+                        if (!addedEntries.Contains(entryKey1))
+                        {
+                            yomitanTermList.Add([
+                                kanjiTerm, "freq",
+                                new Dictionary<string, object>
+                                {
+                                    ["reading"] = kanaText,
+                                    ["frequency"] = new Dictionary<string, object>
+                                                    {
+                                                        ["value"] = kanaRank, ["displayValue"] = $"{kanaRank}㋕"
+                                                    }
+                                }
+                            ]);
+                            addedEntries.Add(entryKey1);
+                        }
+                    }
 
-                    yomitanTermList.Add(new List<object>
-                                        {
-                                            currentTerm, "freq",
-                                            new
+                    // Entry 2: Kanji term with KANJI frequency
+                    // This ONLY applies to the MAIN reading
+                    // We generate this even if the main kana reading itself wasn't observed, 
+                    // because the Kanji WAS observed.
+                    if (kanaText != mainKanaReading)
+                        continue;
+                    
+                    string entryKey2 = $"{kanjiTerm}:{kanaText}:kanji";
+                    if (addedEntries.Contains(entryKey2)) 
+                        continue;
+                        
+                    yomitanTermList.Add([
+                        kanjiTerm, "freq",
+                        new Dictionary<string, object>
+                        {
+                            ["reading"] = kanaText,
+                            ["frequency"] = new Dictionary<string, object>
                                             {
-                                                reading = bestKanaReading,
-                                                frequency = new { value = currentRank, displayValue = currentRank.ToString() }
+                                                ["value"] = kanjiRank, ["displayValue"] = kanjiRank.ToString()
                                             }
-                                        });
-                    addedEntries.Add(entryKey);
-                }
-                // Case 2: The reading is a Kana form
-                else
-                {
-                    if (addedEntries.Contains(currentTerm)) continue;
-
-                    yomitanTermList.Add([currentTerm, "freq", new { value = currentRank, displayValue = currentRank.ToString() }]);
-                    addedEntries.Add(currentTerm);
+                        }
+                    ]);
+                    addedEntries.Add(entryKey2);
                 }
             }
         }
 
+        // Sort by frequency rank (best/lowest rank first)
+        yomitanTermList.Sort((a, b) =>
+        {
+            int GetRank(List<object> entry)
+            {
+                var freqData = (Dictionary<string, object>)entry[2];
+                if (freqData.ContainsKey("frequency"))
+                    return (int)((Dictionary<string, object>)freqData["frequency"])["value"];
+                else
+                    return (int)freqData["value"];
+            }
+
+            return GetRank(a).CompareTo(GetRank(b));
+        });
+
         var termBankJson = JsonSerializer.Serialize(yomitanTermList,
                                                     new JsonSerializerOptions { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping });
 
-        // 3. Zip the index and term bank files into a memory stream
         using var memoryStream = new MemoryStream();
         using (var archive = new ZipArchive(memoryStream, ZipArchiveMode.Create, true))
         {
@@ -131,12 +187,56 @@ public static class YomitanHelper
     }
 
     /// <summary>
+    /// Retrieves kana readings. Includes:
+    /// 1. Any reading that was observed (UsedInMediaAmount > 0)
+    /// 2. The FIRST defined kana reading (Main Reading), if the word was observed at all.
+    /// </summary>
+    private static List<(string kanaText, int rank, int readingIndex)> GetKanaReadingsWithFrequencies(
+        JmDictWord word,
+        JmDictWordFrequency freq)
+    {
+        // Check if the word as a whole was observed
+        bool wordWasObserved = freq.ReadingsUsedInMediaAmount.Any(amount => amount > 0);
+        if (!wordWasObserved) return new List<(string, int, int)>();
+
+        // Find the index of the first kana reading (default/main reading)
+        int firstKanaIndex = -1;
+        for (int i = 0; i < word.ReadingTypes.Count; i++)
+        {
+            if (word.ReadingTypes[i] != JmDictReadingType.KanaReading)
+                continue;
+
+            firstKanaIndex = i;
+            break;
+        }
+
+        var kanaReadings = new List<(string kanaText, int rank, int readingIndex)>();
+
+        for (int i = 0; i < word.Readings.Count; i++)
+        {
+            if (word.ReadingTypes[i] != JmDictReadingType.KanaReading) continue;
+
+            // Include if:
+            // 1. It was observed
+            // OR
+            // 2. It is the Main Reading (index == firstKanaIndex)
+            bool isObserved = freq.ReadingsUsedInMediaAmount[i] > 0;
+            bool isMain = (i == firstKanaIndex);
+
+            if (!isObserved && !isMain)
+                continue;
+
+            // Note: Rank might be bad/default if !isObserved, but we need it for the struct.
+            // The generation loop will filter out the ㋕ entry based on isObserved.
+            kanaReadings.Add((word.Readings[i], freq.ReadingsFrequencyRank[i], i));
+        }
+
+        return kanaReadings;
+    }
+
+    /// <summary>
     /// Generates a zipped Yomitan frequency dictionary from a Deck.
     /// </summary>
-    /// <param name="options">Database context options.</param>
-    /// <param name="deck"></param>
-    /// <param name="title"></param>
-    /// <returns>A byte array representing the zipped dictionary file.</returns>
     public static async Task<byte[]> GenerateYomitanFrequencyDeckFromDeck(IDbContextFactory<JitenDbContext> contextFactory, Deck deck)
     {
         await using var context = await contextFactory.CreateDbContextAsync();
@@ -166,14 +266,12 @@ public static class YomitanHelper
                                     .ToDictionaryAsync(w => w.WordId);
 
         var yomitanTermList = new List<List<object>>();
-        var addedEntries = new HashSet<string>(); // Prevents adding duplicate (term, reading) pairs
+        var addedEntries = new HashSet<string>();
 
-        // Group deckWords by WordId AND ReadingIndex to get occurrences for each specific reading
         var deckWordsByWordIdAndReading = deckWords
                                           .GroupBy(dw => new { dw.WordId, dw.ReadingIndex })
                                           .ToDictionary(g => g.Key, g => g.Sum(dw => dw.Occurrences));
 
-        // Group by WordId to get all readings for each word
         var deckWordsByWordId = deckWords.GroupBy(dw => dw.WordId)
                                          .ToDictionary(g => g.Key, g => g.ToList());
 
@@ -182,85 +280,106 @@ public static class YomitanHelper
             if (!allWords.TryGetValue(wordId, out JmDictWord? word) ||
                 !deckWordsByWordId.TryGetValue(wordId, out var wordDeckWords)) continue;
 
-            // For each reading in the word, check if it has occurrences in the deck
-            for (int readingIndex = 0; readingIndex < word.Readings.Count; readingIndex++)
-            {
-                var key = new { WordId = wordId, ReadingIndex = (byte)readingIndex };
+            var kanaReadings = GetKanaReadingsWithOccurrences(word, deckWordsByWordIdAndReading, wordId);
+            if (kanaReadings.Count == 0) continue;
 
-                // Skip if this specific reading has no occurrences
-                if (!deckWordsByWordIdAndReading.TryGetValue(key, out int occurrences) || occurrences == 0)
+            string mainKanaReading = kanaReadings[0].kanaText;
+
+            // CASE 1: Create standalone kana entries
+            foreach (var (kanaText, kanaOccurrences, kanaIndex) in kanaReadings)
+            {
+                // Only if observed
+                if (kanaOccurrences <= 0) continue;
+
+                if (addedEntries.Contains(kanaText)) continue;
+
+                yomitanTermList.Add([
+                    kanaText, "freq",
+                    new Dictionary<string, object> { ["value"] = kanaOccurrences, ["displayValue"] = $"{kanaOccurrences}㋕" }
+                ]);
+                addedEntries.Add(kanaText);
+            }
+
+            // CASE 2: Create kanji entries
+            for (int i = 0; i < word.Readings.Count; i++)
+            {
+                if (word.ReadingTypes[i] != JmDictReadingType.Reading) continue;
+
+                var kanjiTerm = word.Readings[i];
+                var key = new { WordId = wordId, ReadingIndex = (byte)i };
+                var hasKanjiOccurrences = deckWordsByWordIdAndReading.TryGetValue(key, out int kanjiOccurrences);
+
+                // Skip if kanji form has no occurrences
+                if (!hasKanjiOccurrences || kanjiOccurrences == 0)
                     continue;
 
-                var currentTerm = word.Readings[readingIndex];
-                var currentType = word.ReadingTypes[readingIndex];
-
-                // Case 1: The reading is a Kanji form (needs a kana reading)
-                if (currentType == JmDictReadingType.Reading)
+                foreach (var (kanaText, kanaOccurrences, kanaIndex) in kanaReadings)
                 {
-                    // Find the best kana reading for this kanji form
-                    // We'll use the most frequent kana reading from this word, or the first available one
-                    string? kanjiReading = null;
-                    int bestKanaOccurrences = 0;
+                    bool isKanaObserved = kanaOccurrences > 0;
 
-                    // Look for kana readings in the same word
-                    for (int i = 0; i < word.Readings.Count; i++)
+                    // Entry 1: Kanji term with KANA occurrences
+                    if (isKanaObserved)
                     {
-                        if (word.ReadingTypes[i] != JmDictReadingType.KanaReading) continue;
-
-                        var kanaKey = new { WordId = wordId, ReadingIndex = (byte)i };
-                        if (deckWordsByWordIdAndReading.TryGetValue(kanaKey, out int kanaOccurrences) &&
-                            kanaOccurrences > bestKanaOccurrences)
+                        string entryKey1 = $"{kanjiTerm}:{kanaText}:kana";
+                        if (!addedEntries.Contains(entryKey1))
                         {
-                            bestKanaOccurrences = kanaOccurrences;
-                            kanjiReading = word.Readings[i];
+                            yomitanTermList.Add(new List<object>
+                                                {
+                                                    kanjiTerm, "freq",
+                                                    new Dictionary<string, object>
+                                                    {
+                                                        ["reading"] = kanaText,
+                                                        ["frequency"] = new Dictionary<string, object>
+                                                                        {
+                                                                            ["value"] = kanaOccurrences,
+                                                                            ["displayValue"] = $"{kanaOccurrences}㋕"
+                                                                        }
+                                                    }
+                                                });
+                            addedEntries.Add(entryKey1);
                         }
                     }
 
-                    // If no kana reading found with occurrences, use the first kana reading as fallback
-                    if (kanjiReading == null)
-                    {
-                        for (int i = 0; i < word.Readings.Count; i++)
+                    // Entry 2: Kanji term with KANJI occurrences (Main Reading only)
+                    if (kanaText != mainKanaReading) continue;
+
+                    string entryKey2 = $"{kanjiTerm}:{kanaText}:kanji";
+                    if (addedEntries.Contains(entryKey2)) continue;
+                    yomitanTermList.Add([
+                        kanjiTerm,
+                        "freq",
+                        new Dictionary<string, object>
                         {
-                            if (word.ReadingTypes[i] == JmDictReadingType.KanaReading)
-                            {
-                                kanjiReading = word.Readings[i];
-                                break;
-                            }
-                        }
-                    }
-
-                    // Skip if we still don't have a kana reading
-                    if (kanjiReading == null) continue;
-
-                    string entryKey = $"{currentTerm}:{kanjiReading}";
-                    if (addedEntries.Contains(entryKey)) continue;
-
-                    yomitanTermList.Add(new List<object>
-                                        {
-                                            currentTerm, "freq",
-                                            new
+                            ["reading"] = kanaText,
+                            ["frequency"] = new Dictionary<string, object>
                                             {
-                                                reading = kanjiReading,
-                                                frequency = new { value = occurrences, displayValue = occurrences.ToString() }
+                                                ["value"] = kanjiOccurrences, ["displayValue"] = kanjiOccurrences.ToString()
                                             }
-                                        });
-                    addedEntries.Add(entryKey);
-                }
-                // Case 2: The reading is a Kana form
-                else if (currentType == JmDictReadingType.KanaReading)
-                {
-                    if (addedEntries.Contains(currentTerm)) continue;
-
-                    yomitanTermList.Add([currentTerm, "freq", new { value = occurrences, displayValue = occurrences.ToString() }]);
-                    addedEntries.Add(currentTerm);
+                        }
+                    ]);
+                    addedEntries.Add(entryKey2);
                 }
             }
         }
 
+        // Sort by occurrences (highest first for occurrence-based)
+        yomitanTermList.Sort((a, b) =>
+        {
+            int GetOccurrences(List<object> entry)
+            {
+                var freqData = (Dictionary<string, object>)entry[2];
+                if (freqData.ContainsKey("frequency"))
+                    return (int)((Dictionary<string, object>)freqData["frequency"])["value"];
+                else
+                    return (int)freqData["value"];
+            }
+
+            return GetOccurrences(b).CompareTo(GetOccurrences(a));
+        });
+
         var termBankJson = JsonSerializer.Serialize(yomitanTermList,
                                                     new JsonSerializerOptions { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping });
 
-        // 3. Zip the index and term bank files into a memory stream
         using var memoryStream = new MemoryStream();
         using (var archive = new ZipArchive(memoryStream, ZipArchiveMode.Create, true))
         {
@@ -280,5 +399,58 @@ public static class YomitanHelper
         }
 
         return memoryStream.ToArray();
+    }
+
+    private static List<(string kanaText, int occurrences, int readingIndex)> GetKanaReadingsWithOccurrences<TKey>(
+        JmDictWord word,
+        IReadOnlyDictionary<TKey, int> deckWordsByWordIdAndReading,
+        int wordId) where TKey : notnull
+    {
+        // Check if word is observed
+        bool wordObserved = false;
+        // Simple check: iterate all reading indices for this word
+        for (int i = 0; i < word.Readings.Count; i++)
+        {
+            var key = (TKey)(object)new { WordId = wordId, ReadingIndex = (byte)i };
+            if (deckWordsByWordIdAndReading.TryGetValue(key, out int occ) && occ > 0)
+            {
+                wordObserved = true;
+                break;
+            }
+        }
+
+        if (!wordObserved) return new List<(string, int, int)>();
+
+        int firstKanaIndex = -1;
+        for (int i = 0; i < word.ReadingTypes.Count; i++)
+        {
+            if (word.ReadingTypes[i] == JmDictReadingType.KanaReading)
+            {
+                firstKanaIndex = i;
+                break;
+            }
+        }
+
+        var kanaReadings = new List<(string kanaText, int occurrences, int readingIndex)>();
+
+        for (int i = 0; i < word.Readings.Count; i++)
+        {
+            if (word.ReadingTypes[i] != JmDictReadingType.KanaReading) continue;
+
+            var key = (TKey)(object)new { WordId = wordId, ReadingIndex = (byte)i };
+            int occurrences = 0;
+            if (deckWordsByWordIdAndReading.TryGetValue(key, out int val))
+                occurrences = val;
+
+            bool isObserved = occurrences > 0;
+            bool isMain = (i == firstKanaIndex);
+
+            if (!isObserved && !isMain)
+                continue;
+
+            kanaReadings.Add((word.Readings[i], occurrences, i));
+        }
+
+        return kanaReadings;
     }
 }

@@ -30,5 +30,6 @@ export function getAllGenres(): { value: Genre; label: string }[] {
     .map((v) => ({
       value: v as Genre,
       label: getGenreText(v as Genre),
-    }));
+    }))
+    .sort((a, b) => a.label.localeCompare(b.label));
 }
