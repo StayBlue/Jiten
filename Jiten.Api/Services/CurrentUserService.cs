@@ -87,7 +87,10 @@ public class CurrentUserService(
         if (word.State == FsrsState.Mastered)
             return KnownState.Mature;
 
-        var dueIn = (word.Due - word.LastReview!.Value).TotalDays;
+        if (word.LastReview == null)
+            return KnownState.New;
+        
+        var dueIn = (word.Due - word.LastReview.Value).TotalDays;
         return dueIn < 21 ? KnownState.Young : KnownState.Mature;
     }
 

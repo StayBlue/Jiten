@@ -796,6 +796,10 @@ public class UserController(
             {
                 var key = (cardDto.WordId, cardDto.ReadingIndex);
 
+                var uniqueIncomingLogs = cardDto.ReviewLogs
+                                                .DistinctBy(l => l.ReviewDateTime)
+                                                .ToList();
+                
                 if (existingCardsMap.TryGetValue(key, out var existingCard))
                 {
                     if (!overwrite)
@@ -816,7 +820,7 @@ public class UserController(
                     // Replace logs: Clear old ones, Add new ones
                     userContext.FsrsReviewLogs.RemoveRange(existingCard.ReviewLogs);
 
-                    foreach (var logDto in cardDto.ReviewLogs)
+                    foreach (var logDto in uniqueIncomingLogs )
                     {
                         existingCard.ReviewLogs.Add(new FsrsReviewLog
                                                     {
@@ -840,13 +844,13 @@ public class UserController(
                                       LastReview = cardDto.LastReview.HasValue
                                           ? DateTimeOffset.FromUnixTimeSeconds(cardDto.LastReview.Value).UtcDateTime
                                           : null,
-                                      ReviewLogs = cardDto.ReviewLogs.Select(l => new FsrsReviewLog
-                                                                                  {
-                                                                                      Rating = l.Rating, ReviewDateTime = DateTimeOffset
-                                                                                          .FromUnixTimeSeconds(l.ReviewDateTime)
-                                                                                          .UtcDateTime,
-                                                                                      ReviewDuration = l.ReviewDuration
-                                                                                  }).ToList()
+                                      ReviewLogs = uniqueIncomingLogs.Select(l => new FsrsReviewLog
+                                                                                   {
+                                                                                       Rating = l.Rating, ReviewDateTime = DateTimeOffset
+                                                                                           .FromUnixTimeSeconds(l.ReviewDateTime)
+                                                                                           .UtcDateTime,
+                                                                                       ReviewDuration = l.ReviewDuration
+                                                                                   }).ToList()
                                   };
 
                     cardsToAdd.Add(newCard);

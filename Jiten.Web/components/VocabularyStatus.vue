@@ -16,7 +16,7 @@
         method: 'POST',
       });
 
-      props.word.knownState = KnownState.Unknown;
+      props.word.knownState = KnownState.New;
     } else {
       await $api<boolean>(`user/vocabulary/add/${props.word.wordId}/${props.word.mainReading.readingIndex}`, {
         method: 'POST',

@@ -820,8 +820,7 @@ public class MediaDeckController(
         }
 
         dto.Words.ApplyKnownWordsState(knownWords);
-
-
+        
         return new PaginatedResponse<DeckVocabularyListDto?>(dto, totalCount, pageSize, offset ?? 0);
     }
 
