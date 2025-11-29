@@ -68,6 +68,10 @@ public class JmDictWord
                 score -= 10;
         }
 
+        // Deprioritise names
+        if (PartsOfSpeech.ToPartOfSpeech().Contains(PartOfSpeech.Name))
+            score -= 50;
+
         return score;
     }
 }

@@ -644,7 +644,9 @@ namespace Jiten.Parser
                         return (true, null);
                 }
                 else if (matches.Count > 1)
-                    bestMatch = matches.OrderByDescending(m => m.GetPriorityScore(WanaKana.IsKana(wordData.wordInfo.Text))).First();
+                    bestMatch = matches.OrderByDescending(m => m.GetPriorityScore(WanaKana.IsKana(wordData.wordInfo.Text)) +
+                                                               (m.Readings.All(r => r != wordData.wordInfo.Text) ? -50 : 0) // Deprioritize words where the long voxel mark has been stripped
+                                                               ).First();
                 else
                     bestMatch = matches[0];
 
