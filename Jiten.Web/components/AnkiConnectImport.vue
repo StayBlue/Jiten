@@ -95,6 +95,9 @@
         allCardsInfo.push(...(cardsBatch || []));
       }
 
+      // Calculate collection creation time from earliest card
+      const collectionCreated = Math.min(...allCardsInfo.map((c) => c.mod)) * 1000;
+
       // Retrieve all reviews
       const deckName = deckEntries.find(([_, id]) => id === selectedDeck.value)?.[0];
       if (!deckName) {
@@ -136,7 +139,6 @@
         if (!word) continue;
 
         const reviews = reviewByCard.get(card.cardId) ?? [];
-        const latestReview = reviews[0];
 
         // Convert Anki state to FSRS state
         let state: number;
@@ -151,7 +153,12 @@
         // Convert ease factor to difficulty (1300-2500 → 10-1)
         const difficulty = Math.max(1, Math.min(10, 10 - (card.factor - 1300) / 170.0));
 
-        // Convert due date
+        // Last review timestamp
+        const cardReviews = reviewByCard.get(card.cardId) ?? [];
+        const lastReview = cardReviews.length > 0
+          ? cardReviews[0].ReviewDateTime
+          : null;
+
         let due: Date;
         if (card.queue === 0) {
           due = new Date(); // New cards due now
@@ -161,11 +168,10 @@
           // console.log("learning : " + due);
         } else {
           // Review cards: days since collection creation
-          if (latestReview) {
+          if (lastReview) {
             // If we have history, this is the most accurate method
-            const lastReviewDate = latestReview.ReviewDateTime;
             // Add interval (days) to last review
-            due = new Date(lastReviewDate.getTime() + (card.interval * 86400000));
+            due = new Date(lastReview.getTime() + (card.interval * 86400000));
           } else {
             // Fallback if no reviews found (rare, or if review log was cleared)
             // We use 'mod' (Last Modified Date) as a proxy for Last Review Date
@@ -175,9 +181,6 @@
 
           // console.log("review : " + due)
         }
-
-        // Last review timestamp
-        const lastReview = card.mod > 0 ? new Date(card.mod * 1000) : null;
 
         enrichedCards.push({
           Card: {
