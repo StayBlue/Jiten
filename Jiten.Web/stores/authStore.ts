@@ -43,7 +43,7 @@ export const useAuthStore = defineStore('auth', () => {
   const { $api } = useNuxtApp();
 
   // Initialise tab synchronisation (client-side only)
-  if (process.client) {
+  if (import.meta.client) {
     tabSyncManager = new TabSyncManager();
     const hasBroadcastChannel = typeof BroadcastChannel !== 'undefined';
     cookieMonitor = new CookieMonitor(hasBroadcastChannel);
@@ -153,6 +153,21 @@ export const useAuthStore = defineStore('auth', () => {
       return !!accessToken.value && !isTokenExpired(accessToken.value);
     }
 
+    // If the cookie is different, another tab has ALREADY refreshed the token.
+    const currentCookieRefToken = refreshTokenCookie.value;
+    const currentCookieToken = tokenCookie.value;
+
+    if (currentCookieRefToken && currentCookieRefToken !== refreshToken.value) {
+      console.log('Detected fresh token in cookies (Race condition avoided). Syncing state...');
+
+      // Update local state to match the cookie
+      accessToken.value = currentCookieToken;
+      refreshToken.value = currentCookieRefToken;
+
+      // We are now valid, no need to call API
+      return true;
+    }
+
     if (!refreshToken.value) {
       console.log('No refresh token available');
       clearAuthData();
@@ -203,11 +218,8 @@ export const useAuthStore = defineStore('auth', () => {
 
       clearAuthData();
 
-      if (process.client) {
-        const router = useRouter();
-        if (router.currentRoute.value.path !== '/login') {
-          router.push('/login');
-        }
+      if (import.meta.client) {
+        navigateTo('/login');
       }
 
       return false;

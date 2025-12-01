@@ -1,9 +1,7 @@
 export default defineNuxtPlugin((nuxtApp) => {
   const config = useRuntimeConfig();
 
-  const proxyHeaders = import.meta.server
-    ? useRequestHeaders(['x-forwarded-for', 'cf-connecting-ip', 'user-agent'])
-    : {};
+  const proxyHeaders = import.meta.server ? useRequestHeaders(['x-forwarded-for', 'cf-connecting-ip', 'user-agent']) : {};
 
   const api = $fetch.create({
     baseURL: config.public.baseURL,
@@ -85,11 +83,17 @@ export default defineNuxtPlugin((nuxtApp) => {
 
         // If we reach here, token refresh failed or this is an auth endpoint
         // Navigate to login page
-        const router = useRouter();
-        const currentRoute = router.currentRoute?.value?.path;
-        if (currentRoute !== '/login') {
-          await nuxtApp.runWithContext(() => navigateTo('/login'));
-        }
+        await nuxtApp.runWithContext(() => {
+          const router = useRouter(); // Now safe because we are in context
+          const currentRoute = router.currentRoute.value.path;
+
+          if (currentRoute !== '/login') {
+            return navigateTo({
+              path: '/login',
+              query: { redirect: currentRoute },
+            });
+          }
+        });
       }
     },
   });
