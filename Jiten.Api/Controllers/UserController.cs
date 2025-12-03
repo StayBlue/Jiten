@@ -242,14 +242,17 @@ public class UserController(
         List<string> skippedWordsNoReviews = new List<string>();
         int skippedCountNoReviews = 0;
 
-        for (int i = request.Cards.Count - 1; i >= 0; i--)
+        if (!request.ForceImportCardsWithNoReviews)
         {
-            if (request.Cards[i].Card.LastReview != null)
-                continue;
+            for (int i = request.Cards.Count - 1; i >= 0; i--)
+            {
+                if (request.Cards[i].Card.LastReview != null)
+                    continue;
 
-            skippedWordsNoReviews.Add(new string(request.Cards[i].Card.Word));
-            request.Cards.RemoveAt(i);
-            skippedCountNoReviews++;
+                skippedWordsNoReviews.Add(new string(request.Cards[i].Card.Word));
+                request.Cards.RemoveAt(i);
+                skippedCountNoReviews++;
+            }
         }
 
         var combinedText = string.Join(Environment.NewLine, uniqueWords);
@@ -264,7 +267,6 @@ public class UserController(
                 wordLookup[parsed.OriginalText] = (parsed.WordId, parsed.ReadingIndex);
             }
         }
-
 
         // Step 2: Get existing cards
         var parsedWordIds = wordLookup.Values.Select(v => v.WordId).Distinct().ToList();
