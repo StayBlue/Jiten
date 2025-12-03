@@ -312,3 +312,16 @@ export interface TagMappingSummary {
   totalMappings: number;
   mappingsByProvider: Record<string, number>;
 }
+
+export interface DeckCoverageStats {
+  deckId: number;
+  totalUniqueWords: number;
+  computedAt: Date;
+  rSquared: number;
+  milestones: Record<string, number>;
+}
+
+export interface CurveDatum {
+  rank: number;
+  coverage: number;
+}

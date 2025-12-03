@@ -820,7 +820,7 @@ public class MediaDeckController(
         }
 
         dto.Words.ApplyKnownWordsState(knownWords);
-        
+
         return new PaginatedResponse<DeckVocabularyListDto?>(dto, totalCount, pageSize, offset ?? 0);
     }
 
@@ -1607,5 +1607,80 @@ public class MediaDeckController(
 
             return sb.ToString();
         }
+    }
+
+    /// <summary>
+    /// Get advanced stats for a deck such as coverage
+    /// </summary>
+    /// <param name="id">Deck ID</param>
+    /// <returns>Advanced stats</returns>
+    [HttpGet("{id}/stats")]
+    [ResponseCache(Duration = 3600)]
+    [SwaggerOperation(Summary = "Get advanced stats for a deck",
+                      Description =
+                          "Returns advanced deck statistics such as parametric coverage showing how many of the most frequent words are needed for various coverage percentages")]
+    [ProducesResponseType(typeof(DeckStatsDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<DeckStatsDto>> GetCoverageStats(int id)
+    {
+        var deckStats = await context.DeckStats
+                                     .AsNoTracking()
+                                     .FirstOrDefaultAsync(ds => ds.DeckId == id);
+
+        if (deckStats == null)
+        {
+            return NotFound(new { message = "Missing deck stats" });
+        }
+
+        var milestones = deckStats.GetMilestones();
+
+        return Ok(new DeckStatsDto()
+                  {
+                      DeckId = id, TotalUniqueWords = deckStats.TotalUniqueWords ?? 0, ComputedAt = deckStats.ComputedAt,
+                      RSquared = deckStats.RSquared ?? 0,
+                      Milestones = new Dictionary<string, int>
+                                   {
+                                       { "80%", milestones.TryGetValue(80, out var v80) ? v80 : 0 },
+                                       { "85%", milestones.TryGetValue(85, out var v85) ? v85 : 0 },
+                                       { "90%", milestones.TryGetValue(90, out var v90) ? v90 : 0 },
+                                       { "95%", milestones.TryGetValue(95, out var v95) ? v95 : 0 },
+                                       { "98%", milestones.TryGetValue(98, out var v98) ? v98 : 0 },
+                                       { "99%", milestones.TryGetValue(99, out var v99) ? v99 : 0 }
+                                   }
+                  });
+    }
+
+    /// <summary>
+    /// Get full coverage curve data for charting
+    /// </summary>
+    /// <param name="id">Deck ID</param>
+    /// <param name="points">Number of data points (ignored if sampled data exists)</param>
+    /// <returns>List of (rank, coverage) pairs - sampled at 1% intervals (0-99%), 0.1% intervals (99-100%)</returns>
+    [HttpGet("{id}/coverage-curve")]
+    [ResponseCache(Duration = 3600)]
+    [SwaggerOperation(Summary = "Get full coverage curve for charting",
+                      Description = "Returns sampled coverage data points for interactive visualisation (~108 points)")]
+    [ProducesResponseType(typeof(List<CurveDatumDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<List<CurveDatumDto>>> GetCoverageCurve(int id, [FromQuery] int points = 50)
+    {
+        var deckStats = await context.DeckStats
+                                     .AsNoTracking()
+                                     .FirstOrDefaultAsync(ds => ds.DeckId == id);
+
+        if (deckStats == null)
+        {
+            return NotFound(new { message = "Coverage statistics not yet computed for this deck" });
+        }
+
+        // If sampled data exists, 'points' parameter is ignored
+        var curvePoints = deckStats.GenerateCurvePoints(points);
+
+        return Ok(curvePoints.Select(p => new CurveDatumDto
+                                          {
+                                              Rank = p.rank,
+                                              // Round to whole number before 99%, keep 2 decimals at 99%+
+                                              Coverage = p.coverage < 99.0 ? Math.Round(p.coverage, 0) : Math.Round(p.coverage, 2)
+                                          }).ToList());
     }
 }

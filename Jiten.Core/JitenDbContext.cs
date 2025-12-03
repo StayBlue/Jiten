@@ -14,6 +14,7 @@ public class JitenDbContext : DbContext
     public DbSet<DeckWord> DeckWords { get; set; }
     public DbSet<DeckRawText> DeckRawTexts { get; set; }
     public DbSet<DeckTitle> DeckTitles { get; set; }
+    public DbSet<DeckStats> DeckStats { get; set; }
 
     public DbSet<JmDictWord> JMDictWords { get; set; }
     public DbSet<JmDictWordFrequency> JmDictWordFrequencies { get; set; }
@@ -129,6 +130,30 @@ public class JitenDbContext : DbContext
             entity.HasOne(drt => drt.Deck)
                   .WithOne(d => d.RawText)
                   .HasForeignKey<DeckRawText>(drt => drt.DeckId);
+        });
+
+        modelBuilder.Entity<DeckStats>(entity =>
+        {
+            entity.ToTable("DeckStats", "jiten");
+            entity.HasKey(ds => ds.DeckId);
+
+            entity.HasOne(ds => ds.Deck)
+                  .WithOne(d => d.DeckStats)
+                  .HasForeignKey<DeckStats>(ds => ds.DeckId)
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasIndex(ds => ds.ComputedAt)
+                  .HasDatabaseName("IX_DeckStats_ComputedAt");
+
+            entity.Property(ds => ds.CoverageCurve)
+                  .HasMaxLength(100);
+
+            entity.Ignore(ds => ds.ParameterA);
+            entity.Ignore(ds => ds.ParameterB);
+            entity.Ignore(ds => ds.ParameterC);
+            entity.Ignore(ds => ds.RSquared);
+            entity.Ignore(ds => ds.RMSE);
+            entity.Ignore(ds => ds.TotalUniqueWords);
         });
 
         modelBuilder.Entity<Link>(entity =>

@@ -3,6 +3,8 @@
 import Aura from '@primeuix/themes/aura';
 import { definePreset } from '@primeuix/styled';
 import tailwindcss from '@tailwindcss/vite';
+import path from 'node:path';
+import * as fs from 'node:fs';
 
 // Custom theming
 const JitenPreset = definePreset(Aura, {
@@ -122,5 +124,11 @@ export default defineNuxtConfig({
   },
   googleSignIn:{
     clientId: process.env.NUXT_PUBLIC_GOOGLE_SIGNIN_CLIENT_ID || '',
+  },
+  devServer: {
+    https: {
+      key: fs.readFileSync(path.resolve(__dirname, 'localhost-key.pem')).toString(),
+      cert: fs.readFileSync(path.resolve(__dirname, 'localhost.pem')).toString()
+    }
   }
 });

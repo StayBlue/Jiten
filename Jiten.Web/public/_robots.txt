@@ -1,5 +1,6 @@
 User-agent: *
 Disallow: /decks/media/*/vocabulary
+Disallow: /decks/media/*/stats
 Disallow: /decks/media
 Disallow: /decks/media/
 Disallow: /dashboard

@@ -208,26 +208,26 @@
     }
   };
 
-  const recalculateParentDeckUniqueCount = async () => {
+  const recomputeAllDeckStats = async () => {
     try {
-      const data = await $api(`/admin/recalculate-parent-deck-unique-counts`, {
+      const data = await $api(`/admin/recompute-all-deck-stats`, {
         method: 'POST',
       });
 
       toast.add({
         severity: 'success',
         summary: 'Success',
-        detail: `FIX DONE`,
+        detail: `All deck stats recomputation queued`,
         life: 5000,
       });
     } catch (error) {
       toast.add({
         severity: 'error',
         summary: 'Error',
-        detail: 'Failed to FIX',
+        detail: 'Error with deck stats recomputation',
         life: 5000,
       });
-      console.error('Error with FIX:', error);
+      console.error('Error with deck stats recomputation:', error);
     } finally {
     }
   };
@@ -324,16 +324,16 @@
       </Card>
 
       <Card class="shadow-md">
-        <template #title>Fix parent deck unique count</template>
+        <template #title>Recompute ALL decks advanced stats</template>
         <template #content>
-          <p class="mb-4">Run once.</p>
+          <p class="mb-4">Recompute all decks advanced stats (coverage curve, etc).</p>
 
           <div class="flex justify-center">
             <Button
-                label="Fix parent deck unique count"
+                label="Recompute ALL decks advanced stats"
                 icon="pi pi-table"
                 class="p-button-warning"
-                @click="recalculateParentDeckUniqueCount"
+                @click="recomputeAllDeckStats"
             />
           </div>
         </template>

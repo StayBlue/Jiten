@@ -384,15 +384,17 @@
                   <a v-for="link in sortedLinks" :key="link.url" :href="link.url" target="_blank">{{ getLinkTypeText(Number(link.linkType)) }}</a>
                 </div>
                 <div v-if="!hideControl" class="mt-4">
-                  <div class="flex flex-col md:flex-row gap-4">
-                    <Button as="router-link" :to="`/decks/media/${deck.deckId}/detail`" label="View details" class="text-center" />
-                    <Button as="router-link" :to="`/decks/media/${deck.deckId}/vocabulary`" label="View vocabulary" class="text-center" />
-                    <Button label="Download deck" class="text-center" @click="showDownloadDialog = true" />
+                  <div class="flex flex-col md:flex-row gap-2">
+                    <Button as="router-link" :to="`/decks/media/${deck.deckId}/detail`" label="Details" class="text-center" icon="pi pi-eye" />
+                    <Button as="router-link" :to="`/decks/media/${deck.deckId}/vocabulary`" label="Vocabulary" class="text-center" icon="pi pi-book" />
+                    <Button v-if="!isCompact" as="router-link" :to="`/decks/media/${deck.deckId}/stats`" label="Stats" class="text-center" icon="pi pi-chart-bar" />
+                    <Button label="Download deck" class="text-center" @click="showDownloadDialog = true" icon="pi pi-download" />
                     <Button
                       v-if="!isCompact && displayAdminFunctions"
                       as="router-link"
                       :to="`/dashboard/media/${deck.deckId}`"
                       label="Edit"
+                      icon="pi pi-pencil"
                       class="text-center"
                     />
                     <Button

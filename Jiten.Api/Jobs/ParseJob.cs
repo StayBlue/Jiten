@@ -102,6 +102,9 @@ public class ParseJob(IDbContextFactory<JitenDbContext> contextFactory, IDbConte
 
         // Queue coverage computation jobs for all users with at least 10 known words
         await QueueCoverageJobsForDeck(deck);
+
+        // Queue coverage statistics computation
+        backgroundJobs.Enqueue<StatsComputationJob>(job => job.ComputeDeckCoverageStats(deck.DeckId));
     }
 
     private async Task<Deck> ParseChild(Metadata metadata, Deck parentDeck, MediaType deckType, int deckOrder, bool storeRawText)

@@ -479,6 +479,13 @@ builder.Services.AddHangfireServer((options) =>
 
 builder.Services.AddHangfireServer((options) =>
 {
+    options.ServerName = "StatsServer";
+    options.Queues = ["stats"];
+    options.WorkerCount = 1;
+});
+
+builder.Services.AddHangfireServer((options) =>
+{
     options.ServerName = "DefaultServer";
     options.Queues = ["default"];
     options.WorkerCount = Environment.ProcessorCount / 4;

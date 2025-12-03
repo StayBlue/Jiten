@@ -166,6 +166,11 @@ public class Deck
     public ICollection<ExampleSentence>? ExampleSentences { get; set; } = new List<ExampleSentence>();
 
     /// <summary>
+    /// Advanced deck statistics
+    /// </summary>
+    public DeckStats? DeckStats { get; set; }
+
+    /// <summary>
     /// List of titles and aliases
     /// </summary>
     public ICollection<DeckTitle> Titles { get; set; } = new List<DeckTitle>();
