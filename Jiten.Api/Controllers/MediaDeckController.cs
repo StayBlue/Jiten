@@ -9,6 +9,7 @@ using Jiten.Api.Helpers;
 using Jiten.Api.Services;
 using Jiten.Core;
 using Jiten.Core.Data;
+using Jiten.Core.Data.FSRS;
 using Jiten.Core.Data.JMDict;
 using Jiten.Core.Data.User;
 using Microsoft.AspNetCore.Mvc;
@@ -806,7 +807,7 @@ public class MediaDeckController(
     /// <param name="sortBy">Sort by globalFreq | deckFreq | chrono.</param>
     /// <param name="sortOrder">Ascending or Descending.</param>
     /// <param name="offset">Pagination offset.</param>
-    /// <param name="displayFilter">When authenticated: all | known | unknown.</param>
+    /// <param name="displayFilter">When authenticated: all | known | young | mature | mastered | blacklisted | unknown.</param>
     /// <returns>Paginated deck vocabulary list.</returns>
     [HttpGet("{id}/vocabulary")]
     // [ResponseCache(Duration = 600, VaryByQueryKeys = ["id", "sortBy", "sortOrder", "offset"])]
@@ -832,20 +833,36 @@ public class MediaDeckController(
         {
             var userId = currentUserService.UserId!;
 
-            // Materialize known keys in memory
-            var knownKeys = await userContext.FsrsCards
-                                             .AsNoTracking()
-                                             .Where(uk => uk.UserId == userId)
-                                             .Select(uk => ((long)uk.WordId << 8) | uk.ReadingIndex)
-                                             .ToListAsync();
+            var allDeckWords = await query.ToListAsync();
+            var deckWordKeys = allDeckWords.Select(dw => (dw.WordId, dw.ReadingIndex)).ToList();
 
-            // Switch to in-memory filtering
+            var knownStates = await currentUserService.GetKnownWordsState(deckWordKeys, getDue: false);
+
+            var distinctWordIds = deckWordKeys.Select(k => k.WordId).Distinct().ToList();
+            var fsrsStates = await userContext.FsrsCards
+                                              .AsNoTracking()
+                                              .Where(uk => uk.UserId == userId && distinctWordIds.Contains(uk.WordId))
+                                              .Select(uk => new { uk.WordId, uk.ReadingIndex, uk.State })
+                                              .ToDictionaryAsync(uk => (uk.WordId, uk.ReadingIndex), uk => uk.State);
+
+            query = allDeckWords.AsQueryable();
+
             query = query.AsEnumerable().Where(dw =>
             {
-                var key = ((long)dw.WordId << 8) | dw.ReadingIndex;
-                return displayFilter == "known"
-                    ? knownKeys.Contains(key)
-                    : !knownKeys.Contains(key);
+                var key = (dw.WordId, dw.ReadingIndex);
+                var knownState = knownStates.GetValueOrDefault(key, KnownState.New);
+                var fsrsState = fsrsStates.GetValueOrDefault(key);
+
+                return displayFilter switch
+                {
+                    "known" => knownState != KnownState.New && fsrsStates.ContainsKey(key),
+                    "young" => knownState == KnownState.Young,
+                    "mature" => knownState == KnownState.Mature && fsrsState != FsrsState.Mastered,
+                    "mastered" => fsrsState == FsrsState.Mastered,
+                    "blacklisted" => knownState == KnownState.Blacklisted,
+                    "unknown" => !fsrsStates.ContainsKey(key),
+                    _ => true
+                };
             }).AsQueryable();
         }
 

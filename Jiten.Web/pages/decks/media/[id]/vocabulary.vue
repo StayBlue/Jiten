@@ -1,8 +1,11 @@
 <script setup lang="ts">
   import { type DeckVocabularyList, SortOrder } from '~/types';
+  import { useAuthStore } from '~/stores/authStore';
 
   const route = useRoute();
   const router = useRouter();
+
+  const auth = useAuthStore();
 
   const id = route.params.id;
 
@@ -17,8 +20,12 @@
 
   const displayOptions = ref([
     { label: 'All', value: 'all' },
-    { label: 'Only known', value: 'known' },
-    { label: 'Only unknown', value: 'unknown' },
+    { label: 'In My List', value: 'known' },
+    { label: 'Only Young', value: 'young' },
+    { label: 'Only Mature', value: 'mature' },
+    { label: 'Only Mastered', value: 'mastered' },
+    { label: 'Only Blacklisted', value: 'blacklisted' },
+    { label: 'Only Unknown', value: 'unknown' },
   ]);
 
   const sortOrder = ref(route.query.sortOrder ? route.query.sortOrder : SortOrder.Ascending);
@@ -144,7 +151,7 @@
           <Icon v-if="sortOrder == SortOrder.Ascending" name="mingcute:az-sort-ascending-letters-line" size="1.25em" />
         </Button>
       </div>
-      <div>
+      <div v-if="auth.isAuthenticated">
       <FloatLabel variant="on">
         <Select
           v-model="display"
@@ -154,6 +161,7 @@
           placeholder="display"
           input-id="display"
           class="w-full md:w-56"
+          scroll-height="30vh"
         />
         <label for="display">Display</label>
       </FloatLabel>
