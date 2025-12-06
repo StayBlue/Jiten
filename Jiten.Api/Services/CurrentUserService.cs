@@ -55,8 +55,8 @@ public class CurrentUserService(
                             .Where(w => keysList.Contains((w.WordId, w.ReadingIndex)))
                             .ToDictionary<FsrsCard, (int WordId, byte ReadingIndex), KnownState>(w => (w.WordId, w.ReadingIndex), w =>
                             {
+                                if (w.State == FsrsState.Mastered) return KnownState.Mastered;
                                 if (w.State == FsrsState.Blacklisted) return KnownState.Blacklisted;
-                                if (w.State == FsrsState.Mastered) return KnownState.Mature;
                                 if (w.State == FsrsState.New) return KnownState.New;
 
                                 if (w.LastReview == null || (getDue && w.Due <= DateTime.UtcNow))
@@ -85,7 +85,7 @@ public class CurrentUserService(
             return KnownState.Blacklisted;
 
         if (word.State == FsrsState.Mastered)
-            return KnownState.Mature;
+            return KnownState.Mastered;
 
         if (word.LastReview == null)
             return KnownState.New;

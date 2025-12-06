@@ -10,6 +10,8 @@ using Jiten.Core.Data.User;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System.Text;
+using WanaKanaShaapu;
 
 namespace Jiten.Api.Controllers;
 
@@ -73,9 +75,6 @@ public class UserController(
                                    .Where(uk => uk.UserId == userId)
                                    .Select(uk => new { uk.WordId, uk.ReadingIndex })
                                    .ToListAsync();
-
-
-        return Results.Ok(ids);
 
 
         return Results.Ok(ids);
@@ -767,6 +766,107 @@ public class UserController(
             if (!value.HasValue) return null;
             if (double.IsNaN(value.Value) || double.IsInfinity(value.Value)) return null;
             return value;
+        }
+    }
+
+    /// <summary>
+    /// Export user's vocabulary as a TXT organised by learning state.
+    /// </summary>
+    [HttpGet("vocabulary/export-words")]
+    [Produces("text/plain")]
+    public async Task<IResult> ExportWords(
+        [FromQuery] bool exportKanaOnly = false,
+        [FromQuery] bool exportMastered = true,
+        [FromQuery] bool exportMature = true,
+        [FromQuery] bool exportYoung = true,
+        [FromQuery] bool exportBlacklisted = true)
+    {
+        var userId = userService.UserId;
+        if (string.IsNullOrEmpty(userId)) return Results.Unauthorized();
+
+        if (!exportMastered && !exportMature && !exportYoung && !exportBlacklisted)
+            return Results.BadRequest("At least one category must be selected");
+
+        var cards = await userContext.FsrsCards
+                                     .AsNoTracking()
+                                     .Where(c => c.UserId == userId)
+                                     .OrderBy(c => c.WordId)
+                                     .ThenBy(c => c.ReadingIndex)
+                                     .ToListAsync();
+
+        if (cards.Count == 0)
+        {
+            return Results.NoContent();
+        }
+
+        var masteredCards = new List<FsrsCard>();
+        var matureCards = new List<FsrsCard>();
+        var youngCards = new List<FsrsCard>();
+        var blacklistedCards = new List<FsrsCard>();
+
+        var knownStates = await userService.GetKnownWordsState(cards.Select(c => (c.WordId, c.ReadingIndex)));
+
+        foreach (var card in cards)
+        {
+            switch (knownStates[(card.WordId, card.ReadingIndex)])
+            {
+                case KnownState.Mastered:
+                    masteredCards.Add(card);
+                    break;
+                case KnownState.Blacklisted:
+                    blacklistedCards.Add(card);
+                    break;
+                case KnownState.Mature:
+                    matureCards.Add(card);
+                    break;
+                case KnownState.Young:
+                    youngCards.Add(card);
+                    break;
+            }
+        }
+
+        var allCards = masteredCards.Concat(matureCards).Concat(youngCards).Concat(blacklistedCards).ToList();
+        var wordIds = allCards.Select(c => c.WordId).Distinct().ToList();
+
+        var jmdictWords = await jitenContext.JMDictWords
+                                            .AsNoTracking()
+                                            .Where(w => wordIds.Contains(w.WordId))
+                                            .Select(w => new { w.WordId, w.Readings })
+                                            .ToDictionaryAsync(w => w.WordId);
+
+        var txt = new StringBuilder();
+
+        AppendSection("MASTERED", masteredCards);
+        AppendSection("MATURE", matureCards);
+        AppendSection("YOUNG", youngCards);
+        AppendSection("BLACKLISTED", blacklistedCards);
+
+        var txtBytes = Encoding.UTF8.GetBytes(txt.ToString());
+
+        logger.LogInformation(
+                              "User exported words: UserId={UserId}, TotalCards={TotalCards}, Mastered={Mastered}, Mature={Mature}, Young={Young}, Blacklisted={Blacklisted}",
+                              userId, allCards.Count, masteredCards.Count, matureCards.Count, youngCards.Count, blacklistedCards.Count);
+
+        var dateStr = DateTime.UtcNow.ToString("yyyy-MM-dd");
+        return Results.File(txtBytes, "text/plain", $"jiten-vocabulary-export-{dateStr}.txt");
+
+        void AppendSection(string sectionName, List<FsrsCard> sectionCards)
+        {
+            if (sectionCards.Count == 0) return;
+
+            txt.AppendLine($"=== {sectionName} ===");
+
+            foreach (var card in sectionCards)
+            {
+                if (!jmdictWords.TryGetValue(card.WordId, out var word)) continue;
+                if (card.ReadingIndex >= word.Readings.Count) continue;
+
+                var reading = word.Readings[card.ReadingIndex];
+
+                if (!exportKanaOnly && WanaKana.IsKana(reading)) continue;
+
+                txt.AppendLine(reading);
+            }
         }
     }
 
