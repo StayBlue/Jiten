@@ -151,8 +151,8 @@ public class ReaderController(
 
         var result = request.Words.Select(w =>
                                               knownStates.TryGetValue((w[0], (byte)w[1]), out var state)
-                                                  ? new[] { state.ToString().ToLower() }
-                                                  : new[] { nameof(KnownState.New).ToLower() }
+                                                  ? state.Select(s => (int)s) 
+                                                  : [0]
                                          ).ToList();
 
         return Results.Ok(new { result = result });

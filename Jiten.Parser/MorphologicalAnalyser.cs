@@ -55,6 +55,9 @@ public class MorphologicalAnalyser
     private static readonly HashSet<string> MisparsesRemove =
         ["そ", "ー", "る", "ま", "ふ", "ち", "ほ", "す", "じ", "なさ", "い", "ぴ", "ふあ", "ぷ", "ちゅ", "にっ", "じら", "タ", "け", "イ"];
 
+    // Token to separate some words in sudachi
+    private static readonly string _stopToken = "|";
+
     public async Task<List<SentenceInfo>> Parse(string text, bool morphemesOnly = false)
     {
         var configuration = new ConfigurationBuilder()
@@ -80,6 +83,7 @@ public class MorphologicalAnalyser
         var output = SudachiInterop.ProcessText(configPath, text, dic, mode: morphemesOnly ? 'A' : 'C').Split("\n");
 
         text = text.Replace(" ", "");
+        text = text.Replace(_stopToken, "");
 
         List<WordInfo> wordInfos = new();
 
@@ -186,6 +190,22 @@ public class MorphologicalAnalyser
         text = Regex.Replace(text, "。", " 。\n");
         text = Regex.Replace(text, "！", " ！\n");
         text = Regex.Replace(text, "？", " ？\n");
+        
+        // Split up words that are parsed together in sudachi when they don't exist in jmdict
+        text = Regex.Replace(text, "囁き合", $"囁き{_stopToken}合");
+        text = Regex.Replace(text, "見降", $"見{_stopToken}降");
+        text = Regex.Replace(text, "斬(.)裂", $"斬$1{_stopToken}裂");
+        text = Regex.Replace(text, "砕(.)割", $"砕$1{_stopToken}割");
+        text = Regex.Replace(text, "垣間見", $"垣間{_stopToken}見");
+        text = Regex.Replace(text, "摺(.)寄", $"摺$1{_stopToken}寄");
+        text = Regex.Replace(text, "勃(.)上", $"勃$1{_stopToken}上");
+        text = Regex.Replace(text, "滴(.)流", $"滴$1{_stopToken}流");
+        text = Regex.Replace(text, "蹴(.)倒", $"蹴$1{_stopToken}倒");
+        text = Regex.Replace(text, "善がり狂", $"善がり{_stopToken}狂");
+        text = Regex.Replace(text, "伝(.)流", $"伝$1{_stopToken}流");
+        text = Regex.Replace(text, "歩(.)出", $"歩$1{_stopToken}出");
+        text = Regex.Replace(text, "持(.)得", $"持$1{_stopToken}得");
+        
 
         // Replace line ending ellipsis with a sentence ender to be able to flatten later
         text = text.Replace("…\r", "。\r").Replace("…\n", "。\n");
@@ -215,7 +235,7 @@ public class MorphologicalAnalyser
                 i++;
                 continue;
             }
-            
+
             if (w1 is { PartOfSpeech: PartOfSpeech.Prefix, Text: "今" })
             {
                 w1.PartOfSpeech = PartOfSpeech.Adverb;
@@ -324,148 +344,7 @@ public class MorphologicalAnalyser
                 i++;
                 continue;
             }
-
-            if (w1.Text == "見降ろし")
-            {
-                var mi = new WordInfo
-                         {
-                             Text = "見", DictionaryForm = "見", PartOfSpeech = PartOfSpeech.Noun,
-                             PartOfSpeechSection1 = PartOfSpeechSection.None, Reading = "見"
-                         };
-                var oroshi = new WordInfo
-                             {
-                                 Text = "降ろし", DictionaryForm = "降ろす", PartOfSpeech = PartOfSpeech.Verb,
-                                 PartOfSpeechSection1 = PartOfSpeechSection.None, Reading = "降ろし"
-                             };
-
-                newList.Add(mi);
-                newList.Add(oroshi);
-                i++;
-                continue;
-            }
             
-            if (w1.Text == "斬り裂い")
-            {
-                var kiru = new WordInfo
-                         {
-                             Text = "斬り", DictionaryForm = "斬る", PartOfSpeech = PartOfSpeech.Verb,
-                             PartOfSpeechSection1 = PartOfSpeechSection.None, Reading = "斬り"
-                         };
-                var saku = new WordInfo
-                             {
-                                 Text = "裂い", DictionaryForm = "裂く", PartOfSpeech = PartOfSpeech.Verb,
-                                 PartOfSpeechSection1 = PartOfSpeechSection.None, Reading = "裂い"
-                             };
-
-                newList.Add(kiru);
-                newList.Add(saku);
-                i++;
-                continue;
-            }
-            
-            if (w1.Text == "斬り裂く")
-            {
-                var kiru = new WordInfo
-                           {
-                               Text = "斬り", DictionaryForm = "斬る", PartOfSpeech = PartOfSpeech.Verb,
-                               PartOfSpeechSection1 = PartOfSpeechSection.None, Reading = "斬り"
-                           };
-                var saku = new WordInfo
-                           {
-                               Text = "裂く", DictionaryForm = "裂く", PartOfSpeech = PartOfSpeech.Verb,
-                               PartOfSpeechSection1 = PartOfSpeechSection.None, Reading = "裂く"
-                           };
-
-                newList.Add(kiru);
-                newList.Add(saku);
-                i++;
-                continue;
-            }
-            
-            if (w1.Text == "砕き割れ")
-            {
-                var kudaku = new WordInfo
-                           {
-                               Text = "砕き", DictionaryForm = "砕く", PartOfSpeech = PartOfSpeech.Verb,
-                               PartOfSpeechSection1 = PartOfSpeechSection.None, Reading = "砕き"
-                           };
-                var ware = new WordInfo
-                           {
-                               Text = "割れ", DictionaryForm = "割れる", PartOfSpeech = PartOfSpeech.Verb,
-                               PartOfSpeechSection1 = PartOfSpeechSection.None, Reading = "割れ"
-                           };
-
-                newList.Add(kudaku);
-                newList.Add(ware);
-                i++;
-                continue;
-            }
-
-            if (w1.Text == "溶け崩れ")
-            {
-                var toke = new WordInfo
-                             {
-                                 Text = "溶け", DictionaryForm = "溶ける", PartOfSpeech = PartOfSpeech.Verb,
-                                 PartOfSpeechSection1 = PartOfSpeechSection.None, Reading = "溶け"
-                             };
-                var kuzure = new WordInfo
-                           {
-                               Text = "崩れ", DictionaryForm = "崩れる", PartOfSpeech = PartOfSpeech.Verb,
-                               PartOfSpeechSection1 = PartOfSpeechSection.None, Reading = "崩れ"
-                           };
-
-                newList.Add(toke);
-                newList.Add(kuzure);
-                i++;
-                continue;
-            }
-            
-            // TODO: prune from dictionary
-            if (w1.NormalizedForm == "囁き合う")
-            {
-                int kiIndex = w1.Text.IndexOf('き');
-                if (kiIndex > 0)
-                {
-                    var sasayaki = new WordInfo
-                                   {
-                                       Text = w1.Text[..(kiIndex + 1)], DictionaryForm = "囁く", PartOfSpeech = PartOfSpeech.Verb,
-                                       Reading = "ささやき"
-                                   };
-                    var au = new WordInfo
-                             {
-                                 Text = w1.Text[(kiIndex + 1)..], DictionaryForm = "合う", PartOfSpeech = PartOfSpeech.Verb, Reading = "あう"
-                             };
-
-                    newList.Add(sasayaki);
-                    newList.Add(au);
-                    i++;
-                    continue;
-                }
-            }
-
-            if (w1.NormalizedForm.StartsWith("垣間見"))
-            {
-                int miIndex = w1.Text.IndexOf('見');
-                if (miIndex > 0)
-                {
-                    var kakima = new WordInfo
-                                 {
-                                     Text = w1.Text[..(miIndex)], DictionaryForm = "垣間", PartOfSpeech = PartOfSpeech.Noun,
-                                     Reading = "垣間"
-                                 };
-                    var mi = new WordInfo
-                             {
-                                 Text = w1.Text[(miIndex)..], DictionaryForm = "見える", PartOfSpeech = PartOfSpeech.Verb,
-                                 Reading = w1.Text[(miIndex)..]
-                             };
-                    newList.Add(kakima);
-                    newList.Add(mi);
-                    i++;
-                    continue;
-                }
-            }
-
-
             // Always process な as the particle and not the vegetable
             // Always process に as the particle and not the baggage
             if (w1.Text is "な" or "に")
@@ -807,6 +686,7 @@ public class MorphologicalAnalyser
                     previousWord.PartOfSpeech is PartOfSpeech.Verb && currentWord is { DictionaryForm: "です", Text: "でし" or "でした" })
                 && currentWord.DictionaryForm != "らしい"
                 && currentWord.Text != "なら"
+                && currentWord.Text != "なる"
                 && currentWord.DictionaryForm != "べし"
                 && currentWord.DictionaryForm != "ようだ"
                 && currentWord.DictionaryForm != "やがる"
@@ -817,7 +697,10 @@ public class MorphologicalAnalyser
                 && currentWord.Text != "やろ"
                 && currentWord.Text != "やしない"
                 && currentWord.Text != "し"
-               )
+                && currentWord.Text != "なのだ"
+                && currentWord.Text != "だろ"
+                && (currentWord.Text != "だ" || currentWord.Text == "だ" && previousWord.Text[^1] == 'ん')
+                )
             {
                 previousWord.Text += currentWord.Text;
                 combined = true;
@@ -880,8 +763,8 @@ public class MorphologicalAnalyser
                 && (wordInfos[i].DictionaryForm == "っこ"
                     || wordInfos[i].DictionaryForm == "さ"
                     || wordInfos[i].DictionaryForm == "がる"
-                    || ((wordInfos[i].DictionaryForm == "ら") &&
-                        wordInfos[i - 1].PartOfSpeech == PartOfSpeech.Pronoun)))
+                    || (wordInfos[i].DictionaryForm == "ら" &&
+                        wordInfos[i - 1].PartOfSpeech == PartOfSpeech.Pronoun && wordInfos[i-1].Text != "貴様")))
             {
                 currentWord.Text += nextWord.Text;
             }
