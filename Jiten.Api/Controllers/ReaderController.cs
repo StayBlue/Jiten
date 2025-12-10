@@ -74,19 +74,45 @@ public class ReaderController(
                 var word = allParsedWords[wordIndex];
                 var wordPosition = combinedText.IndexOf(word.OriginalText, positionInCombined, StringComparison.Ordinal);
 
-                if (wordPosition >= paragraphEnd)
+                // Word not found from current position - skip it
+                if (wordPosition < 0)
                 {
-                    // If the word position is too far, it's probably a misparse, so just discard the word completely to avoid breaking the logic
-                    if (wordPosition - paragraphEnd > 20 + word.OriginalText.Length * 2)
+                    wordIndex++;
+                    continue;
+                }
+
+                // Check if this match might be wrong (found too far ahead)
+                // by looking for subsequent words between current position and found position
+                if (wordPosition - positionInCombined > 10)
+                {
+                    var foundCloserWord = false;
+                    for (var lookAhead = 1; lookAhead <= 5 && wordIndex + lookAhead < allParsedWords.Count; lookAhead++)
+                    {
+                        var futureWord = allParsedWords[wordIndex + lookAhead];
+                        var futurePos = combinedText.IndexOf(futureWord.OriginalText, positionInCombined, StringComparison.Ordinal);
+
+                        if (futurePos >= 0 && futurePos < wordPosition)
+                        {
+                            // Found a subsequent word that appears BEFORE our current match
+                            // This means our current match jumped too far - skip it
+                            foundCloserWord = true;
+                            break;
+                        }
+                    }
+
+                    if (foundCloserWord)
                     {
                         wordIndex++;
                         continue;
                     }
-
-                    break;
                 }
 
-                if (wordPosition >= paragraphOffsets[i] && wordPosition < paragraphEnd)
+                // Word is beyond current paragraph - let a later paragraph iteration handle it
+                if (wordPosition >= paragraphEnd)
+                    break;
+
+                // Word is within current paragraph
+                if (wordPosition >= paragraphOffsets[i])
                 {
                     paragraphWords.Add(word);
                     positionInCombined = wordPosition + word.OriginalText.Length;
