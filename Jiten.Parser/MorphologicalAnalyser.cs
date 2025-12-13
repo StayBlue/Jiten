@@ -53,7 +53,7 @@ public class MorphologicalAnalyser
     private readonly HashSet<char> _sentenceEnders = ['。', '！', '？', '」'];
 
     private static readonly HashSet<string> MisparsesRemove =
-        ["そ", "ー", "る", "ま", "ふ", "ち", "ほ", "す", "じ", "なさ", "い", "ぴ", "ふあ", "ぷ", "ちゅ", "にっ", "じら", "タ", "け", "イ"];
+        ["そ", "ー", "る", "ま", "ふ", "ち", "ほ", "す", "じ", "なさ", "い", "ぴ", "ふあ", "ぷ", "ちゅ", "にっ", "じら", "タ", "け", "イ", "イッ"];
 
     // Token to separate some words in sudachi
     private static readonly string _stopToken = "|";
@@ -79,7 +79,7 @@ public class MorphologicalAnalyser
         // Build dictionary  sudachi ubuild Y:\CODE\Jiten\Shared\resources\user_dic.xml -s S:\Jiten\sudachi.rs\resources\system_full.dic -o "Y:\CODE\Jiten\Shared\resources\user_dic.dic"
 
         // Preprocess the text to remove invalid characters
-        PreprocessText(ref text);
+        PreprocessText(ref text, preserveStopToken);
 
         // Custom stuff in the user dictionary interferes with the mode A morpheme parsing
         var configPath =
@@ -178,7 +178,7 @@ public class MorphologicalAnalyser
         return wordInfos;
     }
 
-    private void PreprocessText(ref string text)
+    private void PreprocessText(ref string text, bool preserveStopToken)
     {
         text = text.Replace("<", " ");
         text = text.Replace(">", " ");
@@ -186,6 +186,9 @@ public class MorphologicalAnalyser
         text = Regex.Replace(text,
                              "[^\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF\uFF21-\uFF3A\uFF41-\uFF5A\uFF10-\uFF19\u3005\u3001-\u3003\u3008-\u3011\u3014-\u301F\uFF01-\uFF0F\uFF1A-\uFF1F\uFF3B-\uFF3F\uFF5B-\uFF60\uFF62-\uFF65．\\n…\u3000―\u2500()。！？「」）|]",
                              "");
+        
+        if (!preserveStopToken)
+            text = text.Replace("|", "");
 
         // Force spaces and line breaks with some characters so sudachi doesn't try to include them as part of a word
         text = Regex.Replace(text, "「", "\n「 ");
