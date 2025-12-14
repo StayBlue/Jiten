@@ -81,7 +81,7 @@
       <div class="text-white font-bold text-lg">Refreshing your coverage, please wait a few seconds…</div>
       <ProgressSpinner style="width: 50px; height: 50px" stroke-width="8" fill="transparent" animation-duration=".5s" aria-label="Creating your deck" />
     </div>
-    <BlockUI :blocked="isRefreshing" full-screen />
+<!--    <BlockUI :blocked="isRefreshing" full-screen />-->
   </div>
 </template>
 

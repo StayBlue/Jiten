@@ -197,7 +197,7 @@
         </div>
       </template>
     </Card>
-    <BlockUI :blocked="isLoading" full-screen />
+<!--    <BlockUI :blocked="isLoading" full-screen />-->
   </div>
 </template>
 
