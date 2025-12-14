@@ -331,6 +331,7 @@ builder.Services.AddScoped<Microsoft.AspNetCore.Identity.UI.Services.IEmailSende
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
 builder.Services.AddScoped<ISrsService, SrsService>();
+builder.Services.AddSingleton<ISrsDebounceService, SrsDebounceService>();
 
 builder.Services.AddRateLimiter(options =>
 {

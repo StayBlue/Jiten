@@ -94,8 +94,8 @@
       acceptProps: {
         label: 'Generate',
       },
-      accept: () => {
-        createApiKey();
+      accept: async () => {
+        await createApiKey();
       },
     });
   };
@@ -114,8 +114,8 @@
         label: 'Regenerate',
         severity: 'danger',
       },
-      accept: () => {
-        revokeAndRegenerate();
+      accept: async () => {
+        await revokeAndRegenerate();
       },
     });
   };

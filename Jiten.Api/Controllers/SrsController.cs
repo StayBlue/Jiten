@@ -18,6 +18,7 @@ public class SrsController(
     UserDbContext userContext,
     ICurrentUserService currentUserService,
     ISrsService srsService,
+    ISrsDebounceService debounceService,
     ILogger<SrsController> logger) : ControllerBase
 {
     /// <summary>
@@ -30,8 +31,14 @@ public class SrsController(
                       Description = "Rate (review) a word using the FSRS scheduler.")]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status429TooManyRequests)]
     public async Task<IResult> Review(SrsReviewRequest request)
     {
+        if (!debounceService.TryAcquire(currentUserService.UserId!, request.WordId, request.ReadingIndex))
+        {
+            return Results.StatusCode(StatusCodes.Status429TooManyRequests);
+        }
+
         var card = await userContext.FsrsCards.FirstOrDefaultAsync(c => c.UserId == currentUserService.UserId &&
                                                                         c.WordId == request.WordId &&
                                                                         c.ReadingIndex == request.ReadingIndex);
@@ -75,9 +82,16 @@ public class SrsController(
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status429TooManyRequests)]
     public async Task<IResult> SetVocabularyState(SetVocabularyStateRequest request)
     {
         var userId = currentUserService.UserId;
+
+        if (!debounceService.TryAcquire(userId!, request.WordId, request.ReadingIndex))
+        {
+            return Results.StatusCode(StatusCodes.Status429TooManyRequests);
+        }
+
         var card = await userContext.FsrsCards.FirstOrDefaultAsync(c =>
                                                                        c.UserId == userId &&
                                                                        c.WordId == request.WordId &&
@@ -96,19 +110,13 @@ public class SrsController(
                 }
                 else
                 {
-                    if (card.State == FsrsState.Mastered)
-                    {
-                        RestoreCardState(card);
-                        break;
-                    }
-                    
                     card.State = FsrsState.Mastered;
                 }
 
                 break;
 
             case "neverForget-remove":
-                if (card != null)
+                if (card != null && card.State == FsrsState.Mastered)
                     RestoreCardState(card);
                 break;
 
@@ -121,20 +129,22 @@ public class SrsController(
                 }
                 else
                 {
-                    if (card.State == FsrsState.Blacklisted)
-                    {
-                        RestoreCardState(card);
-                        break;
-                    }
-
                     card.State = FsrsState.Blacklisted;
                 }
 
                 break;
 
             case "blacklist-remove":
-                if (card != null)
+                if (card != null && card.State == FsrsState.Blacklisted)
                     RestoreCardState(card);
+                break;
+
+            case "forget-add":
+                if (card != null)
+                {
+                    userContext.FsrsCards.Remove(card);
+                }
+
                 break;
 
             default:
@@ -149,7 +159,7 @@ public class SrsController(
         logger.LogInformation("User set vocabulary state: WordId={WordId}, ReadingIndex={ReadingIndex}, State={State}",
                               request.WordId, request.ReadingIndex, request.State);
         return Results.Json(new { success = true });
-        
+
         void RestoreCardState(FsrsCard card)
         {
             if (card.Stability is > 0)
@@ -243,6 +253,21 @@ public class SrsController(
                     kanaCardToUpdate.State = FsrsState.Review;
                     await userContext.SaveChangesAsync();
                     logger.LogInformation("Updated synced kana reading to Review: WordId={WordId}, KanaIndex={KanaIndex}",
+                                          wordId, kanaIndex);
+                }
+
+                break;
+
+            case "forget-add":
+                var kanaCardToForget = await userContext.FsrsCards
+                                                        .FirstOrDefaultAsync(c => c.UserId == userId &&
+                                                                                  c.WordId == wordId &&
+                                                                                  c.ReadingIndex == (byte)kanaIndex);
+                if (kanaCardToForget != null)
+                {
+                    userContext.FsrsCards.Remove(kanaCardToForget);
+                    await userContext.SaveChangesAsync();
+                    logger.LogInformation("Removed synced kana reading (forget): WordId={WordId}, KanaIndex={KanaIndex}",
                                           wordId, kanaIndex);
                 }
 

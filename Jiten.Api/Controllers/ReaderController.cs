@@ -39,7 +39,7 @@ public class ReaderController(
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<IResult> Parse(ReaderParseRequest request)
     {
-        if (string.Join("", request.Text).Length > 17000)
+        if (string.Join("", request.Text).Length > 81000)
             return Results.BadRequest("Text is too long");
 
         List<List<ReaderToken>> allTokens = new();
@@ -176,8 +176,8 @@ public class ReaderController(
             allTokens.Add(tokens);
         }
 
-        logger.LogInformation("Reader parsed text: ParagraphCount={ParagraphCount}, TotalWords={TotalWords}",
-                              request.Text.Length, parsedParagraphs.Sum(p => p.Count));
+        logger.LogInformation("Reader parsed text: ParagraphCount={ParagraphCount}, TotalWords={TotalWords}, TotalLength={TotalLength}",
+                              request.Text.Length, parsedParagraphs.Sum(p => p.Count), string.Join("", request.Text).Length);
         return Results.Ok(new { tokens = allTokens, vocabulary = allWords });
     }
 
