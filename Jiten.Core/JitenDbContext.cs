@@ -31,6 +31,8 @@ public class JitenDbContext : DbContext
     public DbSet<ExternalGenreMapping> ExternalGenreMappings { get; set; }
     public DbSet<ExternalTagMapping> ExternalTagMappings { get; set; }
 
+    public DbSet<DeckRelationship> DeckRelationships { get; set; }
+
     public JitenDbContext()
     {
     }
@@ -368,6 +370,27 @@ public class JitenDbContext : DbContext
                   .WithMany()
                   .HasForeignKey(e => e.TagId)
                   .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<DeckRelationship>(entity =>
+        {
+            entity.ToTable("DeckRelationships", "jiten");
+            entity.HasKey(dr => new { dr.SourceDeckId, dr.TargetDeckId, dr.RelationshipType });
+
+            entity.HasOne(dr => dr.SourceDeck)
+                  .WithMany(d => d.RelationshipsAsSource)
+                  .HasForeignKey(dr => dr.SourceDeckId)
+                  .HasConstraintName("FK_DeckRelationships_Decks_SourceDeckId")
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(dr => dr.TargetDeck)
+                  .WithMany(d => d.RelationshipsAsTarget)
+                  .HasForeignKey(dr => dr.TargetDeckId)
+                  .HasConstraintName("FK_DeckRelationships_Decks_TargetDeckId")
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasIndex(dr => dr.SourceDeckId).HasDatabaseName("IX_DeckRelationships_SourceDeckId");
+            entity.HasIndex(dr => dr.TargetDeckId).HasDatabaseName("IX_DeckRelationships_TargetDeckId");
         });
 
         base.OnModelCreating(modelBuilder);

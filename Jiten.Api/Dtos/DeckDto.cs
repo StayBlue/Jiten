@@ -38,6 +38,7 @@ public class DeckDto
     public ExampleSentenceDto? ExampleSentence { get; set; }
     public List<Genre> Genres { get; set; } = new();
     public List<TagWithPercentageDto> Tags { get; set; } = new();
+    public List<DeckRelationshipDto> Relationships { get; set; } = new();
     public DeckStatus? Status { get; set; }
     public bool? IsFavourite { get; set; }
     public bool? IsIgnored { get; set; }
@@ -150,4 +151,11 @@ public class DeckDto
 
         return 5;
     }
+}
+
+public class DeckRelationshipDto
+{
+    public int TargetDeckId { get; set; }
+    public string TargetTitle { get; set; } = string.Empty;
+    public DeckRelationshipType RelationshipType { get; set; }
 }

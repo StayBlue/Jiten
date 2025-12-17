@@ -185,6 +185,16 @@ public class Deck
     /// </summary>
     public ICollection<DeckTag> DeckTags { get; set; } = new List<DeckTag>();
 
+    /// <summary>
+    /// Relationships where this deck is the source
+    /// </summary>
+    public ICollection<DeckRelationship> RelationshipsAsSource { get; set; } = new List<DeckRelationship>();
+
+    /// <summary>
+    /// Relationships where this deck is the target
+    /// </summary>
+    public ICollection<DeckRelationship> RelationshipsAsTarget { get; set; } = new List<DeckRelationship>();
+
 
     private float _dialoguePercentage;
 

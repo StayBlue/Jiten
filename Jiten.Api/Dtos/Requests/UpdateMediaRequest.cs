@@ -21,6 +21,7 @@ public class UpdateMediaRequest
     public List<int> Genres { get; set; } = new List<int>();
     public List<UpdateMediaRequestTag> Tags { get; set; } = new List<UpdateMediaRequestTag>();
     public List<UpdateMediaRequestSubdeck>? Subdecks { get; set; } = new List<UpdateMediaRequestSubdeck>();
+    public List<UpdateMediaRequestRelationship> Relationships { get; set; } = new List<UpdateMediaRequestRelationship>();
 }
 
 public class UpdateMediaRequestSubdeck
@@ -36,4 +37,10 @@ public class UpdateMediaRequestTag
 {
     public int TagId { get; set; }
     public byte Percentage { get; set; }
+}
+
+public class UpdateMediaRequestRelationship
+{
+    public int TargetDeckId { get; set; }
+    public DeckRelationshipType RelationshipType { get; set; }
 }

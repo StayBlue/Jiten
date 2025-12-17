@@ -203,6 +203,8 @@ public partial class AdminController(
                             .Include(d => d.DeckGenres)
                             .Include(d => d.DeckTags)
                             .ThenInclude(dt => dt.Tag)
+                            .Include(d => d.RelationshipsAsSource)
+                            .ThenInclude(r => r.TargetDeck)
                             .FirstOrDefault(d => d.DeckId == id);
 
         if (deck == null)
@@ -214,6 +216,13 @@ public partial class AdminController(
             .OrderBy(dw => dw.DeckOrder);
 
         var mainDeckDto = new DeckDto(deck);
+        mainDeckDto.Relationships = deck.RelationshipsAsSource.Select(r => new DeckRelationshipDto
+        {
+            TargetDeckId = r.TargetDeckId,
+            TargetTitle = r.TargetDeck.OriginalTitle,
+            RelationshipType = r.RelationshipType
+        }).ToList();
+
         List<DeckDto> subDeckDtos = new();
 
         foreach (var subDeck in subDecks)
@@ -243,6 +252,7 @@ public partial class AdminController(
                                   .Include(d => d.DeckGenres)
                                   .Include(d => d.DeckTags)
                                   .ThenInclude(dt => dt.Tag)
+                                  .Include(d => d.RelationshipsAsSource)
                                   .FirstOrDefaultAsync(d => d.DeckId == model.DeckId);
 
         if (deck == null)
@@ -418,6 +428,47 @@ public partial class AdminController(
                     deck.Children.Add(newDeck);
                 }
             }
+        }
+
+        // Update relationships
+        if (model.Relationships != null && model.Relationships.Any())
+        {
+            var existingRelationships = deck.RelationshipsAsSource.ToList();
+            var newRelationshipKeys = model.Relationships
+                .Select(r => (r.TargetDeckId, r.RelationshipType))
+                .ToHashSet();
+
+            // Remove relationships no longer present
+            foreach (var existing in existingRelationships)
+            {
+                if (!newRelationshipKeys.Contains((existing.TargetDeckId, existing.RelationshipType)))
+                {
+                    dbContext.DeckRelationships.Remove(existing);
+                }
+            }
+
+            // Add new relationships
+            var existingKeys = existingRelationships
+                .Select(r => (r.TargetDeckId, r.RelationshipType))
+                .ToHashSet();
+
+            foreach (var rel in model.Relationships)
+            {
+                if (!existingKeys.Contains((rel.TargetDeckId, rel.RelationshipType)))
+                {
+                    deck.RelationshipsAsSource.Add(new DeckRelationship
+                    {
+                        SourceDeckId = deck.DeckId,
+                        TargetDeckId = rel.TargetDeckId,
+                        RelationshipType = rel.RelationshipType
+                    });
+                }
+            }
+        }
+        else if (model.Relationships != null)
+        {
+            // Clear all if empty list provided
+            dbContext.RemoveRange(deck.RelationshipsAsSource);
         }
 
         deck.LastUpdate = DateTime.UtcNow;
