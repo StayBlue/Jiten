@@ -740,7 +740,7 @@ namespace Jiten.Parser
             // if there's a candidate that's the same as the base word, put it first in the list
             var baseWord = WanaKana.ToHiragana(wordData.wordInfo.Text);
             var baseWordIndex = candidates.FindIndex(c => c.form.Text == baseWord);
-            if (baseWordIndex != -1)
+            if (baseWordIndex != -1 && candidates[0].form.Text != baseDictionaryWord)
             {
                 var baseWordCandidate = candidates[baseWordIndex];
                 candidates.RemoveAt(baseWordIndex);
@@ -812,25 +812,79 @@ namespace Jiten.Parser
             else
                 bestMatch = matches[0];
 
-            var normalizedReadings =
-                bestMatch.word.Readings.Select(r => WanaKana.ToHiragana(r, new DefaultOptions() { ConvertLongVowelMark = false })).ToList();
-            byte readingIndex = (byte)normalizedReadings.IndexOf(bestMatch.form.Text);
+            // Reading selection
+            // Distinguishes betsween katakana readings, tries to filter out long vowel, etc
+            
+            var readings = bestMatch.word.Readings.ToList();
+            var targetHiragana = bestMatch.form.Text;
+            var originalText = wordData.wordInfo.Text;
 
-            // not found, try with converting the long vowel mark
-            if (readingIndex == 255)
+            byte bestReadingIndex = 255;
+            int maxScriptScore = 0;
+
+            for (int i = 0; i < readings.Count; i++)
             {
-                normalizedReadings =
-                    bestMatch.word.Readings.Select(r => WanaKana.ToHiragana(r)).ToList();
-                readingIndex = (byte)normalizedReadings.IndexOf(bestMatch.form.Text);
+                string reading = readings[i];
+
+                // A. Filter: The reading MUST correspond to the deconjugated word phonetically.
+                // We verify this by converting the reading to Hiragana and checking if it matches our target.
+                var readingHiragana = WanaKana.ToHiragana(reading, new DefaultOptions { ConvertLongVowelMark = false });
+
+                // Use loose check for long vowels if strict check fails, or just strict. 
+                if (KanaNormalizer.Normalize(readingHiragana) != KanaNormalizer.Normalize(targetHiragana))
+                {
+                    // Try with long vowel conversion if simple failed
+                    if (KanaNormalizer.Normalize(WanaKana.ToHiragana(reading)) != KanaNormalizer.Normalize(targetHiragana))
+                        continue;
+                }
+
+                // B. Score: Calculate common prefix length between Original Text and Reading
+                int score = GetCommonPrefixLength(originalText, reading);
+
+                if (score > maxScriptScore)
+                {
+                    maxScriptScore = score;
+                    bestReadingIndex = (byte)i;
+                }
+            }
+
+            // Fallback Logic (if no script match found, e.g. Kanji input or standard Hiragana)
+            if (bestReadingIndex == 255)
+            {
+                // Try strict Hiragana match
+                var normalizedReadings = readings.Select(r => WanaKana.ToHiragana(r, new DefaultOptions() { ConvertLongVowelMark = false }))
+                                                 .ToList();
+                var idx = normalizedReadings.IndexOf(targetHiragana);
+
+                if (idx != -1) bestReadingIndex = (byte)idx;
+                else
+                {
+                    // Try loose match (long vowels)
+                    normalizedReadings = readings.Select(r => WanaKana.ToHiragana(r)).ToList();
+                    bestReadingIndex = (byte)normalizedReadings.IndexOf(targetHiragana);
+                }
             }
 
             DeckWord deckWord = new()
                                 {
-                                    WordId = bestMatch.word.WordId, OriginalText = wordData.wordInfo.Text, ReadingIndex = readingIndex,
+                                    WordId = bestMatch.word.WordId, OriginalText = wordData.wordInfo.Text, ReadingIndex = bestReadingIndex,
                                     Occurrences = wordData.occurrences, Conjugations = bestMatch.form.Process,
                                     PartsOfSpeech = bestMatch.word.PartsOfSpeech.ToPartOfSpeech(), Origin = bestMatch.word.Origin
                                 };
+
             return (true, deckWord);
+            
+            static int GetCommonPrefixLength(string s1, string s2)
+            {
+                int len = Math.Min(s1.Length, s2.Length);
+                int match = 0;
+                for (int i = 0; i < len; i++)
+                {
+                    if (s1[i] == s2[i]) match++;
+                    else break;
+                }
+                return match;
+            }
         }
     }
 }
