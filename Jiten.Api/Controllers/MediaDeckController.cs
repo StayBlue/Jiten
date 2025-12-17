@@ -106,7 +106,8 @@ public class MediaDeckController(
                        "offset", "mediaType", "wordId", "readingIndex", "titleFilter", "sortBy", "sortOrder", "status",
                        "charCountMin", "charCountMax", "releaseYearMin", "releaseYearMax", "uniqueKanjiMin",
                        "uniqueKanjiMax", "subdeckCountMin", "subdeckCountMax", "extRatingMin", "extRatingMax", "genres",
-                       "excludeGenres", "tags", "excludeTags"
+                       "excludeGenres", "tags", "excludeTags", "coverageMin", "coverageMax", "uniqueCoverageMin",
+                       "uniqueCoverageMax"
                    ])]
     [SwaggerOperation(Summary = "List media decks",
                       Description =
@@ -123,7 +124,9 @@ public class MediaDeckController(
                                                                       int? subdeckCountMin = null, int? subdeckCountMax = null,
                                                                       int? extRatingMin = null, int? extRatingMax = null,
                                                                       string? genres = null, string? excludeGenres = null,
-                                                                      string? tags = null, string? excludeTags = null)
+                                                                      string? tags = null, string? excludeTags = null,
+                                                                      float? coverageMin = null, float? coverageMax = null,
+                                                                      float? uniqueCoverageMin = null, float? uniqueCoverageMax = null)
     {
         // Disable response caching for authenticated users
         if (currentUserService.IsAuthenticated)
@@ -417,6 +420,27 @@ public class MediaDeckController(
                                                 .ToListAsync();
             coverageDict = coverageList.ToDictionary(x => x.DeckId, x => (float)x.Coverage);
             uniqueCoverageDict = coverageList.ToDictionary(x => x.DeckId, x => (float)x.UniqueCoverage);
+
+            // Apply coverage filters
+            if (coverageMin != null || coverageMax != null)
+            {
+                var matchingIds = coverageDict
+                                  .Where(kvp => (coverageMin == null || kvp.Value >= coverageMin) &&
+                                                (coverageMax == null || kvp.Value <= coverageMax))
+                                  .Select(kvp => kvp.Key)
+                                  .ToHashSet();
+                query = query.Where(d => matchingIds.Contains(d.DeckId));
+            }
+
+            if (uniqueCoverageMin != null || uniqueCoverageMax != null)
+            {
+                var matchingIds = uniqueCoverageDict
+                                  .Where(kvp => (uniqueCoverageMin == null || kvp.Value >= uniqueCoverageMin) &&
+                                                (uniqueCoverageMax == null || kvp.Value <= uniqueCoverageMax))
+                                  .Select(kvp => kvp.Key)
+                                  .ToHashSet();
+                query = query.Where(d => matchingIds.Contains(d.DeckId));
+            }
 
             // Reuse allUserPrefs from earlier instead of querying again
 

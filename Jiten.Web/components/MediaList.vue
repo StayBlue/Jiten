@@ -117,6 +117,10 @@
   const subdeckCountMax = ref<number | null>(toNumOrNull(route.query.subdeckCountMax));
   const extRatingMin = ref<number | null>(toNumOrNull(route.query.extRatingMin));
   const extRatingMax = ref<number | null>(toNumOrNull(route.query.extRatingMax));
+  const coverageMin = ref<number | null>(toNumOrNull(route.query.coverageMin));
+  const coverageMax = ref<number | null>(toNumOrNull(route.query.coverageMax));
+  const uniqueCoverageMin = ref<number | null>(toNumOrNull(route.query.uniqueCoverageMin));
+  const uniqueCoverageMax = ref<number | null>(toNumOrNull(route.query.uniqueCoverageMax));
 
   // Genre and Tag filter state
   const includeGenres = ref<number[]>([]);
@@ -157,6 +161,8 @@
   watch([uniqueKanjiMin, uniqueKanjiMax], () => normalizePair(uniqueKanjiMin, uniqueKanjiMax, 0, 5000));
   watch([subdeckCountMin, subdeckCountMax], () => normalizePair(subdeckCountMin, subdeckCountMax, 0, 2000));
   watch([extRatingMin, extRatingMax], () => normalizePair(extRatingMin, extRatingMax, 0, 2000));
+  watch([coverageMin, coverageMax], () => normalizePair(coverageMin, coverageMax, 0, 100));
+  watch([uniqueCoverageMin, uniqueCoverageMax], () => normalizePair(uniqueCoverageMin, uniqueCoverageMax, 0, 100));
 
   const debouncedFilters = ref({
     charCountMin: charCountMin.value,
@@ -169,6 +175,10 @@
     subdeckCountMax: subdeckCountMax.value,
     extRatingMin: extRatingMin.value,
     extRatingMax: extRatingMax.value,
+    coverageMin: coverageMin.value,
+    coverageMax: coverageMax.value,
+    uniqueCoverageMin: uniqueCoverageMin.value,
+    uniqueCoverageMax: uniqueCoverageMax.value,
     includeGenres: includeGenres.value,
     excludeGenres: excludeGenres.value,
     includeTags: includeTags.value,
@@ -188,6 +198,10 @@
         subdeckCountMax: subdeckCountMax.value,
         extRatingMin: extRatingMin.value,
         extRatingMax: extRatingMax.value,
+        coverageMin: coverageMin.value,
+        coverageMax: coverageMax.value,
+        uniqueCoverageMin: uniqueCoverageMin.value,
+        uniqueCoverageMax: uniqueCoverageMax.value,
         includeGenres: includeGenres.value,
         excludeGenres: excludeGenres.value,
         includeTags: includeTags.value,
@@ -210,6 +224,10 @@
           subdeckCountMax: toUndef(subdeckCountMax.value) as any,
           extRatingMin: toUndef(extRatingMin.value) as any,
           extRatingMax: toUndef(extRatingMax.value) as any,
+          coverageMin: toUndef(coverageMin.value) as any,
+          coverageMax: toUndef(coverageMax.value) as any,
+          uniqueCoverageMin: toUndef(uniqueCoverageMin.value) as any,
+          uniqueCoverageMax: toUndef(uniqueCoverageMax.value) as any,
           genres: arrayToString(includeGenres.value) as any,
           excludeGenres: arrayToString(excludeGenres.value) as any,
           tags: arrayToString(includeTags.value) as any,
@@ -223,7 +241,7 @@
   );
 
   watch(
-    [charCountMin, charCountMax, releaseYearMin, releaseYearMax, uniqueKanjiMin, uniqueKanjiMax, subdeckCountMin, subdeckCountMax, extRatingMin, extRatingMax],
+    [charCountMin, charCountMax, releaseYearMin, releaseYearMax, uniqueKanjiMin, uniqueKanjiMax, subdeckCountMin, subdeckCountMax, extRatingMin, extRatingMax, coverageMin, coverageMax, uniqueCoverageMin, uniqueCoverageMax],
     () => {
       updateFiltersDebounced();
     }
@@ -301,6 +319,10 @@
     subdeckCountMax.value = null;
     extRatingMin.value = null;
     extRatingMax.value = null;
+    coverageMin.value = null;
+    coverageMax.value = null;
+    uniqueCoverageMin.value = null;
+    uniqueCoverageMax.value = null;
 
     // Genre and tag filters
     includeGenres.value = [];
@@ -326,6 +348,10 @@
         subdeckCountMax: undefined,
         extRatingMin: undefined,
         extRatingMax: undefined,
+        coverageMin: undefined,
+        coverageMax: undefined,
+        uniqueCoverageMin: undefined,
+        uniqueCoverageMax: undefined,
         genres: undefined,
         excludeGenres: undefined,
         tags: undefined,
@@ -421,6 +447,10 @@
       subdeckCountMax: computed(() => debouncedFilters.value.subdeckCountMax),
       extRatingMin: computed(() => debouncedFilters.value.extRatingMin),
       extRatingMax: computed(() => debouncedFilters.value.extRatingMax),
+      coverageMin: computed(() => debouncedFilters.value.coverageMin),
+      coverageMax: computed(() => debouncedFilters.value.coverageMax),
+      uniqueCoverageMin: computed(() => debouncedFilters.value.uniqueCoverageMin),
+      uniqueCoverageMax: computed(() => debouncedFilters.value.uniqueCoverageMax),
       genres: computed(() => (debouncedFilters.value.includeGenres.length > 0 ? debouncedFilters.value.includeGenres.join(',') : undefined)),
       excludeGenres: computed(() => (debouncedFilters.value.excludeGenres.length > 0 ? debouncedFilters.value.excludeGenres.join(',') : undefined)),
       tags: computed(() => (debouncedFilters.value.includeTags.length > 0 ? debouncedFilters.value.includeTags.join(',') : undefined)),
@@ -543,6 +573,10 @@
         v-model:subdeck-count-max="subdeckCountMax"
         v-model:ext-rating-min="extRatingMin"
         v-model:ext-rating-max="extRatingMax"
+        v-model:coverage-min="coverageMin"
+        v-model:coverage-max="coverageMax"
+        v-model:unique-coverage-min="uniqueCoverageMin"
+        v-model:unique-coverage-max="uniqueCoverageMax"
         v-model:include-genres="includeGenres"
         v-model:exclude-genres="excludeGenres"
         v-model:include-tags="includeTags"

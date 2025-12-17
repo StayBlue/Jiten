@@ -28,6 +28,10 @@ const includeGenres = defineModel<number[]>('includeGenres', { required: true })
 const excludeGenres = defineModel<number[]>('excludeGenres', { required: true });
 const includeTags = defineModel<number[]>('includeTags', { required: true });
 const excludeTags = defineModel<number[]>('excludeTags', { required: true });
+const coverageMin = defineModel<number | null>('coverageMin', { required: true });
+const coverageMax = defineModel<number | null>('coverageMax', { required: true });
+const uniqueCoverageMin = defineModel<number | null>('uniqueCoverageMin', { required: true });
+const uniqueCoverageMax = defineModel<number | null>('uniqueCoverageMax', { required: true });
 
 const popover = ref();
 
@@ -108,6 +112,22 @@ const extRatingRange = computed<[number, number]>({
   set: (val) => {
     extRatingMin.value = val[0];
     extRatingMax.value = val[1];
+  },
+});
+
+const coverageRange = computed<[number, number]>({
+  get: () => [coverageMin.value ?? 0, coverageMax.value ?? 100],
+  set: (val) => {
+    coverageMin.value = val[0];
+    coverageMax.value = val[1];
+  },
+});
+
+const uniqueCoverageRange = computed<[number, number]>({
+  get: () => [uniqueCoverageMin.value ?? 0, uniqueCoverageMax.value ?? 100],
+  set: (val) => {
+    uniqueCoverageMin.value = val[0];
+    uniqueCoverageMax.value = val[1];
   },
 });
 
@@ -335,6 +355,76 @@ defineExpose({ toggle });
                   />
                 </div>
               </div>
+
+              <div v-if="isConnected" class="flex flex-col gap-2">
+                <div class="text-sm font-medium text-gray-600 dark:text-gray-300">Coverage (%)</div>
+                <div class="flex items-center gap-3">
+                  <InputNumber
+                    v-model="coverageMin"
+                    :min="0"
+                    :max="100"
+                    :use-grouping="false"
+                    mode="decimal"
+                    :min-fraction-digits="0"
+                    :max-fraction-digits="2"
+                    fluid
+                    class="max-w-28 flex-shrink-0"
+                    show-buttons
+                    size="small"
+                    placeholder="Min"
+                  />
+                  <Slider v-model="coverageRange" range :min="0" :max="100" class="flex-1" />
+                  <InputNumber
+                    v-model="coverageMax"
+                    :min="0"
+                    :max="100"
+                    :use-grouping="false"
+                    mode="decimal"
+                    :min-fraction-digits="0"
+                    :max-fraction-digits="2"
+                    fluid
+                    class="max-w-28 flex-shrink-0"
+                    show-buttons
+                    size="small"
+                    placeholder="Max"
+                  />
+                </div>
+              </div>
+
+              <div v-if="isConnected" class="flex flex-col gap-2">
+                <div class="text-sm font-medium text-gray-600 dark:text-gray-300">Unique Coverage (%)</div>
+                <div class="flex items-center gap-3">
+                  <InputNumber
+                    v-model="uniqueCoverageMin"
+                    :min="0"
+                    :max="100"
+                    :use-grouping="false"
+                    mode="decimal"
+                    :min-fraction-digits="0"
+                    :max-fraction-digits="2"
+                    fluid
+                    class="max-w-28 flex-shrink-0"
+                    show-buttons
+                    size="small"
+                    placeholder="Min"
+                  />
+                  <Slider v-model="uniqueCoverageRange" range :min="0" :max="100" class="flex-1" />
+                  <InputNumber
+                    v-model="uniqueCoverageMax"
+                    :min="0"
+                    :max="100"
+                    :use-grouping="false"
+                    mode="decimal"
+                    :min-fraction-digits="0"
+                    :max-fraction-digits="2"
+                    fluid
+                    class="max-w-28 flex-shrink-0"
+                    show-buttons
+                    size="small"
+                    placeholder="Max"
+                  />
+                </div>
+              </div>
             </div>
           </TabPanel>
 
@@ -380,7 +470,7 @@ defineExpose({ toggle });
                   </InputIcon>
                 </IconField>
               </div>
-              <ScrollPanel class="w-full" style="height: 350px">
+              <ScrollPanel class="w-full" style="height: 40vh">
                 <div class="flex flex-wrap gap-2 p-2">
                   <TriStateTag
                     v-for="tag in filteredTags"
