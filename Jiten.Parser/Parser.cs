@@ -914,25 +914,38 @@ namespace Jiten.Parser
             {
                 var wordInHiragana = WanaKana.ToHiragana(word, new DefaultOptions() { ConvertLongVowelMark = false, });
                 var wordNormalized = KanaNormalizer.Normalize(wordInHiragana);
-                var matchesIds = _lookups.Where(l => l.Key == wordNormalized).SelectMany(l => l.Value).ToList();
 
-                if (!matchesIds.Any())
+                if (!_lookups.TryGetValue(wordNormalized, out var matchesIds) || matchesIds.Count == 0)
                     continue;
 
                 var wordCache = await JmDictCache.GetWordsAsync(matchesIds);
+
+                if (wordCache == null || wordCache.Count == 0)
+                    continue;
+
                 List<JmDictWord> matches = new();
 
                 foreach (var id in matchesIds)
                 {
                     if (!wordCache.TryGetValue(id, out var match)) continue;
-                    if (match.Readings.Any(r => r == word))
+                    if (match.Readings != null && match.Readings.Any(r => r == word))
                         matches.Add(match);
                 }
 
+                if (matches.Count == 0)
+                    continue;
+
                 var bestMatch = matches.OrderByDescending(m => m.GetPriorityScore(WanaKana.IsKana(word))).First();
+
+                var readingIndex = bestMatch.Readings?.IndexOf(word) ?? -1;
+                if (readingIndex == -1)
+                    continue;
+
                 matchedWords.Add(new DeckWord()
                                  {
-                                     WordId = bestMatch.WordId, ReadingIndex = (byte)bestMatch.Readings.IndexOf(word), OriginalText = word
+                                     WordId = bestMatch.WordId,
+                                     ReadingIndex = (byte)readingIndex,
+                                     OriginalText = word
                                  });
             }
 

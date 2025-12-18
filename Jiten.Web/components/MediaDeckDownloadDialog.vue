@@ -261,11 +261,11 @@
               :key="opt.value"
               @click="format = opt.value"
               class="border rounded-lg p-3 cursor-pointer transition-all duration-200 flex flex-col gap-1 items-start relative hover:border-gray-400 hover:dark:border-gray-500 hover:shadow-sm"
-              :class="format === opt.value ? 'bg-primary-50 border-primary ring-1 ring-primary' : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700'"
+              :class="format === opt.value ? 'bg-primary-50 dark:bg-gray-600 border-primary dark:border-gray-700 ring-1 ring-primary' : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700'"
             >
               <div class="flex items-center gap-2 w-full">
                 <i :class="[opt.icon, format === opt.value ? 'text-primary' : 'text-gray-400 dark:text-gray-500']" class="text-lg"></i>
-                <span class="font-semibold text-sm" :class="format === opt.value ? 'text-primary-900' : 'text-gray-700 dark:text-gray-300'">{{ opt.label }}</span>
+                <span class="font-semibold text-sm" :class="format === opt.value ? 'text-primary-900 dark:text-primary-300' : 'text-gray-700 dark:text-gray-300'">{{ opt.label }}</span>
               </div>
               <span class="text-[10px] leading-tight text-gray-500 dark:text-gray-400">{{ opt.desc }}</span>
               <!-- Active Badge -->
