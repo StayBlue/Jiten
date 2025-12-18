@@ -252,7 +252,7 @@
       <div class="p-5 overflow-y-auto max-h-[70vh] flex flex-col gap-6">
         <!-- 1. FORMAT SELECTION -->
         <section>
-          <div class="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3">File Format</div>
+          <div class="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-3">File Format</div>
 
           <!-- Grid -->
           <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
@@ -260,21 +260,21 @@
               v-for="opt in formatOptions"
               :key="opt.value"
               @click="format = opt.value"
-              class="border rounded-lg p-3 cursor-pointer transition-all duration-200 flex flex-col gap-1 items-start relative hover:border-gray-400 hover:shadow-sm"
-              :class="format === opt.value ? 'bg-primary-50 border-primary ring-1 ring-primary' : 'bg-white border-gray-200'"
+              class="border rounded-lg p-3 cursor-pointer transition-all duration-200 flex flex-col gap-1 items-start relative hover:border-gray-400 hover:dark:border-gray-500 hover:shadow-sm"
+              :class="format === opt.value ? 'bg-primary-50 border-primary ring-1 ring-primary' : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700'"
             >
               <div class="flex items-center gap-2 w-full">
-                <i :class="[opt.icon, format === opt.value ? 'text-primary' : 'text-gray-400']" class="text-lg"></i>
-                <span class="font-semibold text-sm" :class="format === opt.value ? 'text-primary-900' : 'text-gray-700'">{{ opt.label }}</span>
+                <i :class="[opt.icon, format === opt.value ? 'text-primary' : 'text-gray-400 dark:text-gray-500']" class="text-lg"></i>
+                <span class="font-semibold text-sm" :class="format === opt.value ? 'text-primary-900' : 'text-gray-700 dark:text-gray-300'">{{ opt.label }}</span>
               </div>
-              <span class="text-[10px] leading-tight text-gray-500">{{ opt.desc }}</span>
+              <span class="text-[10px] leading-tight text-gray-500 dark:text-gray-400">{{ opt.desc }}</span>
               <!-- Active Badge -->
               <i v-if="format === opt.value" class="pi pi-check-circle text-primary absolute top-2 right-2 text-sm"></i>
             </div>
           </div>
 
           <!-- Description Box (Fixed Min-Height to prevent shift) -->
-          <div class="mt-3 bg-gray-50 border border-gray-200 rounded-md p-3 text-sm text-gray-600 min-h-[4.5rem] flex items-center">
+          <div class="mt-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-md p-3 text-sm text-gray-600 dark:text-gray-300 min-h-[4.5rem] flex items-center">
             <!-- Using v-html to allow links (e.g. Lapis) -->
             <p v-html="currentFormatDetails.longDesc" class="leading-relaxed"></p>
           </div>
@@ -283,7 +283,7 @@
         <template v-if="format != DeckFormat.Yomitan">
           <!-- 2. STRATEGY -->
           <section>
-            <div class="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3">Download Strategy</div>
+            <div class="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-3">Download Strategy</div>
             <SelectButton
               v-model="downloadMode"
               :options="modeOptions"
@@ -295,11 +295,11 @@
             />
 
             <!-- MODE A: TARGET PERCENTAGE -->
-            <div v-if="downloadMode === 'target'" class="mt-4 bg-gray-50 rounded-xl p-5 border border-dashed border-gray-300">
+            <div v-if="downloadMode === 'target'" class="mt-4 bg-gray-50 dark:bg-gray-900 rounded-xl p-5 border border-dashed border-gray-300 dark:border-gray-600">
               <div class="flex justify-between items-end mb-4">
                 <div class="flex flex-col">
-                  <span class="font-bold text-gray-800 text-lg">Deck Coverage</span>
-                  <span class="text-xs text-gray-500">Select the least amount of words to reach the desired coverage.</span>
+                  <span class="font-bold text-gray-800 dark:text-gray-200 text-lg">Deck Coverage</span>
+                  <span class="text-xs text-gray-500 dark:text-gray-400">Select the least amount of words to reach the desired coverage.</span>
                 </div>
                 <div class="text-2xl font-black text-primary">{{ targetPercentage }}%</div>
               </div>
@@ -310,20 +310,20 @@
             <div v-else class="mt-4 flex flex-col gap-4">
               <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div class="flex flex-col gap-1">
-                  <label class="text-xs text-gray-500 font-medium">Filter By</label>
+                  <label class="text-xs text-gray-500 dark:text-gray-400 font-medium">Filter By</label>
                   <Select v-model="downloadType" :options="downloadTypes" option-value="value" option-label="label" class="w-full text-sm" size="small" />
                 </div>
                 <div class="flex flex-col gap-1">
-                  <label class="text-xs text-gray-500 font-medium">Then Sort By</label>
+                  <label class="text-xs text-gray-500 dark:text-gray-400 font-medium">Then Sort By</label>
                   <Select v-model="deckOrder" :options="deckOrders" option-value="value" option-label="label" class="w-full text-sm" size="small" />
                 </div>
               </div>
 
-              <div v-if="downloadType != DeckDownloadType.Full" class="bg-gray-50 rounded-lg p-4 border border-gray-200">
+              <div v-if="downloadType != DeckDownloadType.Full" class="bg-gray-50 dark:bg-gray-900 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
                 <div class="flex justify-between items-center mb-3">
                   <div class="flex flex-col">
-                    <span class="text-xs font-bold text-gray-500 uppercase">Frequency Range</span>
-                    <span class="text-[10px] text-gray-400">Select start and end points</span>
+                    <span class="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase">Frequency Range</span>
+                    <span class="text-[10px] text-gray-400 dark:text-gray-500">Select start and end points</span>
                   </div>
                   <div class="flex items-center gap-2">
                     <InputNumber
@@ -334,7 +334,7 @@
                       :max="currentSliderMax"
                       :useGrouping="false"
                     />
-                    <span class="text-gray-400">-</span>
+                    <span class="text-gray-400 dark:text-gray-500">-</span>
                     <InputNumber
                       :model-value="frequencyRange?.[1] ?? 0"
                       @update:model-value="(v) => (frequencyRange[1] = v)"
@@ -352,52 +352,52 @@
 
           <!-- 3. OPTIONS -->
           <section>
-            <div class="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3">Options</div>
+            <div class="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest mb-3">Options</div>
             <div class="flex flex-col gap-0">
               <div
                 v-if="downloadMode !== 'target'"
-                class="flex items-start gap-3 p-3 rounded-lg border border-transparent hover:bg-gray-50 hover:border-gray-200 transition-colors cursor-pointer"
+                class="flex items-start gap-3 p-3 rounded-lg border border-transparent hover:bg-gray-50 hover:dark:bg-gray-800 hover:border-gray-200 hover:dark:border-gray-700 transition-colors cursor-pointer"
                 @click="excludeKana = !excludeKana"
               >
                 <Checkbox v-model="excludeKana" binary class="mt-1" @click.stop />
                 <div>
-                  <div class="text-sm font-medium text-gray-800">Exclude Kana-only Words</div>
-                  <div class="text-xs text-gray-500">Removes words that have no Kanji (e.g., こころ, それでも, ...).</div>
+                  <div class="text-sm font-medium text-gray-800 dark:text-gray-200">Exclude Kana-only Words</div>
+                  <div class="text-xs text-gray-500 dark:text-gray-400">Removes words that have no Kanji (e.g., こころ, それでも, ...).</div>
                 </div>
               </div>
 
               <div
-                class="flex items-start gap-3 p-3 rounded-lg border border-transparent hover:bg-gray-50 hover:border-gray-200 transition-colors cursor-pointer"
+                class="flex items-start gap-3 p-3 rounded-lg border border-transparent hover:bg-gray-50 hover:dark:bg-gray-800 hover:border-gray-200 hover:dark:border-gray-700 transition-colors cursor-pointer"
                 @click="excludeExampleSentences = !excludeExampleSentences"
               >
                 <Checkbox v-model="excludeExampleSentences" binary class="mt-1" @click.stop />
                 <div>
-                  <div class="text-sm font-medium text-gray-800">Exclude Example Sentences</div>
-                  <div class="text-xs text-gray-500">Remove example sentences.</div>
+                  <div class="text-sm font-medium text-gray-800 dark:text-gray-200">Exclude Example Sentences</div>
+                  <div class="text-xs text-gray-500 dark:text-gray-400">Remove example sentences.</div>
                 </div>
               </div>
 
               <div
                 v-if="downloadMode !== 'target'"
-                class="flex items-start gap-3 p-3 rounded-lg border border-transparent hover:bg-gray-50 hover:border-gray-200 transition-colors cursor-pointer"
+                class="flex items-start gap-3 p-3 rounded-lg border border-transparent hover:bg-gray-50 hover:dark:bg-gray-800 hover:border-gray-200 hover:dark:border-gray-700 transition-colors cursor-pointer"
                 @click="excludeMatureMasteredBlacklisted = !excludeMatureMasteredBlacklisted"
               >
                 <Checkbox v-model="excludeMatureMasteredBlacklisted" binary class="mt-1" @click.stop />
                 <div>
-                  <div class="text-sm font-medium text-gray-800">Exclude Mature, Mastered & Blacklisted Vocabulary</div>
-                  <div class="text-xs text-gray-500">Removes words that are mature (21+ day review interval), mastered, or blacklisted.</div>
+                  <div class="text-sm font-medium text-gray-800 dark:text-gray-200">Exclude Mature, Mastered & Blacklisted Vocabulary</div>
+                  <div class="text-xs text-gray-500 dark:text-gray-400">Removes words that are mature (21+ day review interval), mastered, or blacklisted.</div>
                 </div>
               </div>
 
               <div
                 v-if="downloadMode !== 'target'"
-                class="flex items-start gap-3 p-3 rounded-lg border border-transparent hover:bg-gray-50 hover:border-gray-200 transition-colors cursor-pointer"
+                class="flex items-start gap-3 p-3 rounded-lg border border-transparent hover:bg-gray-50 hover:dark:bg-gray-800 hover:border-gray-200 hover:dark:border-gray-700 transition-colors cursor-pointer"
                 @click="excludeAllTrackedWords = !excludeAllTrackedWords"
               >
                 <Checkbox v-model="excludeAllTrackedWords" binary class="mt-1" @click.stop />
                 <div>
-                  <div class="text-sm font-medium text-gray-800">Exclude All Tracked Vocabulary</div>
-                  <div class="text-xs text-gray-500">Removes all words in your vocabulary list, regardless of their status.</div>
+                  <div class="text-sm font-medium text-gray-800 dark:text-gray-200">Exclude All Tracked Vocabulary</div>
+                  <div class="text-xs text-gray-500 dark:text-gray-400">Removes all words in your vocabulary list, regardless of their status.</div>
                 </div>
               </div>
             </div>
@@ -406,10 +406,10 @@
       </div>
 
       <!-- FOOTER -->
-      <div class="bg-gray-50 border-t border-gray-200 p-4 flex flex-col sm:flex-row justify-between items-center gap-4 shrink-0">
-        <div class="text-sm text-gray-600">
+      <div class="bg-gray-50 dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700 p-4 flex flex-col sm:flex-row justify-between items-center gap-4 shrink-0">
+        <div class="text-sm text-gray-600 dark:text-gray-300">
           <span v-if="downloadMode !== 'target'">
-            Result: approx <span class="font-bold text-gray-900">{{ currentCardAmount }}</span> cards
+            Result: approx <span class="font-bold text-gray-900 dark:text-gray-100">{{ currentCardAmount }}</span> cards
           </span>
         </div>
         <Button label="Download Deck" icon="pi pi-download" @click="downloadFile()" :loading="downloading" class="w-full sm:w-auto" />
