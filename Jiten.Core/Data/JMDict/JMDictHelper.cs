@@ -511,6 +511,7 @@ public static class JmDictHelper
                                                                       PartsOfSpeech = ["prt"], EnglishMeanings = ["indicates na-adjective"]
                                                                   });
         wordInfos.First(w => w.WordId == 5141615).PartsOfSpeech.Add("n");
+        wordInfos.First(w => w.WordId == 1524610).PartsOfSpeech.Add("n");
         wordInfos.First(w => w.WordId == 5141615).Definitions.Add(new JmDictDefinition()
                                                                   {
                                                                       PartsOfSpeech = ["n"],
