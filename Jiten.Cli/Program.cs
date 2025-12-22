@@ -756,6 +756,15 @@ public class Program
                 }
 
                 break;
+            
+            case "txt-utf16":
+                result = await new TxtExtractor().Extract(o.ExtractFilePath, "UTF-16", o.Verbose);
+                if (o.Output != null)
+                {
+                    await File.WriteAllTextAsync(o.Output, result);
+                }
+
+                break;
 
             case "brute" or "bruteforce":
                 result = await new BruteforceExtractor().Extract(o.ExtractFilePath, "SHIFT-JIS", o.Verbose);

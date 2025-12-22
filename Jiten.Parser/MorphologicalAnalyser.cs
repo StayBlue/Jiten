@@ -53,7 +53,7 @@ public class MorphologicalAnalyser
     private readonly HashSet<char> _sentenceEnders = ['。', '！', '？', '」'];
 
     private static readonly HashSet<string> MisparsesRemove =
-        ["そ", "ー", "る", "ま", "ふ", "ち", "ほ", "す", "じ", "なさ", "い", "ぴ", "ふあ", "ぷ", "ちゅ", "にっ", "じら", "タ", "け", "イ", "イッ"];
+        ["そ", "ー", "る", "ま", "ふ", "ち", "ほ", "す", "じ", "なさ", "い", "ぴ", "ふあ", "ぷ", "ちゅ", "にっ", "じら", "タ", "け", "イ", "イッ", "ほっ"];
 
     // Token to separate some words in sudachi
     private static readonly string _stopToken = "|";
@@ -218,6 +218,7 @@ public class MorphologicalAnalyser
         text = Regex.Replace(text, "伝(.)流", $"伝$1{_stopToken}流");
         text = Regex.Replace(text, "歩(.)出", $"歩$1{_stopToken}出");
         text = Regex.Replace(text, "持(.)得", $"持$1{_stopToken}得");
+        text = Regex.Replace(text, "笑(.)崩", $"笑$1{_stopToken}崩");
         
 
         // Replace line ending ellipsis with a sentence ender to be able to flatten later

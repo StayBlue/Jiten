@@ -53,6 +53,7 @@ export enum DeckDownloadType {
   TopGlobalFrequency = 2,
   TopDeckFrequency = 3,
   TopChronological = 4,
+  TargetCoverage = 5,
 }
 
 export enum DeckFormat {

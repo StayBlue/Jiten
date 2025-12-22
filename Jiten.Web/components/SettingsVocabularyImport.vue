@@ -550,13 +550,15 @@
       </template>
     </Card>
 
+    <AnkiConnectImport class="mb-4" />
+
     <Card class="mb-4">
       <template #title>
-        <h3 class="text-lg font-semibold">Export/Import Complete Vocabulary (FSRS)</h3>
+        <h3 class="text-lg font-semibold">Export/Import Complete Vocabulary (Backup)</h3>
       </template>
       <template #content>
         <p class="mb-3">
-          Export and import your complete vocabulary with full spaced repetition data (FSRS). This includes card states, review history, stability, difficulty,
+          Export and import your complete vocabulary with full data. This includes card states, review history, stability, difficulty,
           and due dates. Use this for complete backups or transferring data between accounts.
         </p>
 
@@ -564,6 +566,7 @@
           <h4 class="text-md font-semibold mb-2">Export</h4>
           <Button icon="pi pi-download" label="Export Complete Vocabulary" :loading="fsrsIsLoading" class="w-full md:w-auto" @click="downloadFsrsVocabulary" />
         </div>
+
 
         <div class="mb-3">
           <h4 class="text-md font-semibold mb-2">Import</h4>
@@ -675,43 +678,6 @@
         </div>
       </template>
     </Card>
-
-    <Card class="mb-4">
-      <template #title>
-        <h3 class="text-lg font-semibold">Export/Import Known Word IDs (Obsolete)</h3>
-      </template>
-      <template #content>
-        <p class="mb-3">
-          Obsolete: Use the FSRS method above instead. <br />
-          You can export your known word IDs to a text file and import them later. This is useful for backing up your data or transferring it to another
-          account.
-        </p>
-
-        <div class="flex flex-col md:flex-row gap-3 mb-3">
-          <Button icon="pi pi-download" label="Export Word IDs" class="w-full md:w-auto" @click="downloadKnownWordIds" />
-
-          <FileUpload
-            mode="basic"
-            name="wordIdsFile"
-            accept=".txt"
-            :custom-upload="true"
-            :auto="true"
-            :choose-label="'Import Word IDs'"
-            class="w-full md:w-auto"
-            @select="handleWordIdsFileSelect"
-          />
-
-          <div class="flex items-center gap-2">
-            <Button icon="pi pi-upload" label="Send Local Known IDs" class="w-full md:w-auto" :loading="isLoading" @click="sendLocalKnownIds" />
-            <span class="text-sm text-gray-600"
-              >Local IDs: <strong>{{ store.getKnownWordIds().length }}</strong></span
-            >
-          </div>
-        </div>
-      </template>
-    </Card>
-
-    <AnkiConnectImport class="mb-4" />
 
     <Card class="mb-4">
       <template #title>

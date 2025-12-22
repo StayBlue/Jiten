@@ -28,6 +28,7 @@
   const fields = ref<Array<[string, { order: number; value: string }]>>([]);
   const overwriteExisting = ref(false);
   const forceImportCardsWithNoReviews = ref(false);
+  const parseWords = ref(false);
 
   const fieldsOptions = computed(() =>
     (fields.value || []).map((entry, idx) => ({
@@ -214,7 +215,8 @@
         const payload = {
           cards: cards.value,
           overwrite: overwriteExisting.value,
-          forceImportCardsWithNoReviews: forceImportCardsWithNoReviews.value
+          forceImportCardsWithNoReviews: forceImportCardsWithNoReviews.value,
+          parseWords: parseWords.value
         };
 
         const result = await $api<{
@@ -356,6 +358,12 @@
               <Checkbox v-model="forceImportCardsWithNoReviews" inputId="forceImportCardsWithNoReviews" :binary="true" />
               <label for="forceImportCardsWithNoReviews" class="cursor-pointer">
                 Force import cards with no reviews (import cards even if they have no reviews in Anki, not recommended)
+              </label>
+            </div>
+            <div class="flex items-center gap-2">
+              <Checkbox v-model="parseWords" inputId="parseWords" :binary="true" />
+              <label for="parseWords" class="cursor-pointer">
+                Parse words instead of importing them directly (only use if you have conjugated verbs instead of the dictionary form, less accurate)
               </label>
             </div>
             <div class="flex flex-row gap-2">

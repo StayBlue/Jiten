@@ -257,7 +257,9 @@ public class UserController(
         }
 
         var combinedText = string.Join(Environment.NewLine, uniqueWords);
-        var parsedWords = await Parser.Parser.ParseText(contextFactory, combinedText);
+        var parsedWords = request.ParseWords
+            ? await Parser.Parser.ParseText(contextFactory, combinedText)
+            : await Parser.Parser.GetWordsDirectLookup(contextFactory, uniqueWords);
 
         // Create lookup: original text → (WordId, ReadingIndex)
         var wordLookup = new Dictionary<string, (int WordId, byte ReadingIndex)>();
@@ -814,14 +816,17 @@ public class UserController(
             {
                 masteredCards.Add(card);
             }
+
             if (knownStates[(card.WordId, card.ReadingIndex)].Contains(KnownState.Blacklisted))
             {
                 blacklistedCards.Add(card);
-            } 
+            }
+
             if (knownStates[(card.WordId, card.ReadingIndex)].Contains(KnownState.Mature))
             {
                 matureCards.Add(card);
             }
+
             if (knownStates[(card.WordId, card.ReadingIndex)].Contains(KnownState.Young))
             {
                 youngCards.Add(card);

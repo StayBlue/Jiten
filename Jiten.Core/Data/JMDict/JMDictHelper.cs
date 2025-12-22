@@ -504,11 +504,14 @@ public static class JmDictHelper
         wordInfos.First(w => w.WordId == 1020910).Priorities?.Add("jiten");
         wordInfos.First(w => w.WordId == 1430230).Priorities?.Add("jiten");
         wordInfos.First(w => w.WordId == 1349380).Priorities?.Add("jiten");
+        wordInfos.First(w => w.WordId == 1347580).Priorities?.Add("jiten");
+        wordInfos.First(w => w.WordId == 1311110).Priorities?.Add("jiten");
         wordInfos.First(w => w.WordId == 2029110).Definitions.Add(new JmDictDefinition()
                                                                   {
                                                                       PartsOfSpeech = ["prt"], EnglishMeanings = ["indicates na-adjective"]
                                                                   });
         wordInfos.First(w => w.WordId == 5141615).PartsOfSpeech.Add("n");
+        wordInfos.First(w => w.WordId == 1524610).PartsOfSpeech.Add("n");
         wordInfos.First(w => w.WordId == 5141615).Definitions.Add(new JmDictDefinition()
                                                                   {
                                                                       PartsOfSpeech = ["n"],

@@ -1,6 +1,6 @@
 <script setup lang="ts">
   import { useApiFetchPaginated } from '~/composables/useApiFetch';
-  import { type Deck, MediaType, SortOrder, type Word, DisplayStyle, type Tag } from '~/types';
+  import { type Deck, MediaType, SortOrder, type Word, DisplayStyle } from '~/types';
   import Skeleton from 'primevue/skeleton';
   import Card from 'primevue/card';
   import InputText from 'primevue/inputtext';
@@ -9,10 +9,6 @@
   import MediaDeckCompactView from '~/components/MediaDeckCompactView.vue';
   import MediaDeckTableView from '~/components/MediaDeckTableView.vue';
   import { useAuthStore } from '~/stores/authStore';
-  import { getAllGenres } from '~/utils/genreMapper';
-  import TriStateTag from '~/components/TriStateTag.vue';
-  import type { TagState } from '~/components/TriStateTag.vue';
-  import ScrollPanel from 'primevue/scrollpanel';
 
   // Helpers for numeric parsing
   const toNumOrNull = (v: unknown) => {
@@ -50,8 +46,6 @@
     },
     { immediate: true }
   );
-
-  const filters = ref();
 
   const offset = computed(() => (route.query.offset ? Number(route.query.offset) : 0));
   const mediaType = computed(() => (route.query.mediaType ? route.query.mediaType : null));
@@ -92,16 +86,6 @@
     'addedDate',
   ];
 
-  const statusFilterOptions = ref([
-    { label: 'Show All', value: 'none' },
-    { label: 'Only Favourited', value: 'fav' },
-    { label: 'Only Ignored', value: 'ignore' },
-    { label: 'Only Planning', value: 'planning' },
-    { label: 'Only Ongoing', value: 'ongoing' },
-    { label: 'Only Completed', value: 'completed' },
-    { label: 'Only Dropped', value: 'dropped' },
-  ]);
-
   const statusFilter = ref('none');
 
   const authStore = useAuthStore();
@@ -123,7 +107,6 @@
 
   // Advanced filter state
   const currentYear = new Date().getFullYear();
-
   const charCountMin = ref<number | null>(toNumOrNull(route.query.charCountMin));
   const charCountMax = ref<number | null>(toNumOrNull(route.query.charCountMax));
   const releaseYearMin = ref<number | null>(toNumOrNull(route.query.releaseYearMin));
@@ -134,56 +117,16 @@
   const subdeckCountMax = ref<number | null>(toNumOrNull(route.query.subdeckCountMax));
   const extRatingMin = ref<number | null>(toNumOrNull(route.query.extRatingMin));
   const extRatingMax = ref<number | null>(toNumOrNull(route.query.extRatingMax));
-
-  const charCountRange = computed<[number, number]>({
-    get: () => [charCountMin.value ?? 0, charCountMax.value ?? 20000000],
-    set: (val) => {
-      charCountMin.value = val[0];
-      charCountMax.value = val[1];
-    },
-  });
-
-  const releaseYearRange = computed<[number, number]>({
-    get: () => [releaseYearMin.value ?? 1900, releaseYearMax.value ?? currentYear],
-    set: (val) => {
-      releaseYearMin.value = val[0];
-      releaseYearMax.value = val[1];
-    },
-  });
-
-  const uniqueKanjiRange = computed<[number, number]>({
-    get: () => [uniqueKanjiMin.value ?? 0, uniqueKanjiMax.value ?? 5000],
-    set: (val) => {
-      uniqueKanjiMin.value = val[0];
-      uniqueKanjiMax.value = val[1];
-    },
-  });
-
-  const subdeckCountRange = computed<[number, number]>({
-    get: () => [subdeckCountMin.value ?? 0, subdeckCountMax.value ?? 2000],
-    set: (val) => {
-      subdeckCountMin.value = val[0];
-      subdeckCountMax.value = val[1];
-    },
-  });
-
-  const extRatingRange = computed<[number, number]>({
-    get: () => [extRatingMin.value ?? 0, extRatingMax.value ?? 100],
-    set: (val) => {
-      extRatingMin.value = val[0];
-      extRatingMax.value = val[1];
-    },
-  });
+  const coverageMin = ref<number | null>(toNumOrNull(route.query.coverageMin));
+  const coverageMax = ref<number | null>(toNumOrNull(route.query.coverageMax));
+  const uniqueCoverageMin = ref<number | null>(toNumOrNull(route.query.uniqueCoverageMin));
+  const uniqueCoverageMax = ref<number | null>(toNumOrNull(route.query.uniqueCoverageMax));
 
   // Genre and Tag filter state
   const includeGenres = ref<number[]>([]);
   const excludeGenres = ref<number[]>([]);
   const includeTags = ref<number[]>([]);
   const excludeTags = ref<number[]>([]);
-
-  // Search filter state
-  const genreSearchQuery = ref('');
-  const tagSearchQuery = ref('');
 
   // Parse genre/tag filters from URL
   const parseNumberArray = (v: unknown): number[] => {
@@ -218,6 +161,8 @@
   watch([uniqueKanjiMin, uniqueKanjiMax], () => normalizePair(uniqueKanjiMin, uniqueKanjiMax, 0, 5000));
   watch([subdeckCountMin, subdeckCountMax], () => normalizePair(subdeckCountMin, subdeckCountMax, 0, 2000));
   watch([extRatingMin, extRatingMax], () => normalizePair(extRatingMin, extRatingMax, 0, 2000));
+  watch([coverageMin, coverageMax], () => normalizePair(coverageMin, coverageMax, 0, 100));
+  watch([uniqueCoverageMin, uniqueCoverageMax], () => normalizePair(uniqueCoverageMin, uniqueCoverageMax, 0, 100));
 
   const debouncedFilters = ref({
     charCountMin: charCountMin.value,
@@ -230,6 +175,10 @@
     subdeckCountMax: subdeckCountMax.value,
     extRatingMin: extRatingMin.value,
     extRatingMax: extRatingMax.value,
+    coverageMin: coverageMin.value,
+    coverageMax: coverageMax.value,
+    uniqueCoverageMin: uniqueCoverageMin.value,
+    uniqueCoverageMax: uniqueCoverageMax.value,
     includeGenres: includeGenres.value,
     excludeGenres: excludeGenres.value,
     includeTags: includeTags.value,
@@ -249,6 +198,10 @@
         subdeckCountMax: subdeckCountMax.value,
         extRatingMin: extRatingMin.value,
         extRatingMax: extRatingMax.value,
+        coverageMin: coverageMin.value,
+        coverageMax: coverageMax.value,
+        uniqueCoverageMin: uniqueCoverageMin.value,
+        uniqueCoverageMax: uniqueCoverageMax.value,
         includeGenres: includeGenres.value,
         excludeGenres: excludeGenres.value,
         includeTags: includeTags.value,
@@ -271,6 +224,10 @@
           subdeckCountMax: toUndef(subdeckCountMax.value) as any,
           extRatingMin: toUndef(extRatingMin.value) as any,
           extRatingMax: toUndef(extRatingMax.value) as any,
+          coverageMin: toUndef(coverageMin.value) as any,
+          coverageMax: toUndef(coverageMax.value) as any,
+          uniqueCoverageMin: toUndef(uniqueCoverageMin.value) as any,
+          uniqueCoverageMax: toUndef(uniqueCoverageMax.value) as any,
           genres: arrayToString(includeGenres.value) as any,
           excludeGenres: arrayToString(excludeGenres.value) as any,
           tags: arrayToString(includeTags.value) as any,
@@ -284,7 +241,7 @@
   );
 
   watch(
-    [charCountMin, charCountMax, releaseYearMin, releaseYearMax, uniqueKanjiMin, uniqueKanjiMax, subdeckCountMin, subdeckCountMax, extRatingMin, extRatingMax],
+    [charCountMin, charCountMax, releaseYearMin, releaseYearMax, uniqueKanjiMin, uniqueKanjiMax, subdeckCountMin, subdeckCountMax, extRatingMin, extRatingMax, coverageMin, coverageMax, uniqueCoverageMin, uniqueCoverageMax],
     () => {
       updateFiltersDebounced();
     }
@@ -346,74 +303,6 @@
 
   updateOptions();
 
-  // Fetch available tags for filtering
-  const { data: availableTags } = useApiFetch<Tag[]>('media-deck/tags', {
-    server: true,
-    lazy: false,
-  });
-
-  const tags = computed(() => availableTags.value || []);
-
-  // Get all genres from enum
-  const genres = computed(() => getAllGenres());
-
-  // Filtered lists based on search queries
-  const filteredGenres = computed(() => {
-    if (!genreSearchQuery.value) return genres.value;
-
-    const query = genreSearchQuery.value.toLowerCase();
-    return genres.value.filter((genre) => genre.label.toLowerCase().includes(query));
-  });
-
-  const filteredTags = computed(() => {
-    if (!tagSearchQuery.value) return tags.value;
-
-    const query = tagSearchQuery.value.toLowerCase();
-    return tags.value.filter((tag) => tag.name.toLowerCase().includes(query));
-  });
-
-  // Count computeds for display
-  const genreFilteredCount = computed(() => filteredGenres.value.length);
-  const genreTotalCount = computed(() => genres.value.length);
-  const tagFilteredCount = computed(() => filteredTags.value.length);
-  const tagTotalCount = computed(() => tags.value.length);
-
-  // Update genre state based on tri-state click
-  const updateGenreState = (genreId: number, state: TagState) => {
-    if (state === 'include') {
-      if (!includeGenres.value.includes(genreId)) {
-        includeGenres.value.push(genreId);
-      }
-      excludeGenres.value = excludeGenres.value.filter((id) => id !== genreId);
-    } else if (state === 'exclude') {
-      includeGenres.value = includeGenres.value.filter((id) => id !== genreId);
-      if (!excludeGenres.value.includes(genreId)) {
-        excludeGenres.value.push(genreId);
-      }
-    } else {
-      includeGenres.value = includeGenres.value.filter((id) => id !== genreId);
-      excludeGenres.value = excludeGenres.value.filter((id) => id !== genreId);
-    }
-  };
-
-  // Update tag state based on tri-state click
-  const updateTagState = (tagId: number, state: TagState) => {
-    if (state === 'include') {
-      if (!includeTags.value.includes(tagId)) {
-        includeTags.value.push(tagId);
-      }
-      excludeTags.value = excludeTags.value.filter((id) => id !== tagId);
-    } else if (state === 'exclude') {
-      includeTags.value = includeTags.value.filter((id) => id !== tagId);
-      if (!excludeTags.value.includes(tagId)) {
-        excludeTags.value.push(tagId);
-      }
-    } else {
-      includeTags.value = includeTags.value.filter((id) => id !== tagId);
-      excludeTags.value = excludeTags.value.filter((id) => id !== tagId);
-    }
-  };
-
   const resetAllFilters = () => {
     // Text filters
     titleFilter.value = null;
@@ -430,16 +319,16 @@
     subdeckCountMax.value = null;
     extRatingMin.value = null;
     extRatingMax.value = null;
+    coverageMin.value = null;
+    coverageMax.value = null;
+    uniqueCoverageMin.value = null;
+    uniqueCoverageMax.value = null;
 
     // Genre and tag filters
     includeGenres.value = [];
     excludeGenres.value = [];
     includeTags.value = [];
     excludeTags.value = [];
-
-    // Search queries
-    genreSearchQuery.value = '';
-    tagSearchQuery.value = '';
 
     // Status filter
     statusFilter.value = 'none';
@@ -459,6 +348,10 @@
         subdeckCountMax: undefined,
         extRatingMin: undefined,
         extRatingMax: undefined,
+        coverageMin: undefined,
+        coverageMax: undefined,
+        uniqueCoverageMin: undefined,
+        uniqueCoverageMax: undefined,
         genres: undefined,
         excludeGenres: undefined,
         tags: undefined,
@@ -554,6 +447,10 @@
       subdeckCountMax: computed(() => debouncedFilters.value.subdeckCountMax),
       extRatingMin: computed(() => debouncedFilters.value.extRatingMin),
       extRatingMax: computed(() => debouncedFilters.value.extRatingMax),
+      coverageMin: computed(() => debouncedFilters.value.coverageMin),
+      coverageMax: computed(() => debouncedFilters.value.coverageMax),
+      uniqueCoverageMin: computed(() => debouncedFilters.value.uniqueCoverageMin),
+      uniqueCoverageMax: computed(() => debouncedFilters.value.uniqueCoverageMax),
       genres: computed(() => (debouncedFilters.value.includeGenres.length > 0 ? debouncedFilters.value.includeGenres.join(',') : undefined)),
       excludeGenres: computed(() => (debouncedFilters.value.excludeGenres.length > 0 ? debouncedFilters.value.excludeGenres.join(',') : undefined)),
       tags: computed(() => (debouncedFilters.value.includeTags.length > 0 ? debouncedFilters.value.includeTags.join(',') : undefined)),
@@ -664,236 +561,29 @@
       </IconField>
 
       <!-- Advanced Filters -->
-      <Button class="w-32" @click="filters.toggle($event)"> Filters </Button>
-
-      <Popover ref="filters" class="w-full max-w-3xl">
-        <div class="flex flex-col gap-4 p-3 min-w-[280px]">
-          <FloatLabel v-if="isConnected" variant="on" class="w-full">
-            <Select
-              v-model="statusFilter"
-              :options="statusFilterOptions"
-              option-label="label"
-              option-value="value"
-              placeholder="Status"
-              input-id="preferenceFilter"
-              class="w-full md:w-56"
-              scroll-height="30vh"
-            />
-            <label for="sortBy">Status</label>
-          </FloatLabel>
-
-          <div class="flex flex-col gap-2">
-            <div class="text-sm font-medium text-gray-600 dark:text-gray-300">Character count</div>
-            <div class="flex items-center gap-3">
-              <InputNumber
-                v-model="charCountMin"
-                :min="0"
-                :max="20000000"
-                :use-grouping="true"
-                fluid
-                class="max-w-34 flex-shrink-0"
-                show-buttons
-                size="small"
-                placeholder="Min"
-                :step="10000"
-              />
-              <Slider v-model="charCountRange" range :min="0" :max="20000000" class="flex-1" />
-              <InputNumber
-                v-model="charCountMax"
-                :min="0"
-                :max="20000000"
-                :use-grouping="true"
-                fluid
-                class="max-w-34 flex-shrink-0"
-                show-buttons
-                size="small"
-                placeholder="Max"
-                :step="10000"
-              />
-            </div>
-          </div>
-
-          <div class="flex flex-col gap-2">
-            <div class="text-sm font-medium text-gray-600 dark:text-gray-300">Release year</div>
-            <div class="flex items-center gap-3">
-              <InputNumber
-                v-model="releaseYearMin"
-                :min="1900"
-                :max="currentYear"
-                :use-grouping="false"
-                fluid
-                class="max-w-28 flex-shrink-0"
-                show-buttons
-                size="small"
-                placeholder="Min"
-              />
-              <Slider v-model="releaseYearRange" range :min="1900" :max="currentYear" class="flex-1" />
-              <InputNumber
-                v-model="releaseYearMax"
-                :min="1900"
-                :max="currentYear"
-                :use-grouping="false"
-                fluid
-                class="max-w-28 flex-shrink-0"
-                show-buttons
-                size="small"
-                placeholder="Max"
-              />
-            </div>
-          </div>
-
-          <div class="flex flex-col gap-2">
-            <div class="text-sm font-medium text-gray-600 dark:text-gray-300">Unique kanji</div>
-            <div class="flex items-center gap-3">
-              <InputNumber
-                v-model="uniqueKanjiMin"
-                :min="0"
-                :max="5000"
-                :use-grouping="false"
-                fluid
-                class="max-w-28 flex-shrink-0"
-                show-buttons
-                size="small"
-                placeholder="Min"
-                :step="10"
-              />
-              <Slider v-model="uniqueKanjiRange" range :min="0" :max="5000" class="flex-1" />
-              <InputNumber
-                v-model="uniqueKanjiMax"
-                :min="0"
-                :max="5000"
-                :use-grouping="false"
-                fluid
-                class="max-w-28 flex-shrink-0"
-                show-buttons
-                size="small"
-                placeholder="Max"
-                :step="10"
-              />
-            </div>
-          </div>
-
-          <div class="flex flex-col gap-2">
-            <div class="text-sm font-medium text-gray-600 dark:text-gray-300">Subdecks</div>
-            <div class="flex items-center gap-3">
-              <InputNumber
-                v-model="subdeckCountMin"
-                :min="0"
-                :max="2000"
-                :use-grouping="false"
-                fluid
-                class="max-w-28 flex-shrink-0"
-                show-buttons
-                size="small"
-                placeholder="Min"
-              />
-              <Slider v-model="subdeckCountRange" range :min="0" :max="2000" class="flex-1" />
-              <InputNumber
-                v-model="subdeckCountMax"
-                :min="0"
-                :max="2000"
-                :use-grouping="false"
-                fluid
-                class="max-w-28 flex-shrink-0"
-                show-buttons
-                size="small"
-                placeholder="Max"
-              />
-            </div>
-          </div>
-
-          <div class="flex flex-col gap-2">
-            <div class="text-sm font-medium text-gray-600 dark:text-gray-300">External Rating (0 = unknown rating)</div>
-            <div class="flex items-center gap-3">
-              <InputNumber
-                v-model="extRatingMin"
-                :min="0"
-                :max="100"
-                :use-grouping="false"
-                fluid
-                class="max-w-28 flex-shrink-0"
-                show-buttons
-                size="small"
-                placeholder="Min"
-              />
-              <Slider v-model="extRatingRange" range :min="0" :max="100" class="flex-1" />
-              <InputNumber
-                v-model="extRatingMax"
-                :min="0"
-                :max="100"
-                :use-grouping="false"
-                fluid
-                class="max-w-28 flex-shrink-0"
-                show-buttons
-                size="small"
-                placeholder="Max"
-              />
-            </div>
-          </div>
-
-          <!-- Genres Filter -->
-          <div class="flex flex-col gap-2">
-            <div class="flex items-center justify-between gap-2">
-              <div class="text-sm font-medium text-gray-600 dark:text-gray-300">Genres ({{ genreFilteredCount }}/{{ genreTotalCount }})</div>
-              <IconField class="flex-1">
-                <InputIcon>
-                  <Icon name="material-symbols:search-rounded" />
-                </InputIcon>
-                <InputText v-model="genreSearchQuery" type="text" placeholder="Search genres..." class="w-full" />
-                <InputIcon v-if="genreSearchQuery" class="cursor-pointer" @click="genreSearchQuery = ''">
-                  <Icon name="material-symbols:close" />
-                </InputIcon>
-              </IconField>
-            </div>
-            <ScrollPanel class="w-full" style="height: 150px">
-              <div class="flex flex-wrap gap-2 p-2">
-                <TriStateTag
-                  v-for="genre in filteredGenres"
-                  :key="genre.value"
-                  :label="genre.label"
-                  :state="includeGenres.includes(genre.value) ? 'include' : excludeGenres.includes(genre.value) ? 'exclude' : 'neutral'"
-                  @update:state="(state) => updateGenreState(genre.value, state)"
-                />
-              </div>
-            </ScrollPanel>
-          </div>
-
-          <!-- Tags Filter -->
-          <div class="flex flex-col gap-2">
-            <div class="flex items-center justify-between gap-2">
-              <div class="text-sm font-medium text-gray-600 dark:text-gray-300">Tags ({{ tagFilteredCount }}/{{ tagTotalCount }})</div>
-              <IconField class="flex-1">
-                <InputIcon>
-                  <Icon name="material-symbols:search-rounded" />
-                </InputIcon>
-                <InputText v-model="tagSearchQuery" type="text" placeholder="Search tags..." class="w-full" />
-                <InputIcon v-if="tagSearchQuery" class="cursor-pointer" @click="tagSearchQuery = ''">
-                  <Icon name="material-symbols:close" />
-                </InputIcon>
-              </IconField>
-            </div>
-            <ScrollPanel class="w-full" style="height: 150px">
-              <div class="flex flex-wrap gap-2 p-2">
-                <TriStateTag
-                  v-for="tag in filteredTags"
-                  :key="tag.tagId"
-                  :label="tag.name"
-                  :state="includeTags.includes(tag.tagId) ? 'include' : excludeTags.includes(tag.tagId) ? 'exclude' : 'neutral'"
-                  @update:state="(state) => updateTagState(tag.tagId, state)"
-                />
-              </div>
-            </ScrollPanel>
-          </div>
-
-          <!-- Reset Button -->
-          <div class="flex justify-end pt-3 border-t border-gray-200 dark:border-gray-700">
-            <Button severity="info" @click="resetAllFilters">
-              <Icon name="material-symbols:refresh" class="mr-2" />
-              Reset All Filters
-            </Button>
-          </div>
-        </div>
-      </Popover>
+      <MediaListFilters
+        v-model:status-filter="statusFilter"
+        v-model:char-count-min="charCountMin"
+        v-model:char-count-max="charCountMax"
+        v-model:release-year-min="releaseYearMin"
+        v-model:release-year-max="releaseYearMax"
+        v-model:unique-kanji-min="uniqueKanjiMin"
+        v-model:unique-kanji-max="uniqueKanjiMax"
+        v-model:subdeck-count-min="subdeckCountMin"
+        v-model:subdeck-count-max="subdeckCountMax"
+        v-model:ext-rating-min="extRatingMin"
+        v-model:ext-rating-max="extRatingMax"
+        v-model:coverage-min="coverageMin"
+        v-model:coverage-max="coverageMax"
+        v-model:unique-coverage-min="uniqueCoverageMin"
+        v-model:unique-coverage-max="uniqueCoverageMax"
+        v-model:include-genres="includeGenres"
+        v-model:exclude-genres="excludeGenres"
+        v-model:include-tags="includeTags"
+        v-model:exclude-tags="excludeTags"
+        :is-connected="isConnected"
+        @reset="resetAllFilters"
+      />
 
       <div class="flex flex-row gap-2 items-center">
         <DisplayStyleSelector />

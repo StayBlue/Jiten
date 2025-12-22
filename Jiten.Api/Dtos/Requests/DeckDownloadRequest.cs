@@ -8,6 +8,8 @@ public class DeckDownloadRequest
     public int MinFrequency { get; set; }
     public int MaxFrequency { get; set; }
     public bool ExcludeKana { get; set; }
-    public bool ExcludeKnownWords { get; set; }
+    public bool ExcludeMatureMasteredBlacklisted { get; set; }
+    public bool ExcludeAllTrackedWords { get; set; }
     public bool ExcludeExampleSentences { get; set; }
+    public float? TargetPercentage { get; set; }
 }
