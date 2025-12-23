@@ -5,7 +5,7 @@ namespace Jiten.Core.Data;
 
 public class DeckWord
 {
-    public int DeckWordId { get; set; }
+    public long DeckWordId { get; set; }
     
     /// <summary>
     /// Corresponding deck id

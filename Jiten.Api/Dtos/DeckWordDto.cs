@@ -4,7 +4,7 @@ namespace Jiten.Api.Dtos;
 
 public class DeckWordDto
 {
-    public int DeckWordId { get; set; }
+    public long DeckWordId { get; set; }
     public int DeckId { get; set; }
     public int WordId { get; set; }
     public string OriginalText { get; set; } = string.Empty;
