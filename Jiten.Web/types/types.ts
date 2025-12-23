@@ -152,6 +152,14 @@ export interface GlobalStats {
   totalMedia: number;
 }
 
+export interface MetadataRelation {
+  externalId: string;
+  linkType: number;
+  relationshipType: number;
+  targetMediaType?: number;
+  swapDirection: boolean;
+}
+
 export interface Metadata {
   originalTitle: string;
   romajiTitle: string;
@@ -165,6 +173,7 @@ export interface Metadata {
   genres?: string[];
   tags?: MetadataTag[];
   isAdultOnly?: boolean;
+  relations?: MetadataRelation[];
 }
 
 export interface Issues {

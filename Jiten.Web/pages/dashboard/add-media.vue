@@ -297,6 +297,20 @@
         formData.append('isAdultOnly', selectedMetadata.value.isAdultOnly.toString());
       }
 
+      // Add relations from metadata if available
+      if (selectedMetadata.value?.relations && selectedMetadata.value.relations.length > 0) {
+        for (let i = 0; i < selectedMetadata.value.relations.length; i++) {
+          const relation = selectedMetadata.value.relations[i];
+          formData.append(`relations[${i}].externalId`, relation.externalId);
+          formData.append(`relations[${i}].linkType`, String(relation.linkType));
+          formData.append(`relations[${i}].relationshipType`, String(relation.relationshipType));
+          if (relation.targetMediaType !== undefined) {
+            formData.append(`relations[${i}].targetMediaType`, String(relation.targetMediaType));
+          }
+          formData.append(`relations[${i}].swapDirection`, String(relation.swapDirection));
+        }
+      }
+
       if (subdecks.value.length === 0 && selectedFile.value) {
         // If no subdecks, include the main file
         formData.append('file', selectedFile.value);

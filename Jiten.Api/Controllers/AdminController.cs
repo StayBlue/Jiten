@@ -102,6 +102,19 @@ public partial class AdminController(
                 }
             }
 
+            // Map relations from request
+            if (model.Relations.Any())
+            {
+                metadata.Relations = model.Relations.Select(r => new Core.Data.Providers.MetadataRelation
+                {
+                    ExternalId = r.ExternalId,
+                    LinkType = r.LinkType,
+                    RelationshipType = r.RelationshipType,
+                    TargetMediaType = r.TargetMediaType,
+                    SwapDirection = r.SwapDirection
+                }).ToList();
+            }
+
             if (model.CoverImage is { Length: > 0 })
             {
                 await using var stream = new FileStream(coverImagePathOrUrl, FileMode.Create);

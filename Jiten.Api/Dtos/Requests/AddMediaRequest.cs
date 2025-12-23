@@ -18,6 +18,7 @@ public class AddMediaRequest
     public List<string> Genres { get; set; } = new List<string>();
     public List<AddMediaRequestTag> Tags { get; set; } = new List<AddMediaRequestTag>();
     public bool IsAdultOnly { get; set; }
+    public List<AddMediaRequestRelation> Relations { get; set; } = new List<AddMediaRequestRelation>();
 }
 
 public class AddMediaRequestSubdeck
@@ -30,4 +31,13 @@ public class AddMediaRequestTag
 {
     public required string Name { get; set; }
     public int Percentage { get; set; }
+}
+
+public class AddMediaRequestRelation
+{
+    public required string ExternalId { get; set; }
+    public LinkType LinkType { get; set; }
+    public DeckRelationshipType RelationshipType { get; set; }
+    public MediaType? TargetMediaType { get; set; }
+    public bool SwapDirection { get; set; }
 }
