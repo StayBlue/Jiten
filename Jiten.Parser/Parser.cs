@@ -115,7 +115,7 @@ namespace Jiten.Parser
             // Filter bad lines that cause exceptions
             wordInfos.ForEach(x => x.Text = Regex.Replace(x.Text, "ッー", ""));
 
-            Deconjugator deconjugator = new Deconjugator();
+            Deconjugator deconjugator = Deconjugator.Instance;
 
             const int BATCH_SIZE = 1000;
             List<DeckWord> allProcessedWords = new List<DeckWord>();
@@ -175,7 +175,7 @@ namespace Jiten.Parser
             // wordInfos.RemoveAll(w => w.Text is "ッー");
             wordInfos.ForEach(x => x.Text = Regex.Replace(x.Text, "ッー", ""));
 
-            Deconjugator deconjugator = new Deconjugator();
+            Deconjugator deconjugator = Deconjugator.Instance;
 
             var uniqueWords = new List<(WordInfo wordInfo, int occurrences)>();
             var wordCount = new Dictionary<(string, PartOfSpeech), int>();
@@ -330,7 +330,7 @@ namespace Jiten.Parser
             // Filter bad lines that cause exceptions
             wordInfos.ForEach(x => x.Text = Regex.Replace(x.Text, "ッー", ""));
 
-            Deconjugator deconjugator = new Deconjugator();
+            Deconjugator deconjugator = Deconjugator.Instance;
 
             const int BATCH_SIZE = 5000;
             List<DeckWord?> allProcessedWords = new();

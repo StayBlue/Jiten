@@ -111,6 +111,7 @@ public class MorphologicalAnalyser
             return [new SentenceInfo("") { Words = wordInfos.Select(w => (w, (byte)0, (byte)0)).ToList() }];
 
         wordInfos = ProcessSpecialCases(wordInfos);
+        wordInfos = CombineInflections(wordInfos);
 
         // Disabled this, seems like it's doing more harm than good
         // wordInfos = CombinePrefixes(wordInfos);
@@ -222,6 +223,7 @@ public class MorphologicalAnalyser
         text = Regex.Replace(text, "持(.)得", $"持$1{_stopToken}得");
         text = Regex.Replace(text, "笑(.)崩", $"笑$1{_stopToken}崩");
         text = Regex.Replace(text, "揚(.)だ", $"揚$1{_stopToken}だ");
+        text = Regex.Replace(text, "考(.)直", $"考$1{_stopToken}直");
         
 
         // Replace line ending ellipsis with a sentence ender to be able to flatten later
@@ -379,6 +381,139 @@ public class MorphologicalAnalyser
         }
 
         return newList;
+    }
+
+    private static readonly HashSet<PartOfSpeech> InflectableBasePOS =
+    [
+        PartOfSpeech.Verb,
+        PartOfSpeech.IAdjective,
+        PartOfSpeech.NaAdjective
+    ];
+
+    private static readonly HashSet<PartOfSpeech> InflectionPartPOS =
+    [
+        PartOfSpeech.Auxiliary,
+        PartOfSpeech.Suffix,
+        PartOfSpeech.Particle
+    ];
+
+    /// <summary>
+    /// Combines inflected verb/adjective forms by verifying with the Deconjugator.
+    /// </summary>
+    private List<WordInfo> CombineInflections(List<WordInfo> wordInfos)
+    {
+        if (wordInfos.Count < 2)
+            return wordInfos;
+
+        var deconjugator = Deconjugator.Instance;
+        var result = new List<WordInfo>(wordInfos.Count);
+        int i = 0;
+
+        while (i < wordInfos.Count)
+        {
+            var baseWord = wordInfos[i];
+
+            // Check if this is a potential base for inflection
+            bool isInflectableBase = InflectableBasePOS.Contains(baseWord.PartOfSpeech) ||
+                                      baseWord.HasPartOfSpeechSection(PartOfSpeechSection.PossibleSuru);
+
+            if (!isInflectableBase || i == wordInfos.Count - 1)
+            {
+                result.Add(baseWord);
+                i++;
+                continue;
+            }
+
+            // Greedy lookahead: find max extent of potential inflection parts
+            int maxExtent = FindMaxInflectionExtent(wordInfos, i);
+
+            if (maxExtent == i)
+            {
+                result.Add(baseWord);
+                i++;
+                continue;
+            }
+
+            // Try combining from longest to shortest
+            bool combined = false;
+            for (int end = maxExtent; end > i && !combined; end--)
+            {
+                var combinedText = BuildCombinedText(wordInfos, i, end);
+
+                if (CanDeconjugateTo(deconjugator, combinedText, baseWord))
+                {
+                    var newWord = new WordInfo(baseWord) { Text = combinedText };
+
+                    // If noun + suru inflection, update to verb
+                    if (baseWord.PartOfSpeech == PartOfSpeech.Noun &&
+                        baseWord.HasPartOfSpeechSection(PartOfSpeechSection.PossibleSuru))
+                    {
+                        newWord.PartOfSpeech = PartOfSpeech.Verb;
+                        newWord.DictionaryForm = baseWord.DictionaryForm + "する";
+                    }
+
+                    result.Add(newWord);
+                    i = end + 1;
+                    combined = true;
+                }
+            }
+
+            if (!combined)
+            {
+                result.Add(baseWord);
+                i++;
+            }
+        }
+
+        return result;
+    }
+
+    private static int FindMaxInflectionExtent(List<WordInfo> wordInfos, int baseIndex)
+    {
+        int extent = baseIndex;
+        const int MAX_LOOKAHEAD = 5;
+
+        for (int j = baseIndex + 1; j < wordInfos.Count && j <= baseIndex + MAX_LOOKAHEAD; j++)
+        {
+            var word = wordInfos[j];
+
+            bool isInflectionPart = InflectionPartPOS.Contains(word.PartOfSpeech) ||
+                                     word.HasPartOfSpeechSection(PartOfSpeechSection.AuxiliaryVerbStem) ||
+                                     word.HasPartOfSpeechSection(PartOfSpeechSection.ConjunctionParticle) ||
+                                     word.HasPartOfSpeechSection(PartOfSpeechSection.Dependant) ||
+                                     word.HasPartOfSpeechSection(PartOfSpeechSection.PossibleDependant);
+
+            // Stop at clear word boundaries
+            if (!isInflectionPart)
+                break;
+
+            extent = j;
+        }
+
+        return extent;
+    }
+
+    private static string BuildCombinedText(List<WordInfo> wordInfos, int start, int end)
+    {
+        var sb = new StringBuilder();
+        for (int k = start; k <= end; k++)
+            sb.Append(wordInfos[k].Text);
+        return sb.ToString();
+    }
+
+    private static bool CanDeconjugateTo(Deconjugator deconjugator, string combinedText, WordInfo baseWord)
+    {
+        var combinedHiragana = KanaNormalizer.Normalize(WanaKana.ToHiragana(combinedText));
+
+        // Target is either dictionary form or dictionary form + する for suru-verbs
+        var targetHiragana = KanaNormalizer.Normalize(WanaKana.ToHiragana(baseWord.DictionaryForm));
+        var targetSuru = targetHiragana + "する";
+
+        var forms = deconjugator.Deconjugate(combinedHiragana);
+
+        return forms.Any(f => f.Text == targetHiragana ||
+                              (baseWord.HasPartOfSpeechSection(PartOfSpeechSection.PossibleSuru) &&
+                               f.Text == targetSuru));
     }
 
     private List<WordInfo> CombinePrefixes(List<WordInfo> wordInfos)

@@ -111,7 +111,10 @@
       isLoading.value.reparseBeforeDate = true;
       const data = await $api(`/admin/reparse-decks-before-date`, {
         method: 'POST',
-        body: selectedCutoffDate.value.toISOString(),
+        body: JSON.stringify(selectedCutoffDate.value.toISOString()),
+        headers: {
+          'Content-Type': 'application/json',
+        },
       });
 
       toast.add({

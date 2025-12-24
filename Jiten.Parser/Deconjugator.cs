@@ -6,8 +6,13 @@ namespace Jiten.Parser;
 
 public class Deconjugator
 {
+    private static readonly Lazy<Deconjugator> _instance =
+        new Lazy<Deconjugator>(() => new Deconjugator(), LazyThreadSafetyMode.ExecutionAndPublication);
+
+    public static Deconjugator Instance => _instance.Value;
+
     public List<DeconjugationRule> Rules = new();
-    
+
     // Cache virtual rules to avoid recreating them
     private readonly Dictionary<DeconjugationRule, DeconjugationVirtualRule[]> _virtualRulesCache = new();
     
@@ -16,7 +21,7 @@ public class Deconjugator
     private static readonly ConcurrentQueue<List<string>> _processListPool = new();
     private static readonly ConcurrentQueue<HashSet<string>> _seenTextPool = new();
 
-    private static readonly bool UseCache = false;
+    private static readonly bool UseCache = true;
 
     private static readonly ConcurrentDictionary<string, HashSet<DeconjugationForm>> DeconjugationCache
         = new(StringComparer.Ordinal);
