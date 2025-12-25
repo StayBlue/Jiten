@@ -53,12 +53,10 @@ public class ParseJob(IDbContextFactory<JitenDbContext> contextFactory, IDbConte
             deck = await Parser.Parser.ParseTextToDeck(contextFactory, text, storeRawText, true, deckType);
         }
 
-        // Process children recursively
-        int deckOrder = 0;
-        foreach (var child in metadata.Children)
+        // Batch process ALL descendants in one Sudachi call
+        if (metadata.Children.Count > 0)
         {
-            var childDeck = await ParseChild(child, deck, deckType, ++deckOrder, storeRawText);
-            deck.Children.Add(childDeck);
+            await ParseChildrenBatched(metadata.Children, deck, deckType, storeRawText);
         }
 
         await deck.AddChildDeckWords(context);
@@ -114,64 +112,110 @@ public class ParseJob(IDbContextFactory<JitenDbContext> contextFactory, IDbConte
         backgroundJobs.Enqueue<StatsComputationJob>(job => job.ComputeDeckCoverageStats(deck.DeckId));
     }
 
-    private async Task<Deck> ParseChild(Metadata metadata, Deck parentDeck, MediaType deckType, int deckOrder, bool storeRawText)
+    /// <summary>
+    /// Flattens all descendants, batches text extraction, makes ONE Sudachi call,
+    /// then reassembles the hierarchy.
+    /// </summary>
+    private async Task ParseChildrenBatched(List<Metadata> children, Deck rootDeck, MediaType deckType, bool storeRawText)
     {
-        Deck deck = new();
-        string filePath = metadata.FilePath;
+        // Flatten ALL descendants with their hierarchy info
+        // Using Metadata as key to track parent relationships
+        var flatList = new List<(Metadata meta, string text, Metadata? parentMeta, int order)>();
+        FlattenDescendants(children, null, flatList, startOrder: 1);
 
-        if (!string.IsNullOrEmpty(metadata.FilePath))
+        // Extract text for each (handles .epub, .mokuro, .txt)
+        for (int i = 0; i < flatList.Count; i++)
         {
-            if (!File.Exists(metadata.FilePath))
-            {
-                throw new FileNotFoundException($"File {filePath} not found.");
-            }
+            var (meta, _, parentMeta, order) = flatList[i];
+            var text = await ExtractTextFromMetadata(meta);
+            flatList[i] = (meta, text, parentMeta, order);
+        }
 
-            string text = "";
-            if (Path.GetExtension(filePath).ToLower() == ".epub")
-            {
-                var extractor = new EbookExtractor();
-                text = await extractor.ExtractTextFromEbook(filePath);
+        // Filter out empty texts but keep track of all metadata for hierarchy
+        var validItems = flatList.Where(x => !string.IsNullOrEmpty(x.text)).ToList();
+        if (validItems.Count == 0) return;
 
-                if (string.IsNullOrEmpty(text))
-                {
-                    throw new Exception("No text found in the ebook.");
-                }
-            }
-            else if (Path.GetExtension(filePath).ToLower() == ".mokuro")
-            {
-                var extractor = new MokuroExtractor();
-                text = await extractor.Extract(filePath, false);
+        // Batch parse ALL texts - SINGLE Sudachi call for entire tree
+        var decks = await Parser.Parser.ParseTextsToDeck(
+            contextFactory,
+            validItems.Select(x => x.text).ToList(),
+            storeRawText,
+            predictDifficulty: true,
+            deckType);
 
-                if (string.IsNullOrEmpty(text))
-                {
-                    throw new Exception("No text found in the mokuro file.");
-                }
-            }
-            else
-            {
-                text = await File.ReadAllTextAsync(filePath);
-            }
+        // Create mapping from Metadata -> Deck for hierarchy reassembly
+        var metaToDeck = new Dictionary<Metadata, Deck>();
+        for (int i = 0; i < decks.Count; i++)
+        {
+            var deck = decks[i];
+            var (meta, _, parentMeta, order) = validItems[i];
 
-            deck = await Parser.Parser.ParseTextToDeck(contextFactory, text, storeRawText, true, deckType);
-            deck.ParentDeck = parentDeck;
-            deck.DeckOrder = deckOrder;
-            deck.OriginalTitle = metadata.OriginalTitle;
+            deck.DeckOrder = order;
+            deck.OriginalTitle = meta.OriginalTitle;
             deck.MediaType = deckType;
             deck.DifficultyOverride = -1;
 
             if (deckType is MediaType.Manga or MediaType.Anime or MediaType.Movie or MediaType.Drama)
                 deck.SentenceCount = 0;
+
+            metaToDeck[meta] = deck;
         }
 
-        // Process children recursively
-        int childDeckOrder = 0;
-        foreach (var child in metadata.Children)
+        // Reassemble hierarchy
+        foreach (var (meta, _, parentMeta, _) in validItems)
         {
-            var childDeck = await ParseChild(child, deck, deckType, ++childDeckOrder, storeRawText);
-            deck.Children.Add(childDeck);
-        }
+            var deck = metaToDeck[meta];
 
-        return deck;
+            if (parentMeta == null)
+            {
+                // Direct child of root
+                deck.ParentDeck = rootDeck;
+                rootDeck.Children.Add(deck);
+            }
+            else if (metaToDeck.TryGetValue(parentMeta, out var parentDeck))
+            {
+                // Child of another parsed deck
+                deck.ParentDeck = parentDeck;
+                parentDeck.Children.Add(deck);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Recursively flattens the metadata tree, preserving parent references.
+    /// </summary>
+    private void FlattenDescendants(
+        List<Metadata> children,
+        Metadata? parentMeta,
+        List<(Metadata meta, string text, Metadata? parentMeta, int order)> flatList,
+        int startOrder)
+    {
+        int order = startOrder;
+        foreach (var child in children)
+        {
+            flatList.Add((child, "", parentMeta, order++));
+
+            if (child.Children.Count > 0)
+            {
+                FlattenDescendants(child.Children, child, flatList, startOrder: 1);
+            }
+        }
+    }
+
+    private async Task<string> ExtractTextFromMetadata(Metadata metadata)
+    {
+        if (string.IsNullOrEmpty(metadata.FilePath)) return "";
+
+        string filePath = metadata.FilePath;
+        if (!File.Exists(filePath))
+            throw new FileNotFoundException($"File {filePath} not found.");
+
+        return Path.GetExtension(filePath).ToLower() switch
+        {
+            ".epub" => await new EbookExtractor().ExtractTextFromEbook(filePath),
+            ".mokuro" => await new MokuroExtractor().Extract(filePath, false),
+            _ => await File.ReadAllTextAsync(filePath)
+        };
     }
 
     private async Task QueueCoverageJobsForDeck(Deck deck)

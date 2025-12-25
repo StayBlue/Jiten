@@ -59,16 +59,35 @@ public class MorphologicalAnalyser
     // Token to separate some words in sudachi
     private static readonly string _stopToken = "|";
 
+    // Delimiter for batch processing multiple texts in a single Sudachi call
+    private static readonly string _batchDelimiter = "|||";
+
     /// <summary>
     /// Parses the given text into a list of SentenceInfo objects by performing morphological analysis.
+    /// Delegates to ParseBatch for a single codepath.
     /// </summary>
     /// <param name="text">The input text to be analyzed.</param>
     /// <param name="morphemesOnly">A boolean indicating whether the parsing should output only morphemes. When true, parsing will use mode 'A' for morpheme parsing.</param>
     /// <param name="preserveStopToken">A boolean indicating whether the stop token should be preserved in the processed text. Used in the ReaderController</param>
     /// <returns>A list of SentenceInfo objects representing the parsed output.</returns>
-    /// <exception cref="Exception">Thrown if an error occurs during parsing or processing.</exception>
     public async Task<List<SentenceInfo>> Parse(string text, bool morphemesOnly = false, bool preserveStopToken = false)
     {
+        var results = await ParseBatch([text], morphemesOnly, preserveStopToken);
+        return results.Count > 0 ? results[0] : [];
+    }
+
+    /// <summary>
+    /// Parses multiple texts in a single Sudachi call for efficiency.
+    /// This is the main implementation - Parse() delegates here.
+    /// </summary>
+    /// <param name="texts">List of texts to parse.</param>
+    /// <param name="morphemesOnly">A boolean indicating whether the parsing should output only morphemes.</param>
+    /// <param name="preserveStopToken">A boolean indicating whether the stop token should be preserved.</param>
+    /// <returns>List of SentenceInfo lists, one per input text.</returns>
+    public async Task<List<List<SentenceInfo>>> ParseBatch(List<string> texts, bool morphemesOnly = false, bool preserveStopToken = false)
+    {
+        if (texts.Count == 0) return [];
+
         var configuration = new ConfigurationBuilder()
                             .SetBasePath(Directory.GetCurrentDirectory())
                             .AddJsonFile(Path.Combine(Environment.CurrentDirectory, "..", "Shared", "sharedsettings.json"), optional: true)
@@ -77,61 +96,106 @@ public class MorphologicalAnalyser
                             .AddEnvironmentVariables()
                             .Build();
 
-        // Build dictionary  sudachi ubuild Y:\CODE\Jiten\Shared\resources\user_dic.xml -s S:\Jiten\sudachi.rs\resources\system_full.dic -o "Y:\CODE\Jiten\Shared\resources\user_dic.dic"
+        // Preprocess each text separately (preserves transformations per-text)
+        var processedTexts = new List<string>(texts.Count);
+        var originalTexts = new List<string>(texts.Count);
+        foreach (var text in texts)
+        {
+            var copy = text;
+            PreprocessText(ref copy, preserveStopToken);
+            processedTexts.Add(copy);
 
-        // Preprocess the text to remove invalid characters
-        PreprocessText(ref text, preserveStopToken);
+            var cleanedOriginal = copy.Replace(" ", "");
+            if (!preserveStopToken)
+                cleanedOriginal = cleanedOriginal.Replace(_stopToken, "");
+            originalTexts.Add(cleanedOriginal);
+        }
 
-        // Custom stuff in the user dictionary interferes with the mode A morpheme parsing
-        var configPath =
-            morphemesOnly
-                ? Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "resources", "sudachi_nouserdic.json")
-                : Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "resources", "sudachi.json");
+        // Join with batch delimiter (only if multiple texts)
+        var combinedText = texts.Count == 1
+            ? processedTexts[0]
+            : string.Join($" {_batchDelimiter} ", processedTexts);
+
+        // Single Sudachi call
+        var configPath = morphemesOnly
+            ? Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "resources", "sudachi_nouserdic.json")
+            : Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "resources", "sudachi.json");
         var dic = configuration.GetValue<string>("DictionaryPath");
 
-        var output = SudachiInterop.ProcessText(configPath, text, dic, mode: morphemesOnly ? 'A' : 'C').Split("\n");
+        var output = SudachiInterop.ProcessText(configPath, combinedText, dic, mode: morphemesOnly ? 'A' : 'C').Split("\n");
 
-        text = text.Replace(" ", "");
-        
-        if (!preserveStopToken)
-            text = text.Replace(_stopToken, "");
-
-        List<WordInfo> wordInfos = new();
-
+        // Parse all WordInfo objects
+        var allWordInfos = new List<WordInfo>();
         foreach (var line in output)
         {
             if (line == "EOS") continue;
-
             var wi = new WordInfo(line);
-            if (!wi.IsInvalid)
-                wordInfos.Add(wi);
+            if (!wi.IsInvalid) allWordInfos.Add(wi);
         }
 
-        if (morphemesOnly)
-            return [new SentenceInfo("") { Words = wordInfos.Select(w => (w, (byte)0, (byte)0)).ToList() }];
+        // Split by delimiter tokens (if batch)
+        var batches = new List<List<WordInfo>>();
+        if (texts.Count == 1)
+        {
+            batches.Add(allWordInfos);
+        }
+        else
+        {
+            var currentBatch = new List<WordInfo>();
+            for (int j = 0; j < allWordInfos.Count; j++)
+            {
+                var wi = allWordInfos[j];
 
-        wordInfos = ProcessSpecialCases(wordInfos);
-        wordInfos = CombineInflections(wordInfos);
+                // Sudachi tokenizes ||| as three separate | tokens
+                if (wi.Text == _stopToken &&
+                    j + 2 < allWordInfos.Count &&
+                    allWordInfos[j + 1].Text == _stopToken &&
+                    allWordInfos[j + 2].Text == _stopToken)
+                {
+                    batches.Add(currentBatch);
+                    currentBatch = new List<WordInfo>();
+                    j += 2;
+                }
+                else
+                {
+                    currentBatch.Add(wi);
+                }
+            }
+            batches.Add(currentBatch); // Last batch
+        }
 
-        // Disabled this, seems like it's doing more harm than good
-        // wordInfos = CombinePrefixes(wordInfos);
+        // Process each batch through normal pipeline
+        var results = new List<List<SentenceInfo>>();
+        for (int i = 0; i < batches.Count && i < originalTexts.Count; i++)
+        {
+            var wordInfos = batches[i];
 
-        wordInfos = CombineAmounts(wordInfos);
-        wordInfos = CombineTte(wordInfos);
-        wordInfos = CombineAuxiliaryVerbStem(wordInfos);
-        wordInfos = CombineAdverbialParticle(wordInfos);
-        wordInfos = CombineSuffix(wordInfos);
-        wordInfos = CombineConjunctiveParticle(wordInfos);
-        wordInfos = CombineAuxiliary(wordInfos);
-        wordInfos = CombineVerbDependant(wordInfos);
-        wordInfos = CombineParticles(wordInfos);
+            if (morphemesOnly)
+            {
+                results.Add([new SentenceInfo("") { Words = wordInfos.Select(w => (w, (byte)0, (byte)0)).ToList() }]);
+                continue;
+            }
 
-        wordInfos = CombineHiraganaElongation(wordInfos);
-        wordInfos = CombineFinal(wordInfos);
+            // All Combine* methods - SINGLE place to maintain
+            wordInfos = ProcessSpecialCases(wordInfos);
+            wordInfos = CombineInflections(wordInfos);
+            wordInfos = CombineAmounts(wordInfos);
+            wordInfos = CombineTte(wordInfos);
+            wordInfos = CombineAuxiliaryVerbStem(wordInfos);
+            wordInfos = CombineAdverbialParticle(wordInfos);
+            wordInfos = CombineSuffix(wordInfos);
+            wordInfos = CombineConjunctiveParticle(wordInfos);
+            wordInfos = CombineAuxiliary(wordInfos);
+            wordInfos = CombineVerbDependant(wordInfos);
+            wordInfos = CombineParticles(wordInfos);
+            wordInfos = CombineHiraganaElongation(wordInfos);
+            wordInfos = CombineFinal(wordInfos);
+            wordInfos = FilterMisparse(wordInfos);
 
-        wordInfos = FilterMisparse(wordInfos);
+            results.Add(SplitIntoSentences(originalTexts[i], wordInfos));
+        }
 
-        return SplitIntoSentences(text, wordInfos);
+        return results;
     }
 
     /// <summary>

@@ -40,28 +40,42 @@ public class ReparseJob(IDbContextFactory<JitenDbContext> contextFactory)
         }
         else
         {
-            for (int i = 0; i < children.Count; i++)
+            // Validate all children have raw text
+            foreach (var child in children)
             {
-                var child = children.ElementAt(i);
                 if (child.RawText == null)
                     throw new Exception($"Child deck with ID {child.DeckId} has no raw text to reparse.");
+            }
 
-                Deck newDeck = await Parser.Parser.ParseTextToDeck(contextFactory, child.RawText.RawText, true, true, child.MediaType);
 
-                children[i].CharacterCount = newDeck.CharacterCount;
-                children[i].WordCount = newDeck.WordCount;
-                children[i].UniqueWordCount = newDeck.UniqueWordCount;
-                children[i].UniqueWordUsedOnceCount = newDeck.UniqueWordUsedOnceCount;
-                children[i].UniqueKanjiCount = newDeck.UniqueKanjiCount;
-                children[i].UniqueKanjiUsedOnceCount = newDeck.UniqueKanjiUsedOnceCount;
-                children[i].SentenceCount = newDeck.SentenceCount;
-                children[i].DeckWords = newDeck.DeckWords;
-                children[i].ExampleSentences = newDeck.ExampleSentences;
-                children[i].Difficulty = newDeck.Difficulty;
-                children[i].DialoguePercentage = newDeck.DialoguePercentage;
+            var texts = children.Select(c => c.RawText!.RawText).ToList();
+            var newDecks = await Parser.Parser.ParseTextsToDeck(
+                contextFactory,
+                texts,
+                storeRawText: true,
+                predictDifficulty: true,
+                deck.MediaType);
 
-                if (children[i].MediaType is MediaType.Manga or MediaType.Anime or MediaType.Movie or MediaType.Drama)
-                    children[i].SentenceCount = 0;
+            // Copy properties back to original deck objects
+            for (int i = 0; i < children.Count; i++)
+            {
+                var original = children[i];
+                var parsed = newDecks[i];
+
+                original.CharacterCount = parsed.CharacterCount;
+                original.WordCount = parsed.WordCount;
+                original.UniqueWordCount = parsed.UniqueWordCount;
+                original.UniqueWordUsedOnceCount = parsed.UniqueWordUsedOnceCount;
+                original.UniqueKanjiCount = parsed.UniqueKanjiCount;
+                original.UniqueKanjiUsedOnceCount = parsed.UniqueKanjiUsedOnceCount;
+                original.SentenceCount = parsed.SentenceCount;
+                original.DeckWords = parsed.DeckWords;
+                original.ExampleSentences = parsed.ExampleSentences;
+                original.Difficulty = parsed.Difficulty;
+                original.DialoguePercentage = parsed.DialoguePercentage;
+
+                if (original.MediaType is MediaType.Manga or MediaType.Anime or MediaType.Movie or MediaType.Drama)
+                    original.SentenceCount = 0;
             }
 
             deck.Children = children;

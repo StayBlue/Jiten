@@ -154,18 +154,36 @@ namespace Jiten.Parser
             return allProcessedWords.Where(w => w != null).Select(w => w!).ToList();
         }
 
+        /// <summary>
+        /// Parses a single text into a Deck. Delegates to ParseTextsToDeck for a single codepath.
+        /// </summary>
         public static async Task<Deck> ParseTextToDeck(IDbContextFactory<JitenDbContext> contextFactory, string text,
                                                        bool storeRawText = false,
                                                        bool predictDifficulty = true,
                                                        MediaType mediatype = MediaType.Novel)
         {
+            var results = await ParseTextsToDeck(contextFactory, [text], storeRawText, predictDifficulty, mediatype);
+            return results.Count > 0 ? results[0] : new Deck();
+        }
+
+        /// <summary>
+        /// Parses multiple texts into Decks in a single batch for efficiency.
+        /// </summary>
+        public static async Task<List<Deck>> ParseTextsToDeck(IDbContextFactory<JitenDbContext> contextFactory,
+                                                              List<string> texts,
+                                                              bool storeRawText = false,
+                                                              bool predictDifficulty = true,
+                                                              MediaType mediatype = MediaType.Novel)
+        {
+            if (texts.Count == 0) return [];
+
             _contextFactory = contextFactory;
             if (!_initialized)
             {
                 await _initSemaphore.WaitAsync();
                 try
                 {
-                    if (!_initialized) // Double-check to avoid race conditions
+                    if (!_initialized)
                     {
                         await InitDictionaries();
                         _initialized = true;
@@ -179,13 +197,50 @@ namespace Jiten.Parser
 
             var timer = new Stopwatch();
             timer.Start();
+
+            // Batch morphological analysis
             var parser = new MorphologicalAnalyser();
-            var sentences = await parser.Parse(text);
+            var batchedSentences = await parser.ParseBatch(texts);
+
+            timer.Stop();
+            double sudachiTime = timer.Elapsed.TotalMilliseconds;
+            Console.WriteLine($"Batch parsed {texts.Count} texts. Sudachi time: {sudachiTime:0.0}ms");
+
+            timer.Restart();
+
+            // Process each result through deconjugation/lookup pipeline
+            var decks = new List<Deck>();
+            Deconjugator deconjugator = Deconjugator.Instance;
+
+            for (int textIndex = 0; textIndex < batchedSentences.Count; textIndex++)
+            {
+                var sentences = batchedSentences[textIndex];
+                var text = texts[textIndex];
+                var deck = await ProcessSentencesToDeck(sentences, text, deconjugator, storeRawText, predictDifficulty, mediatype);
+                decks.Add(deck);
+            }
+
+            timer.Stop();
+            Console.WriteLine($"Processing time: {timer.Elapsed.TotalMilliseconds:0.0}ms");
+
+            return decks;
+        }
+
+        /// <summary>
+        /// Helper: Processes sentences into a Deck (deconjugation, rescue, statistics).
+        /// Extracted to share between batch and single-item paths.
+        /// </summary>
+        private static async Task<Deck> ProcessSentencesToDeck(
+            List<SentenceInfo> sentences,
+            string text,
+            Deconjugator deconjugator,
+            bool storeRawText,
+            bool predictDifficulty,
+            MediaType mediatype)
+        {
             var wordInfos = sentences.SelectMany(s => s.Words).Select(w => w.word).ToList();
 
-            // TODO: support elongated vowels ふ～ -> ふう
-
-            // Only keep kanjis, kanas, digits,full width digits, latin characters, full width latin characters 
+            // Only keep kanjis, kanas, digits, full width digits, latin characters, full width latin characters
             wordInfos.ForEach(x => x.Text =
                                   Regex.Replace(x.Text,
                                                 "[^a-zA-Z0-9\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF\uFF21-\uFF3A\uFF41-\uFF5A\uFF10-\uFF19\u3005．]",
@@ -194,10 +249,7 @@ namespace Jiten.Parser
             wordInfos = wordInfos.Where(x => !string.IsNullOrWhiteSpace(x.Text)).ToList();
 
             // Filter bad lines that cause exceptions
-            // wordInfos.RemoveAll(w => w.Text is "ッー");
             wordInfos.ForEach(x => x.Text = Regex.Replace(x.Text, "ッー", ""));
-
-            Deconjugator deconjugator = Deconjugator.Instance;
 
             var uniqueWords = new List<(WordInfo wordInfo, int occurrences)>();
             var wordCount = new Dictionary<(string, PartOfSpeech), int>();
@@ -214,11 +266,6 @@ namespace Jiten.Parser
             {
                 uniqueWords[i] = (uniqueWords[i].wordInfo, wordCount[(uniqueWords[i].wordInfo.Text, uniqueWords[i].wordInfo.PartOfSpeech)]);
             }
-
-            timer.Stop();
-            double mecabTime = timer.Elapsed.TotalMilliseconds;
-
-            timer.Restart();
 
             const int BATCH_SIZE = 1000;
             List<DeckWord?> allProcessedWords = new();
@@ -257,10 +304,6 @@ namespace Jiten.Parser
 
             var processedWords = allProcessedWords.Where(w => w != null).Select(w => w!).ToArray();
 
-            processedWords = processedWords
-                             .Select(result => result)
-                             .ToArray();
-
             // Sum occurrences while deduplicating by WordId and ReadingIndex for deconjugated words
             processedWords = processedWords
                              .GroupBy(x => new { x.WordId, x.ReadingIndex })
@@ -278,28 +321,7 @@ namespace Jiten.Parser
                 exampleSentences = ExampleSentenceExtractor.ExtractSentences(sentences, processedWords);
 
             var totalWordCount = processedWords.Select(w => w.Occurrences).Sum();
-
-            timer.Stop();
-
-            double deconjugationTime = timer.Elapsed.TotalMilliseconds;
-
-            double totalTime = mecabTime + deconjugationTime;
-
-            Console.WriteLine("Total words found : " + wordInfos.Count);
-
-            // Console.WriteLine("Unique words found before deconjugation : " + uniqueWordInfos.Count);
-            Console.WriteLine("Unique words found after deconjugation : " + processedWords.Length);
-
             var characterCount = wordInfos.Sum(x => x.Text.Length);
-            Console.WriteLine($"Time elapsed: {totalTime:0.0}ms");
-            Console.WriteLine($"Mecab time: {mecabTime:0.0}ms ({(mecabTime / totalTime * 100):0}%), Deconjugation time: {deconjugationTime:0.0}ms ({(deconjugationTime / totalTime * 100):0}%)");
-
-            // Character count
-            Console.WriteLine("Character count: " + characterCount);
-            // Time for 10000 characters
-            Console.WriteLine($"Time per 10000 characters: {(totalTime / characterCount * 10000):0.0}ms");
-            // Time for 1million characters
-            Console.WriteLine($"Time per 1 million characters: {(totalTime / characterCount * 1000000):0.0}ms");
 
             var textWithoutDialogues = Regex.Replace(text, @"[「『].{0,200}?[」』]", "", RegexOptions.Singleline);
             textWithoutDialogues = Regex.Replace(textWithoutDialogues,
@@ -310,9 +332,9 @@ namespace Jiten.Parser
                                                        "");
 
             int dialogueCharacterCount = textWithoutPunctuation.Length - textWithoutDialogues.Length;
-            float dialoguePercentage = (float)dialogueCharacterCount / textWithoutPunctuation.Length * 100f;
-
-            Console.WriteLine($"Dialogue percentage: {dialoguePercentage:0.0}%");
+            float dialoguePercentage = textWithoutPunctuation.Length > 0
+                ? (float)dialogueCharacterCount / textWithoutPunctuation.Length * 100f
+                : 0f;
 
             var deck = new Deck
                        {
@@ -337,13 +359,7 @@ namespace Jiten.Parser
                 DifficultyPredictor difficultyPredictor =
                     new(_contextFactory, Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "resources", model));
                 deck.Difficulty = await difficultyPredictor.PredictDifficulty(deck, mediatype);
-                // DifficultyPredictorVae difficultyPredictor =
-                //     new(_dbContext.DbOptions,
-                //         Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "resources", "vae_prediction.py"));
-                // deck.Difficulty = await difficultyPredictor.PredictDifficulty(deck, mediatype);
-                Console.WriteLine($"Predicted difficulty: {deck.Difficulty}");
             }
-
 
             return deck;
         }
