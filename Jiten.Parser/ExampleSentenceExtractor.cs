@@ -83,8 +83,8 @@ public static class ExampleSentenceExtractor
 
         foreach (var pass in passes)
         {
-            int maxSentences = (int)(validSentences.Count * pass.Percentage);
-            int processed = 0;
+            // Only consider sentences from the first X% of the text
+            int maxPosition = (int)(sentences.Count * pass.Percentage);
 
             // Pre-filter and sort sentences for this pass
             var candidateSentences = new List<SentenceInfo>();
@@ -92,7 +92,8 @@ public static class ExampleSentenceExtractor
             {
                 if (!usedSentences.Contains(sentence) &&
                     sentence.Text.Length >= pass.MinLength &&
-                    sentence.Text.Length <= pass.MaxLength)
+                    sentence.Text.Length <= pass.MaxLength &&
+                    sentencePositions[sentence] < maxPosition)
                 {
                     candidateSentences.Add(sentence);
                 }
@@ -101,9 +102,7 @@ public static class ExampleSentenceExtractor
             // Sort by length descending
             candidateSentences.Sort((a, b) => b.Text.Length.CompareTo(a.Text.Length));
 
-            // Process up to maxSentences
-            int toProcess = Math.Min(candidateSentences.Count, maxSentences - processed);
-            for (int i = 0; i < toProcess; i++)
+            for (int i = 0; i < candidateSentences.Count; i++)
             {
                 var sentence = candidateSentences[i];
                 var exampleSentence = new ExampleSentence
@@ -158,7 +157,6 @@ public static class ExampleSentenceExtractor
                 }
 
                 usedSentences.Add(sentence);
-                processed++;
 
                 // Early exit if no more words available
                 if (wordsByText.Count == 0)

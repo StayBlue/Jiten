@@ -114,22 +114,23 @@ namespace Jiten.Parser
 
             var parser = new MorphologicalAnalyser();
             var sentences = await parser.Parse(text, preserveStopToken: preserveStopToken);
-            var wordInfos = sentences.SelectMany(s => s.Words).Select(w => w.word).ToList();
 
-            // Only keep kanjis, kanas, digits,full width digits, latin characters, full width latin characters
-            foreach (WordInfo wi in wordInfos)
+            // Clean text in sentences directly
+            foreach (var sentence in sentences)
             {
-                wi.Text = Regex.Replace(wi.Text,
-                                        "[^a-zA-Z0-9\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF\uFF21-\uFF3A\uFF41-\uFF5A\uFF10-\uFF19\u3005．]",
-                                        "");
+                foreach (var (word, _, _) in sentence.Words)
+                {
+                    word.Text = Regex.Replace(word.Text,
+                                              "[^a-zA-Z0-9\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF\uFF21-\uFF3A\uFF41-\uFF5A\uFF10-\uFF19\u3005．]",
+                                              "");
+                    word.Text = Regex.Replace(word.Text, "ッー", "");
+                }
+
+                sentence.Words.RemoveAll(w => string.IsNullOrWhiteSpace(w.word.Text));
             }
 
-            // Remove empty lines
-            wordInfos.RemoveAll(x => string.IsNullOrWhiteSpace(x.Text));
-
-            // Filter bad lines that cause exceptions
-            wordInfos.ForEach(x => x.Text = Regex.Replace(x.Text, "ッー", ""));
-            wordInfos = await CombineCompounds(wordInfos);
+            await CombineCompounds(sentences);
+            var wordInfos = sentences.SelectMany(s => s.Words).Select(w => w.word).ToList();
 
             var deconjugator = Deconjugator.Instance;
 
@@ -259,20 +260,22 @@ namespace Jiten.Parser
             bool predictDifficulty,
             MediaType mediatype)
         {
+            // Clean text in sentences directly
+            foreach (var sentence in sentences)
+            {
+                foreach (var (word, _, _) in sentence.Words)
+                {
+                    word.Text = Regex.Replace(word.Text,
+                                              "[^a-zA-Z0-9\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF\uFF21-\uFF3A\uFF41-\uFF5A\uFF10-\uFF19\u3005．]",
+                                              "");
+                    word.Text = Regex.Replace(word.Text, "ッー", "");
+                }
+
+                sentence.Words.RemoveAll(w => string.IsNullOrWhiteSpace(w.word.Text));
+            }
+
+            await CombineCompounds(sentences);
             var wordInfos = sentences.SelectMany(s => s.Words).Select(w => w.word).ToList();
-
-            // Only keep kanjis, kanas, digits, full width digits, latin characters, full width latin characters
-            wordInfos.ForEach(x => x.Text =
-                                  Regex.Replace(x.Text,
-                                                "[^a-zA-Z0-9\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF\uFF21-\uFF3A\uFF41-\uFF5A\uFF10-\uFF19\u3005．]",
-                                                ""));
-            // Remove empty lines
-            wordInfos = wordInfos.Where(x => !string.IsNullOrWhiteSpace(x.Text)).ToList();
-
-            // Filter bad lines that cause exceptions
-            wordInfos.ForEach(x => x.Text = Regex.Replace(x.Text, "ッー", ""));
-
-            wordInfos = await CombineCompounds(wordInfos);
 
             var uniqueWords = new List<(WordInfo wordInfo, int occurrences)>();
             var wordCount = new Dictionary<(string, PartOfSpeech), int>();
@@ -1093,17 +1096,21 @@ namespace Jiten.Parser
                                         var bestMatch = wordCache.Values
                                             .OrderByDescending(w => w.GetPriorityScore(WanaKana.IsKana(candidate)))
                                             .First();
-                                        match = new DeckWord
+                                        var readingIndex = GetBestReadingIndex(bestMatch, candidate);
+                                        if (readingIndex != 255)
                                         {
-                                            WordId = bestMatch.WordId,
-                                            OriginalText = candidate,
-                                            ReadingIndex = GetBestReadingIndex(bestMatch, candidate),
-                                            Occurrences = occurrences,
-                                            PartsOfSpeech = bestMatch.PartsOfSpeech.ToPartOfSpeech(),
-                                            Origin = bestMatch.Origin
-                                        };
-                                        matchLen = windowSize;
-                                        break;
+                                            match = new DeckWord
+                                            {
+                                                WordId = bestMatch.WordId,
+                                                OriginalText = candidate,
+                                                ReadingIndex = readingIndex,
+                                                Occurrences = occurrences,
+                                                PartsOfSpeech = bestMatch.PartsOfSpeech.ToPartOfSpeech(),
+                                                Origin = bestMatch.Origin
+                                            };
+                                            matchLen = windowSize;
+                                            break;
+                                        }
                                     }
                                 }
                                 catch {  }
@@ -1124,18 +1131,22 @@ namespace Jiten.Parser
                                         var bestMatch = wordCache.Values
                                             .OrderByDescending(w => w.GetPriorityScore(WanaKana.IsKana(candidate)))
                                             .First();
-                                        match = new DeckWord
+                                        var readingIndex = GetBestReadingIndex(bestMatch, candidate);
+                                        if (readingIndex != 255)
                                         {
-                                            WordId = bestMatch.WordId,
-                                            OriginalText = candidate,
-                                            ReadingIndex = GetBestReadingIndex(bestMatch, candidate),
-                                            Occurrences = occurrences,
-                                            Conjugations = form.Process,
-                                            PartsOfSpeech = bestMatch.PartsOfSpeech.ToPartOfSpeech(),
-                                            Origin = bestMatch.Origin
-                                        };
-                                        matchLen = windowSize;
-                                        break;
+                                            match = new DeckWord
+                                            {
+                                                WordId = bestMatch.WordId,
+                                                OriginalText = candidate,
+                                                ReadingIndex = readingIndex,
+                                                Occurrences = occurrences,
+                                                Conjugations = form.Process,
+                                                PartsOfSpeech = bestMatch.PartsOfSpeech.ToPartOfSpeech(),
+                                                Origin = bestMatch.Origin
+                                            };
+                                            matchLen = windowSize;
+                                            break;
+                                        }
                                     }
                                 }
                                 catch {  }
@@ -1221,7 +1232,8 @@ namespace Jiten.Parser
                 if (idx != -1) return (byte)idx;
             }
 
-            return bestIndex;
+            // No match found - return 255 to indicate failure
+            return maxScore == -1 ? (byte)255 : bestIndex;
 
             static int GetPrefixLength(string s1, string s2)
             {
@@ -1236,49 +1248,60 @@ namespace Jiten.Parser
             }
         }
 
-        private static async Task<List<WordInfo>> CombineCompounds(List<WordInfo> wordInfos)
+        private static async Task CombineCompounds(List<SentenceInfo> sentences)
         {
-            if (wordInfos.Count < 2)
-                return wordInfos;
-
-            var result = new List<WordInfo>(wordInfos.Count);
-            int i = 0;
-
-            while (i < wordInfos.Count)
+            foreach (var sentence in sentences)
             {
-                var word = wordInfos[i];
+                if (sentence.Words.Count < 2)
+                    continue;
 
-                // Only check verbs/i-adjectives
-                if (word.PartOfSpeech is PartOfSpeech.Verb or PartOfSpeech.IAdjective)
+                var wordInfos = sentence.Words.Select(w => w.word).ToList();
+                var result = new List<(WordInfo word, byte position, byte length)>(sentence.Words.Count);
+                int i = 0;
+
+                while (i < wordInfos.Count)
                 {
-                    var match = await TryMatchCompounds(wordInfos, i);
-                    if (match.HasValue)
+                    var word = wordInfos[i];
+
+                    if (word.PartOfSpeech is PartOfSpeech.Verb or PartOfSpeech.IAdjective)
                     {
-                        var (startIndex, dictForm, wordId) = match.Value;
-
-                        int tokensToRemove = i - startIndex;
-                        if (tokensToRemove > 0 && result.Count >= tokensToRemove)
+                        var match = await TryMatchCompounds(wordInfos, i);
+                        if (match.HasValue)
                         {
-                            result.RemoveRange(result.Count - tokensToRemove, tokensToRemove);
+                            var (startIndex, dictForm, wordId) = match.Value;
+
+                            int tokensToRemove = i - startIndex;
+                            if (tokensToRemove > 0 && result.Count >= tokensToRemove)
+                            {
+                                result.RemoveRange(result.Count - tokensToRemove, tokensToRemove);
+                            }
+
+                            var startPosition = sentence.Words[startIndex].position;
+                            byte combinedLength = 0;
+                            for (int j = startIndex; j <= i; j++)
+                            {
+                                combinedLength += sentence.Words[j].length;
+                            }
+
+                            var originalText = string.Concat(wordInfos.Skip(startIndex).Take(i - startIndex + 1).Select(w => w.Text));
+                            var combinedWordInfo = new WordInfo
+                                                   {
+                                                       Text = originalText, DictionaryForm = dictForm, PartOfSpeech = PartOfSpeech.Expression,
+                                                       NormalizedForm = dictForm, Reading = WanaKana.ToHiragana(originalText)
+                                                   };
+
+                            result.Add((combinedWordInfo, startPosition, combinedLength));
+                            i++;
+                            continue;
                         }
-
-                        var originalText = string.Concat(wordInfos.Skip(startIndex).Take(i - startIndex + 1).Select(w => w.Text));
-                        result.Add(new WordInfo
-                                   {
-                                       Text = originalText, DictionaryForm = dictForm, PartOfSpeech = PartOfSpeech.Expression,
-                                       NormalizedForm = dictForm, Reading = WanaKana.ToHiragana(originalText)
-                                   });
-
-                        i++;
-                        continue;
                     }
+
+                    result.Add(sentence.Words[i]);
+                    i++;
                 }
 
-                result.Add(word);
-                i++;
+                sentence.Words = result;
             }
-
-            return result;
         }
 
         private static async Task<(int startIndex, string dictionaryForm, int wordId)?> TryMatchCompounds(
