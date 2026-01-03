@@ -1,4 +1,5 @@
-﻿using System.Diagnostics;
+﻿
+using System.Diagnostics;
 using System.Text.RegularExpressions;
 using Jiten.Cli.ML;
 using Jiten.Core;
@@ -38,6 +39,12 @@ namespace Jiten.Parser
             PartOfSpeech.IAdjective,
             PartOfSpeech.NaAdjective,
             PartOfSpeech.Auxiliary
+        };
+
+        // Tokens that cause Sudachi internal panics when processed alone during rescue
+        private static readonly HashSet<string> ProblematicRescueTokens = new()
+        {
+            "・", "…", "―", "ー", "〜", "～", "・・・", "――", "。", "、", "！", "？"
         };
 
         private static async Task InitDictionaries()
@@ -1042,7 +1049,6 @@ namespace Jiten.Parser
 
             var potentialCandidates = failedWords
                                       .Select((w, idx) => (w, idx))
-                                      // .Where(x => x.w.wordInfo.Text.Length > 1 && x.w.wordInfo.Text.Any(IsKanji) || x.w.wordInfo.Text.Length > 4)
                                       .ToList();
 
             if (potentialCandidates.Count == 0)
@@ -1082,48 +1088,87 @@ namespace Jiten.Parser
             if (rescueCandidates.Count == 0)
                 return groupedResults;
 
-            var combinedText = string.Join("|", rescueCandidates.Select(x => x.w.wordInfo.Text));
+            // Batch candidates by byte size and entry count to avoid Sudachi internal bugs
+            const int MAX_BATCH_BYTES = 40000;
+            const int MAX_BATCH_ENTRIES = 500;
+            const int SEPARATOR_BYTES = 5; // " ||| " separator used by MorphologicalAnalyser.ParseBatch
+            var batches = new List<List<((WordInfo wordInfo, int occurrences) w, int idx)>>();
+            var currentBatch = new List<((WordInfo wordInfo, int occurrences) w, int idx)>();
+            int currentBatchBytes = 0;
 
-            var analyser = new MorphologicalAnalyser();
-            var sentences = await analyser.Parse(combinedText, morphemesOnly: true, preserveStopToken: true);
-            var allWords = sentences.SelectMany(s => s.Words).Select(w => w.word).ToList();
-
-            int candidateIdx = 0;
-            var currentGroup = new List<WordInfo>();
-
-            foreach (var word in allWords)
+            foreach (var candidate in rescueCandidates)
             {
-                if (word.Text == "|")
-                {
-                    if (candidateIdx < rescueCandidates.Count)
-                    {
-                        var (original, originalIdx) = rescueCandidates[candidateIdx];
-                        var processed = await ProcessRescueGroup(currentGroup, original, deconjugator);
-                        groupedResults[originalIdx] = processed;
+                // Skip tokens that cause Sudachi internal panics (punctuation-only, special chars)
+                var text = candidate.w.wordInfo.Text;
+                if (ProblematicRescueTokens.Contains(text) || text.All(c => !char.IsLetterOrDigit(c)))
+                    continue;
 
-                        // Only cache the rescue marker if rescue failed (no results)
-                        if (UseCache && processed.Count == 0)
-                            await CacheRescueMarker(original.wordInfo);
-                    }
+                int wordBytes = System.Text.Encoding.UTF8.GetByteCount(text);
+                int separatorBytes = currentBatch.Count > 0 ? SEPARATOR_BYTES : 0;
 
-                    currentGroup.Clear();
-                    candidateIdx++;
-                }
-                else
+                if ((currentBatchBytes + wordBytes + separatorBytes > MAX_BATCH_BYTES ||
+                     currentBatch.Count >= MAX_BATCH_ENTRIES) && currentBatch.Count > 0)
                 {
-                    currentGroup.Add(word);
+                    batches.Add(currentBatch);
+                    currentBatch = new List<((WordInfo wordInfo, int occurrences) w, int idx)>();
+                    currentBatchBytes = 0;
                 }
+
+                currentBatch.Add(candidate);
+                currentBatchBytes += wordBytes + (currentBatch.Count > 1 ? SEPARATOR_BYTES : 0);
             }
 
-            if (currentGroup.Count > 0 && candidateIdx < rescueCandidates.Count)
-            {
-                var (original, originalIdx) = rescueCandidates[candidateIdx];
-                var processed = await ProcessRescueGroup(currentGroup, original, deconjugator);
-                groupedResults[originalIdx] = processed;
+            if (currentBatch.Count > 0)
+                batches.Add(currentBatch);
 
-                // Only cache the rescue marker if rescue failed (no results)
-                if (UseCache && processed.Count == 0)
-                    await CacheRescueMarker(original.wordInfo);
+            var analyser = new MorphologicalAnalyser();
+
+            foreach (var batch in batches)
+            {
+
+                var texts = batch.Select(x => x.w.wordInfo.Text).ToList();
+                var batchResults = await analyser.ParseBatch(texts, morphemesOnly: true, preserveStopToken: true);
+
+                // ParseBatch returns all words in one result - split by ||| tokens manually
+                var allWords = batchResults.SelectMany(r => r.SelectMany(s => s.Words)).Select(w => w.word).ToList();
+
+                int candidateIdx = 0;
+                var currentGroup = new List<WordInfo>();
+
+                foreach (var word in allWords)
+                {
+                    // Detect ||| delimiter token (Sudachi tokenizes it as single token)
+                    if (word.Text == "|||")
+                    {
+                        if (candidateIdx < batch.Count)
+                        {
+                            var (original, originalIdx) = batch[candidateIdx];
+                            var processed = await ProcessRescueGroup(currentGroup, original, deconjugator);
+                            groupedResults[originalIdx] = processed;
+
+                            if (UseCache && processed.Count == 0)
+                                await CacheRescueMarker(original.wordInfo);
+                        }
+
+                        currentGroup.Clear();
+                        candidateIdx++;
+                    }
+                    else if (word.Text != " ") // Skip space tokens around delimiter
+                    {
+                        currentGroup.Add(word);
+                    }
+                }
+
+                // Process the last group
+                if (currentGroup.Count > 0 && candidateIdx < batch.Count)
+                {
+                    var (original, originalIdx) = batch[candidateIdx];
+                    var processed = await ProcessRescueGroup(currentGroup, original, deconjugator);
+                    groupedResults[originalIdx] = processed;
+
+                    if (UseCache && processed.Count == 0)
+                        await CacheRescueMarker(original.wordInfo);
+                }
             }
 
             return groupedResults;

@@ -230,7 +230,7 @@ public class MorphologicalAnalyser
             if (MisparsesRemove.Contains(word.Text) ||
                 word.PartOfSpeech == PartOfSpeech.Noun && (
                     (word.Text.Length == 1 && WanaKana.IsKana(word.Text)) ||
-                    word.Text.Length == 2 && WanaKana.IsKana(word.Text[0].ToString()) && word.Text[1] == 'ー'
+                    word.Text.Length == 2 && WanaKana.IsKana(word.Text[0].ToString()) && word.Text[1] == 'ー' && word.Text != "バー"
                     || word.Text is "エナ" or "えな"
                 ))
             {
@@ -286,6 +286,9 @@ public class MorphologicalAnalyser
         text = Regex.Replace(text, "笑(.)崩", $"笑$1{_stopToken}崩");
         text = Regex.Replace(text, "揚(.)だ", $"揚$1{_stopToken}だ");
         text = Regex.Replace(text, "考(.)直", $"考$1{_stopToken}直");
+        
+        // Crashes sudachi for some reason
+        text = Regex.Replace(text, "手取額", $"手取り額");
         
 
         // Replace line ending ellipsis with a sentence ender to be able to flatten later
