@@ -76,6 +76,125 @@ public class MediaDeckController(
         return dtos;
     }
 
+    /// <summary>
+    /// Returns lightweight media deck suggestions for autocomplete search.
+    /// </summary>
+    /// <param name="query">Search query (minimum 2 characters).</param>
+    /// <param name="limit">Maximum number of results (default 5, max 10).</param>
+    /// <returns>Media suggestions with total count.</returns>
+    [HttpGet("search-suggestions")]
+    [ResponseCache(Duration = 60, VaryByQueryKeys = ["query", "limit"])]
+    [SwaggerOperation(Summary = "Get media suggestions for autocomplete")]
+    [ProducesResponseType(typeof(MediaSuggestionsResponse), StatusCodes.Status200OK)]
+    public async Task<ActionResult<MediaSuggestionsResponse>> GetSearchSuggestions(
+        [FromQuery] string? query,
+        [FromQuery] int limit = 5)
+    {
+        if (string.IsNullOrWhiteSpace(query) || query.Length < 2)
+            return Ok(new MediaSuggestionsResponse());
+
+        limit = Math.Clamp(limit, 1, 10);
+
+        var normalizedFilter = query.Trim();
+        var filterNoSpaces = normalizedFilter.Replace(" ", "");
+        var queryLength = normalizedFilter.Length;
+
+        FormattableString sql = $$"""
+                                  WITH exact_matches AS (
+                                      SELECT DISTINCT dt."DeckId",
+                                             0 AS match_priority,
+                                             100.0 AS score,
+                                             dt."TitleType",
+                                             LENGTH(dt."Title") AS title_length
+                                      FROM jiten."DeckTitles" dt
+                                      WHERE LOWER(dt."Title") = LOWER({{normalizedFilter}})
+                                         OR LOWER(dt."TitleNoSpaces") = LOWER({{filterNoSpaces}})
+                                  ),
+                                  fuzzy_title_matches AS (
+                                      SELECT dt."DeckId",
+                                             1 AS match_priority,
+                                             pgroonga_score(dt.tableoid, dt.ctid) AS score,
+                                             dt."TitleType",
+                                             LENGTH(dt."Title") AS title_length
+                                      FROM jiten."DeckTitles" dt
+                                      WHERE dt."Title" &@~ {{normalizedFilter}}
+                                        AND dt."DeckId" NOT IN (SELECT "DeckId" FROM exact_matches)
+                                  ),
+                                  fuzzy_nospace_matches AS (
+                                      SELECT dt."DeckId",
+                                             2 AS match_priority,
+                                             pgroonga_score(dt.tableoid, dt.ctid) AS score,
+                                             dt."TitleType",
+                                             LENGTH(dt."TitleNoSpaces") AS title_length
+                                      FROM jiten."DeckTitles" dt
+                                      WHERE dt."TitleType" IN (1, 3)
+                                        AND dt."TitleNoSpaces" &@~ {{filterNoSpaces}}
+                                        AND dt."DeckId" NOT IN (SELECT "DeckId" FROM exact_matches)
+                                        AND dt."DeckId" NOT IN (SELECT "DeckId" FROM fuzzy_title_matches)
+                                  ),
+                                  all_matches AS (
+                                      SELECT * FROM exact_matches
+                                      UNION ALL
+                                      SELECT * FROM fuzzy_title_matches
+                                      UNION ALL
+                                      SELECT * FROM fuzzy_nospace_matches
+                                  ),
+                                  ranked AS (
+                                      SELECT "DeckId",
+                                             MIN(match_priority) AS best_match,
+                                             MIN(CASE "TitleType"
+                                                 WHEN 0 THEN 1
+                                                 WHEN 1 THEN 2
+                                                 WHEN 2 THEN 3
+                                                 ELSE 4
+                                             END) AS best_type,
+                                             MAX(score) AS best_score,
+                                             {{queryLength}}::float / NULLIF(MIN(title_length), 0)::float AS length_ratio
+                                      FROM all_matches
+                                      GROUP BY "DeckId"
+                                  )
+                                  SELECT r."DeckId"
+                                  FROM ranked r
+                                  JOIN jiten."Decks" d ON r."DeckId" = d."DeckId"
+                                  WHERE d."ParentDeckId" IS NULL
+                                  ORDER BY r.best_match ASC, r.length_ratio DESC, r.best_type ASC, r.best_score DESC
+                                  """;
+
+        var allMatchingDeckIds = await context.Database.SqlQuery<int>(sql).ToListAsync();
+        var totalCount = allMatchingDeckIds.Count;
+
+        if (totalCount == 0)
+            return Ok(new MediaSuggestionsResponse());
+
+        var orderedDeckIds = allMatchingDeckIds.Take(limit).ToList();
+
+        var decks = await context.Decks
+            .AsNoTracking()
+            .Where(d => orderedDeckIds.Contains(d.DeckId))
+            .Select(d => new MediaSuggestionDto
+            {
+                DeckId = d.DeckId,
+                OriginalTitle = d.OriginalTitle,
+                RomajiTitle = d.RomajiTitle,
+                EnglishTitle = d.EnglishTitle,
+                MediaType = d.MediaType,
+                CoverName = d.CoverName
+            })
+            .ToListAsync();
+
+        // Preserve PGroonga ordering
+        var deckMap = decks.ToDictionary(d => d.DeckId);
+        var suggestions = orderedDeckIds
+            .Where(id => deckMap.ContainsKey(id))
+            .Select(id => deckMap[id])
+            .ToList();
+
+        return Ok(new MediaSuggestionsResponse
+        {
+            Suggestions = suggestions,
+            TotalCount = totalCount
+        });
+    }
 
     /// <summary>
     /// Returns media decks with optional filtering, sorting and pagination.

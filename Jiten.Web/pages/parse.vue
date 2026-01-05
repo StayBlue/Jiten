@@ -1,7 +1,7 @@
 <script setup lang="ts">
   import { useApiFetch } from '~/composables/useApiFetch';
   import type { DeckWord } from '~/types';
-  import WordSearch from '~/components/WordSearch.vue';
+  import OmniSearch from '~/components/OmniSearch.vue';
 
   const route = useRoute();
 
@@ -58,7 +58,7 @@
 
 <template>
   <div>
-    <WordSearch />
+    <OmniSearch />
     <span v-for="word in words" :key="word.wordId" class="pr-1.5 font-noto-sans">
       <span
         v-if="word.wordId != 0"

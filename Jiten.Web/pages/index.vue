@@ -1,10 +1,10 @@
 <script setup lang="ts">
-  import WordSearch from '~/components/WordSearch.vue';
+  import OmniSearch from '~/components/OmniSearch.vue';
 </script>
 
 <template>
   <div>
-    <WordSearch />
+    <OmniSearch autofocus />
 
     <Card class="p-2 mt-4">
       <template #content>

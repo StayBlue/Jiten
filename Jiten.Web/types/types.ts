@@ -52,6 +52,20 @@ export interface DeckVocabularyList {
   words: DeckWord[];
 }
 
+export interface MediaSuggestion {
+  deckId: number;
+  originalTitle: string;
+  romajiTitle?: string;
+  englishTitle?: string;
+  mediaType: MediaType;
+  coverName: string;
+}
+
+export interface MediaSuggestionsResponse {
+  suggestions: MediaSuggestion[];
+  totalCount: number;
+}
+
 export interface DeckWord {
   deckId: number;
   originalText: string;
