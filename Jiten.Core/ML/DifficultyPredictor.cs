@@ -163,8 +163,8 @@ public class DifficultyPredictor
         var prediction = _predictionEngine.Predict(predictorInput);
         var predictedDifficulty = prediction.PredictedDifficulty[0];
 
-        Console.WriteLine("Predicted difficulty (not rounded): " + predictedDifficulty + "");
-        Console.WriteLine("Predicted difficulty (rounded): " + (float)Math.Clamp(Math.Round(predictedDifficulty), 0, 5) + "");
+        // Console.WriteLine("Predicted difficulty (not rounded): " + predictedDifficulty + "");
+        // Console.WriteLine("Predicted difficulty (rounded): " + (float)Math.Clamp(Math.Round(predictedDifficulty), 0, 5) + "");
 
         return predictedDifficulty;
     }

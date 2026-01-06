@@ -189,11 +189,27 @@ public static class JitenHelper
         }
     }
 
-    public static async Task BulkInsertDeckWords(IDbContextFactory<JitenDbContext> contextFactory, ICollection<DeckWord> deckWords, int deckId)
+    public static async Task BulkInsertDeckWords(IDbContextFactory<JitenDbContext> contextFactory, ICollection<DeckWord>? deckWords, int deckId)
     {
+        if (deckWords == null || deckWords.Count == 0) return;
+
+        // Defensive deduplication - merge any duplicates by (WordId, ReadingIndex)
+        var deduplicatedWords = deckWords
+            .GroupBy(dw => new { dw.WordId, dw.ReadingIndex })
+            .Select(g =>
+            {
+                var first = g.First();
+                if (g.Count() > 1)
+                {
+                    Console.WriteLine($"[{DateTime.UtcNow:O}] WARNING: Found {g.Count()} duplicate DeckWords for WordId={first.WordId}, ReadingIndex={first.ReadingIndex} in DeckId={deckId}. Merging.");
+                    first.Occurrences = g.Sum(dw => dw.Occurrences);
+                }
+                return first;
+            })
+            .ToList();
+
         var timer = Stopwatch.StartNew();
-        Console.WriteLine($"[{DateTime.UtcNow:O}] Bulk inserting {deckWords.Count} deck words for DeckId {deckId}...");
-        if (!deckWords.Any()) return;
+        // Console.WriteLine($"[{DateTime.UtcNow:O}] Bulk inserting {deduplicatedWords.Count} deck words for DeckId {deckId}...");
 
         await CopySemaphore.WaitAsync();
         try
@@ -214,7 +230,7 @@ public static class JitenHelper
                 await using (var writer = await conn.BeginBinaryImportAsync(
                     @"COPY jiten.""DeckWords"" (""WordId"", ""ReadingIndex"", ""Occurrences"", ""DeckId"") FROM STDIN (FORMAT BINARY)"))
                 {
-                    foreach (var dw in deckWords)
+                    foreach (var dw in deduplicatedWords)
                     {
                         await writer.StartRowAsync();
                         await writer.WriteAsync(dw.WordId);
@@ -232,13 +248,13 @@ public static class JitenHelper
             CopySemaphore.Release();
         }
 
-        Console.WriteLine($"[{DateTime.UtcNow:O}] Bulk insert (deck words) took {timer.ElapsedMilliseconds} ms for DeckId {deckId}.");
+        Console.WriteLine($"[{DateTime.UtcNow:O}] Bulk insert (deck words) took {timer.ElapsedMilliseconds} ms for DeckId {deckId} with {deduplicatedWords.Count} unique words.");
     }
 
     private static async Task BulkInsertExampleSentences(IDbContextFactory<JitenDbContext> contextFactory, ICollection<ExampleSentence> exampleSentences, int deckId)
     {
         var timer = Stopwatch.StartNew();
-        Console.WriteLine($"[{DateTime.UtcNow:O}] Bulk inserting {exampleSentences.Count} example sentences for DeckId {deckId}...");
+        // Console.WriteLine($"[{DateTime.UtcNow:O}] Bulk inserting {exampleSentences.Count} example sentences for DeckId {deckId}...");
         if (!exampleSentences.Any()) return;
 
         await CopySemaphore.WaitAsync();
@@ -334,7 +350,7 @@ public static class JitenHelper
             CopySemaphore.Release();
         }
 
-        Console.WriteLine($"[{DateTime.UtcNow:O}] Bulk insert (example sentences+words) took {timer.ElapsedMilliseconds} ms for DeckId {deckId}.");
+        Console.WriteLine($"[{DateTime.UtcNow:O}] Bulk insert (example sentences+words) took {timer.ElapsedMilliseconds} ms for DeckId {deckId} with {exampleSentences.Count} sentences.");
     }
 
     private static async Task UpdateDeck(IDbContextFactory<JitenDbContext> contextFactory, JitenDbContext context, Deck existingDeck, Deck deck)
@@ -475,7 +491,7 @@ public static class JitenHelper
 
             if (existingChildrenDict.TryGetValue(key, out var existingChild))
             {
-                Console.WriteLine("Updating child deck " + key);
+                // Console.WriteLine("Updating child deck " + key);
 
                 try
                 {
