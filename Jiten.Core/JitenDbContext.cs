@@ -115,8 +115,9 @@ public class JitenDbContext : DbContext
             entity.HasIndex(dw => new { dw.WordId, dw.ReadingIndex })
                   .HasDatabaseName("IX_WordReadingIndex");
 
-            entity.HasIndex(dw => new { dw.WordId, dw.ReadingIndex, dw.DeckId })
-                  .HasDatabaseName("IX_DeckWordReadingIndexDeck");
+            entity.HasIndex(dw => new { dw.DeckId, dw.WordId, dw.ReadingIndex })
+                  .IsUnique()
+                  .HasDatabaseName("IX_DeckWords_DeckId_WordId_ReadingIndex");
 
             entity.HasIndex(dw => dw.DeckId)
                   .HasDatabaseName("IX_DeckId");
