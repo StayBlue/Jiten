@@ -50,6 +50,7 @@ namespace Jiten.Parser
         (1443970,5),
         (2029660,0),
         (1177490,5),
+        (2029000,1),
         };
 
         private static async Task InitDictionaries()

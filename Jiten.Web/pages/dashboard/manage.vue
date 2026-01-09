@@ -66,6 +66,7 @@
     reparseBeforeDate: false,
     frequencies: false,
     coverages: false,
+    accomplishments: false,
     difficulties: false,
     wordReplacementPreview: false,
     wordReplacementExecute: false,
@@ -313,6 +314,44 @@
       console.error('Error recomputing coverages:', error);
     } finally {
       isLoading.value.coverages = false;
+    }
+  };
+
+  const confirmRecomputeAccomplishments = () => {
+    confirm.require({
+      message: 'Are you sure you want to recompute accomplishments for all users? This operation may take a long time.',
+      header: 'Confirmation',
+      icon: 'pi pi-exclamation-triangle',
+      acceptClass: 'p-button-primary',
+      rejectClass: 'p-button-secondary',
+      accept: () => recomputeAccomplishments(),
+      reject: () => {},
+    });
+  };
+
+  const recomputeAccomplishments = async () => {
+    try {
+      isLoading.value.accomplishments = true;
+      const data = await $api<{ count: number }>('/admin/recompute-accomplishments', {
+        method: 'POST',
+      });
+
+      toast.add({
+        severity: 'success',
+        summary: 'Success',
+        detail: `Recomputing accomplishments for ${data.count} users has been queued`,
+        life: 5000,
+      });
+    } catch (error) {
+      toast.add({
+        severity: 'error',
+        summary: 'Error',
+        detail: 'Failed to recompute accomplishments',
+        life: 5000,
+      });
+      console.error('Error recomputing accomplishments:', error);
+    } finally {
+      isLoading.value.accomplishments = false;
     }
   };
 
@@ -849,6 +888,24 @@
               :disabled="isLoading.coverages"
               :loading="isLoading.coverages"
               @click="confirmRecomputeCoverages"
+            />
+          </div>
+        </template>
+      </Card>
+
+      <Card class="shadow-md">
+        <template #title>Recompute Accomplishments</template>
+        <template #content>
+          <p class="mb-4">Recompute accomplishments for all users.</p>
+
+          <div class="flex justify-center">
+            <Button
+              label="Recompute Accomplishments"
+              icon="pi pi-trophy"
+              class="p-button-warning"
+              :disabled="isLoading.accomplishments"
+              :loading="isLoading.accomplishments"
+              @click="confirmRecomputeAccomplishments"
             />
           </div>
         </template>

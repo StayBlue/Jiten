@@ -64,7 +64,7 @@ public static class JitenHelper
                 Console.WriteLine($"[{DateTime.UtcNow:O}] Deck {deck.OriginalTitle} exists, updating metadata...");
                 await UpdateDeck(contextFactory, context, existingDeck, deck);
                 await context.SaveChangesAsync();
-                Console.WriteLine($"[{DateTime.UtcNow:O}] Update completed.");
+                // Console.WriteLine($"[{DateTime.UtcNow:O}] Update completed.");
             }
             else
             {

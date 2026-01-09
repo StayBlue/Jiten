@@ -356,3 +356,26 @@ export interface CurveDatum {
   rank: number;
   coverage: number;
 }
+
+export interface UserProfile {
+  userId: string;
+  username: string;
+  isPublic: boolean;
+}
+
+export interface UserAccomplishment {
+  accomplishmentId: number;
+  userId: string;
+  mediaType: MediaType | null;
+  completedDeckCount: number;
+  totalCharacterCount: number;
+  totalWordCount: number;
+  uniqueWordCount: number;
+  uniqueWordUsedOnceCount: number;
+  uniqueKanjiCount: number;
+  lastComputedAt: string;
+}
+
+export interface AccomplishmentVocabularyDto {
+  words: Word[];
+}

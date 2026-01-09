@@ -5,7 +5,6 @@ using Jiten.Core.Data;
 using Jiten.Core.Data.JMDict;
 using Microsoft.EntityFrameworkCore;
 using System.Globalization;
-using System.Runtime.CompilerServices;
 using Hangfire;
 using Jiten.Core.Data.User;
 
@@ -166,8 +165,8 @@ public class ComputationJob(
             {
                 // Remove existing coverage if it exists, if the user cleared his words for example
                 await userContext.UserCoverages
-                    .Where(uc => uc.UserId == userId && uc.DeckId == deckId)
-                    .ExecuteDeleteAsync();
+                                 .Where(uc => uc.UserId == userId && uc.DeckId == deckId)
+                                 .ExecuteDeleteAsync();
 
                 await userContext.SaveChangesAsync();
 
@@ -257,6 +256,291 @@ public class ComputationJob(
         public double UniqueCoverage { get; set; }
     }
 
+    private static readonly object AccomplishmentComputeLock = new();
+    private static readonly HashSet<string> AccomplishmentComputingUserIds = new();
+    private const int GLOBAL_MEDIA_TYPE_KEY = -1;
+
+    [Queue("coverage")]
+    public async Task ComputeUserAccomplishments(string userId)
+    {
+        lock (AccomplishmentComputeLock)
+        {
+            if (!AccomplishmentComputingUserIds.Add(userId))
+            {
+                return;
+            }
+        }
+
+        try
+        {
+            await using var context = await contextFactory.CreateDbContextAsync();
+            await using var userContext = await userContextFactory.CreateDbContextAsync();
+
+            var completedDeckIds = await userContext.UserDeckPreferences
+                                                    .Where(udp => udp.UserId == userId && udp.Status == DeckStatus.Completed)
+                                                    .Select(udp => udp.DeckId)
+                                                    .ToListAsync();
+
+            if (completedDeckIds.Count == 0)
+            {
+                await userContext.UserAccomplishments
+                                 .Where(ua => ua.UserId == userId)
+                                 .ExecuteDeleteAsync();
+                return;
+            }
+
+            // Load all completed decks (both parents and children)
+            var allCompletedDecks = await context.Decks
+                                                 .AsNoTracking()
+                                                 .Where(d => completedDeckIds.Contains(d.DeckId))
+                                                 .Select(d => new { d.DeckId, d.ParentDeckId, d.MediaType, d.CharacterCount, d.WordCount })
+                                                 .ToListAsync();
+
+            // Build effective deck set: include parents, and children only if their parent is NOT completed
+            var completedParentIds = allCompletedDecks
+                                     .Where(d => d.ParentDeckId == null)
+                                     .Select(d => d.DeckId)
+                                     .ToHashSet();
+
+            var completedDecks = allCompletedDecks
+                                 .Where(d => d.ParentDeckId == null || !completedParentIds.Contains(d.ParentDeckId.Value))
+                                 .ToList();
+
+            // Clear accomplishments if no effective decks remain
+            if (completedDecks.Count == 0)
+            {
+                // Delete existing accomplishments
+                await userContext.UserAccomplishments
+                                 .Where(ua => ua.UserId == userId)
+                                 .ExecuteDeleteAsync();
+                return;
+            }
+
+            var usedDeckIds = completedDecks.Select(d => d.DeckId).ToList();
+            var usedMediaTypes = completedDecks.Select(d => d.MediaType).Distinct().ToList();
+
+            var uniqueWordCounts = await ComputeUniqueWordCounts(context, usedDeckIds, usedMediaTypes);
+            var uniqueWordUsedOnceCounts = await ComputeUniqueWordUsedOnceCounts(context, usedDeckIds, usedMediaTypes);
+            var uniqueKanjiCounts = await ComputeUniqueKanjiCounts(context, usedDeckIds, usedMediaTypes);
+
+            var accomplishments = new List<UserAccomplishment>();
+            var now = DateTimeOffset.UtcNow;
+
+            // Global
+            accomplishments.Add(new UserAccomplishment
+                                {
+                                    UserId = userId, MediaType = null, CompletedDeckCount = completedDecks.Count,
+                                    TotalCharacterCount = completedDecks.Sum(d => (long)d.CharacterCount),
+                                    TotalWordCount = completedDecks.Sum(d => (long)d.WordCount),
+                                    UniqueWordCount = uniqueWordCounts.GetValueOrDefault(GLOBAL_MEDIA_TYPE_KEY, 0),
+                                    UniqueWordUsedOnceCount = uniqueWordUsedOnceCounts.GetValueOrDefault(GLOBAL_MEDIA_TYPE_KEY, 0),
+                                    UniqueKanjiCount = uniqueKanjiCounts.GetValueOrDefault(GLOBAL_MEDIA_TYPE_KEY, 0), LastComputedAt = now
+                                });
+
+            // By media type
+            foreach (var mediaType in usedMediaTypes)
+            {
+                var typeDecks = completedDecks.Where(d => d.MediaType == mediaType).ToList();
+                accomplishments.Add(new UserAccomplishment
+                                    {
+                                        UserId = userId, MediaType = mediaType, CompletedDeckCount = typeDecks.Count,
+                                        TotalCharacterCount = typeDecks.Sum(d => (long)d.CharacterCount),
+                                        TotalWordCount = typeDecks.Sum(d => (long)d.WordCount),
+                                        UniqueWordCount = uniqueWordCounts.GetValueOrDefault((int)mediaType, 0),
+                                        UniqueWordUsedOnceCount = uniqueWordUsedOnceCounts.GetValueOrDefault((int)mediaType, 0),
+                                        UniqueKanjiCount = uniqueKanjiCounts.GetValueOrDefault((int)mediaType, 0), LastComputedAt = now
+                                    });
+            }
+
+            // Delete existing accomplishments and insert new ones
+            await userContext.UserAccomplishments
+                             .Where(ua => ua.UserId == userId)
+                             .ExecuteDeleteAsync();
+
+            await userContext.UserAccomplishments.AddRangeAsync(accomplishments);
+            await userContext.SaveChangesAsync();
+        }
+        finally
+        {
+            lock (AccomplishmentComputeLock)
+            {
+                AccomplishmentComputingUserIds.Remove(userId);
+            }
+        }
+    }
+
+    private async Task<Dictionary<int, int>> ComputeUniqueWordCounts(
+        JitenDbContext context,
+        List<int> deckIds,
+        List<MediaType> mediaTypes)
+    {
+        var result = new Dictionary<int, int>();
+        if (deckIds.Count == 0) return result;
+
+        var deckIdsParam = string.Join(",", deckIds);
+
+        // Global unique word count
+        var globalSql = $"""
+                             SELECT COUNT(DISTINCT ("WordId", "ReadingIndex"))::int AS "Value"
+                             FROM jiten."DeckWords"
+                             WHERE "DeckId" IN ({deckIdsParam})
+                         """;
+        var globalCount = await context.Database.SqlQueryRaw<int>(globalSql).FirstOrDefaultAsync();
+        result[GLOBAL_MEDIA_TYPE_KEY] = globalCount;
+
+        // Per-MediaType unique word counts
+        foreach (var mediaType in mediaTypes)
+        {
+            var mediaTypeDecks = await context.Decks
+                                              .AsNoTracking()
+                                              .Where(d => deckIds.Contains(d.DeckId) && d.MediaType == mediaType)
+                                              .Select(d => d.DeckId)
+                                              .ToListAsync();
+
+            if (mediaTypeDecks.Count == 0)
+            {
+                result[(int)mediaType] = 0;
+                continue;
+            }
+
+            var mediaTypeDeckIdsParam = string.Join(",", mediaTypeDecks);
+            var sql = $"""
+                           SELECT COUNT(DISTINCT ("WordId", "ReadingIndex"))::int AS "Value"
+                           FROM jiten."DeckWords"
+                           WHERE "DeckId" IN ({mediaTypeDeckIdsParam})
+                       """;
+            var count = await context.Database.SqlQueryRaw<int>(sql).FirstOrDefaultAsync();
+            result[(int)mediaType] = count;
+        }
+
+        return result;
+    }
+
+    private async Task<Dictionary<int, int>> ComputeUniqueKanjiCounts(
+        JitenDbContext context,
+        List<int> deckIds,
+        List<MediaType> mediaTypes)
+    {
+        var result = new Dictionary<int, int>();
+        if (deckIds.Count == 0) return result;
+
+        // Get deck info with MediaType for grouping
+        var deckMediaTypes = await context.Decks
+                                          .AsNoTracking()
+                                          .Where(d => deckIds.Contains(d.DeckId))
+                                          .Select(d => new { d.DeckId, d.MediaType })
+                                          .ToDictionaryAsync(d => d.DeckId, d => d.MediaType);
+
+        // Fetch raw texts in batches
+        var rawTexts = await context.DeckRawTexts
+                                    .AsNoTracking()
+                                    .Where(rt => deckIds.Contains(rt.DeckId))
+                                    .Select(rt => new { rt.DeckId, rt.RawText })
+                                    .ToListAsync();
+
+        // Global kanji set
+        var globalKanji = new HashSet<Rune>();
+
+        // Per-MediaType kanji sets
+        var mediaTypeKanji = mediaTypes.ToDictionary(mt => mt, _ => new HashSet<Rune>());
+
+        foreach (var rt in rawTexts)
+        {
+            if (string.IsNullOrEmpty(rt.RawText)) continue;
+
+            var mediaType = deckMediaTypes.GetValueOrDefault(rt.DeckId);
+
+            foreach (var rune in rt.RawText.EnumerateRunes())
+            {
+                if (!IsKanji(rune)) continue;
+
+                globalKanji.Add(rune);
+                if (mediaTypeKanji.TryGetValue(mediaType, out var kanjiSet))
+                {
+                    kanjiSet.Add(rune);
+                }
+            }
+        }
+
+        result[GLOBAL_MEDIA_TYPE_KEY] = globalKanji.Count;
+        foreach (var mediaType in mediaTypes)
+        {
+            result[(int)mediaType] = mediaTypeKanji[mediaType].Count;
+        }
+
+        return result;
+    }
+
+    private static bool IsKanji(System.Text.Rune r)
+    {
+        int value = r.Value;
+        return value is
+            (>= 0x4E00 and <= 0x9FFF) or // Main block (Common)
+            (>= 0x3400 and <= 0x4DBF) or // Extension A
+            (>= 0x20000 and <= 0x2A6DF) or // Extension B
+            (>= 0x2A700 and <= 0x2B73F) or // Extension C
+            (>= 0x2B740 and <= 0x2B81F) or // Extension D
+            (>= 0x2B820 and <= 0x2CEAF) or // Extension E
+            (>= 0xF900 and <= 0xFAFF) or // Compatibility Ideographs
+            (>= 0x2F800 and <= 0x2FA1F); // Compatibility Supplement
+    }
+
+    private async Task<Dictionary<int, int>> ComputeUniqueWordUsedOnceCounts(
+        JitenDbContext context,
+        List<int> deckIds,
+        List<MediaType> mediaTypes)
+    {
+        var result = new Dictionary<int, int>();
+        if (deckIds.Count == 0) return result;
+
+        var deckIdsParam = string.Join(",", deckIds);
+
+        var globalSql = $"""
+                             SELECT COUNT(*)::int AS "Value"
+                             FROM (
+                                 SELECT "WordId", "ReadingIndex"
+                                 FROM jiten."DeckWords"
+                                 WHERE "DeckId" IN ({deckIdsParam})
+                                 GROUP BY "WordId", "ReadingIndex"
+                                 HAVING SUM("Occurrences") = 1
+                             ) AS uniq
+                         """;
+        var globalCount = await context.Database.SqlQueryRaw<int>(globalSql).FirstOrDefaultAsync();
+        result[GLOBAL_MEDIA_TYPE_KEY] = globalCount;
+
+        // Per-MediaType unique words used once
+        foreach (var mediaType in mediaTypes)
+        {
+            var mediaTypeDecks = await context.Decks
+                                              .AsNoTracking()
+                                              .Where(d => deckIds.Contains(d.DeckId) && d.MediaType == mediaType)
+                                              .Select(d => d.DeckId)
+                                              .ToListAsync();
+
+            if (mediaTypeDecks.Count == 0)
+            {
+                result[(int)mediaType] = 0;
+                continue;
+            }
+
+            var mediaTypeDeckIdsParam = string.Join(",", mediaTypeDecks);
+            var sql = $"""
+                           SELECT COUNT(*)::int AS "Value"
+                           FROM (
+                               SELECT "WordId", "ReadingIndex"
+                               FROM jiten."DeckWords"
+                               WHERE "DeckId" IN ({mediaTypeDeckIdsParam})
+                               GROUP BY "WordId", "ReadingIndex"
+                               HAVING SUM("Occurrences") = 1
+                           ) AS uniq
+                       """;
+            var count = await context.Database.SqlQueryRaw<int>(sql).FirstOrDefaultAsync();
+            result[(int)mediaType] = count;
+        }
+
+        return result;
+    }
+
     public async Task RecomputeFrequencies()
     {
         string path = Path.Join(configuration["StaticFilesPath"], "yomitan");
@@ -294,7 +578,7 @@ public class ComputationJob(
             await File.WriteAllTextAsync(indexFilePath, index);
         }
     }
-    
+
     public async Task RecomputeKanjiFrequencies()
     {
         string path = Path.Join(configuration["StaticFilesPath"], "yomitan");

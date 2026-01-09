@@ -1,6 +1,7 @@
 using Hangfire;
 using Jiten.Api.Dtos;
 using Jiten.Api.Dtos.Requests;
+using Jiten.Api.Helpers;
 using Jiten.Api.Jobs;
 using Jiten.Api.Services;
 using Jiten.Core;
@@ -689,6 +690,8 @@ public class UserController(
         var preference = await userContext.UserDeckPreferences
                                           .FirstOrDefaultAsync(p => p.UserId == userId && p.DeckId == deckId);
 
+        var previousStatus = preference?.Status ?? DeckStatus.None;
+
         if (preference == null)
         {
             preference = new UserDeckPreference { UserId = userId, DeckId = deckId };
@@ -697,6 +700,13 @@ public class UserController(
 
         preference.Status = request.Status;
         await userContext.SaveChangesAsync();
+
+        // Trigger accomplishment recomputation if status changed to/from Completed
+        if (previousStatus != request.Status &&
+            (previousStatus == DeckStatus.Completed || request.Status == DeckStatus.Completed))
+        {
+            backgroundJobs.Enqueue<ComputationJob>(job => job.ComputeUserAccomplishments(userId));
+        }
 
         return Results.Ok(new { preference.DeckId, preference.Status, preference.IsFavourite, preference.IsIgnored });
     }
@@ -1077,4 +1087,671 @@ public class UserController(
             return Results.Problem("Import failed: " + ex.Message);
         }
     }
+
+    #region Accomplishments
+
+    /// <summary>
+    /// Get accomplishments for a user. Requires own profile or public profile.
+    /// </summary>
+    [HttpGet("user/{targetUserId}/accomplishments")]
+    [AllowAnonymous]
+    public async Task<IResult> GetUserAccomplishments(string targetUserId)
+    {
+        var currentUserId = userService.UserId;
+        var isOwnProfile = currentUserId == targetUserId;
+
+        if (!isOwnProfile)
+        {
+            var profile = await userContext.UserProfiles
+                                           .AsNoTracking()
+                                           .FirstOrDefaultAsync(p => p.UserId == targetUserId);
+
+            if (profile == null || !profile.IsPublic)
+                return Results.Forbid();
+        }
+
+        var accomplishments = await userContext.UserAccomplishments
+                                               .AsNoTracking()
+                                               .Where(ua => ua.UserId == targetUserId)
+                                               .OrderBy(ua => ua.MediaType)
+                                               .ToListAsync();
+
+        return Results.Ok(accomplishments);
+    }
+
+    /// <summary>
+    /// Get accomplishment for a specific MediaType. Use 'global' for all types combined.
+    /// Requires own profile or public profile.
+    /// </summary>
+    [HttpGet("user/{targetUserId}/accomplishments/global")]
+    [HttpGet("user/{targetUserId}/accomplishments/{mediaType}")]
+    [AllowAnonymous]
+    public async Task<IResult> GetUserAccomplishment(string targetUserId, Jiten.Core.Data.MediaType? mediaType = null)
+    {
+        var currentUserId = userService.UserId;
+        var isOwnProfile = currentUserId == targetUserId;
+
+        if (!isOwnProfile)
+        {
+            var profile = await userContext.UserProfiles
+                                           .AsNoTracking()
+                                           .FirstOrDefaultAsync(p => p.UserId == targetUserId);
+
+            if (profile == null || !profile.IsPublic)
+                return Results.Forbid();
+        }
+
+        var accomplishment = await userContext.UserAccomplishments
+                                              .AsNoTracking()
+                                              .FirstOrDefaultAsync(ua => ua.UserId == targetUserId && ua.MediaType == mediaType);
+
+        if (accomplishment == null)
+            return Results.NotFound();
+
+        return Results.Ok(accomplishment);
+    }
+
+    /// <summary>
+    /// Manually trigger accomplishment recomputation.
+    /// </summary>
+    [HttpPost("accomplishments/refresh")]
+    public IResult RefreshAccomplishments()
+    {
+        var userId = userService.UserId;
+        if (string.IsNullOrEmpty(userId)) return Results.Unauthorized();
+
+        backgroundJobs.Enqueue<ComputationJob>(job => job.ComputeUserAccomplishments(userId));
+
+        return Results.Accepted();
+    }
+
+    /// <summary>
+    /// Get aggregated vocabulary across all completed decks.
+    /// Requires own profile or public profile.
+    /// </summary>
+    [HttpGet("user/{targetUserId}/accomplishments/vocabulary")]
+    [AllowAnonymous]
+    public async Task<ActionResult<PaginatedResponse<AccomplishmentVocabularyDto>>> GetAccomplishmentVocabulary(
+        string targetUserId,
+        [FromQuery] Jiten.Core.Data.MediaType? mediaType = null,
+        [FromQuery] int offset = 0,
+        [FromQuery] int pageSize = 100,
+        [FromQuery] string sortBy = "occurrences",
+        [FromQuery] bool descending = true)
+    {
+        var currentUserId = userService.UserId;
+        var isOwnProfile = currentUserId == targetUserId;
+
+        if (!isOwnProfile)
+        {
+            var profile = await userContext.UserProfiles
+                                           .AsNoTracking()
+                                           .FirstOrDefaultAsync(p => p.UserId == targetUserId);
+
+            if (profile == null || !profile.IsPublic)
+                return Forbid();
+        }
+
+        pageSize = Math.Clamp(pageSize, 1, 100);
+
+        // Get all completed deck IDs for the user
+        var userCompletedDeckIds = await userContext.UserDeckPreferences
+                                                    .AsNoTracking()
+                                                    .Where(udp => udp.UserId == targetUserId && udp.Status == DeckStatus.Completed)
+                                                    .Select(udp => udp.DeckId)
+                                                    .ToListAsync();
+
+        // Load completed decks with parent relationship
+        var allCompletedDecks = await jitenContext.Decks
+                                                  .AsNoTracking()
+                                                  .Where(d => userCompletedDeckIds.Contains(d.DeckId))
+                                                  .Select(d => new { d.DeckId, d.ParentDeckId, d.MediaType })
+                                                  .ToListAsync();
+
+        // Build effective deck set: include parents, and children only if their parent is NOT completed
+        var completedParentIds = allCompletedDecks
+                                 .Where(d => d.ParentDeckId == null)
+                                 .Select(d => d.DeckId)
+                                 .ToHashSet();
+
+        var effectiveDecks = allCompletedDecks
+                             .Where(d => d.ParentDeckId == null || !completedParentIds.Contains(d.ParentDeckId.Value))
+                             .ToList();
+
+        // Apply media type filter if provided
+        if (mediaType.HasValue)
+        {
+            effectiveDecks = effectiveDecks.Where(d => d.MediaType == mediaType.Value).ToList();
+        }
+
+        var completedDeckIds = effectiveDecks.Select(d => d.DeckId).ToList();
+
+        if (completedDeckIds.Count == 0)
+        {
+            return Ok(new PaginatedResponse<AccomplishmentVocabularyDto>(
+                         new AccomplishmentVocabularyDto { Words = [] }, 0, pageSize, offset));
+        }
+
+        // Aggregate vocabulary across completed decks
+        var aggregatedWordsQuery = jitenContext.DeckWords
+                                               .AsNoTracking()
+                                               .Where(dw => completedDeckIds.Contains(dw.DeckId))
+                                               .GroupBy(dw => new { dw.WordId, dw.ReadingIndex })
+                                               .Select(g => new AggregatedWord
+                                                            {
+                                                                WordId = g.Key.WordId,
+                                                                ReadingIndex = g.Key.ReadingIndex,
+                                                                TotalOccurrences = g.Sum(dw => dw.Occurrences)
+                                                            });
+
+        int totalCount = await aggregatedWordsQuery.CountAsync();
+
+        // Apply sorting and pagination
+        List<AggregatedWord> pagedWords;
+        if (sortBy.Equals("alphabetical", StringComparison.OrdinalIgnoreCase))
+        {
+            // For alphabetical sorting, we need to join with JMDict to get reading text
+            var sortedQuery = from aw in aggregatedWordsQuery
+                              join jw in jitenContext.JMDictWords on aw.WordId equals jw.WordId
+                              select new { aw, ReadingText = jw.Readings[aw.ReadingIndex] };
+
+            var orderedQuery = descending
+                ? sortedQuery.OrderByDescending(x => x.ReadingText)
+                : sortedQuery.OrderBy(x => x.ReadingText);
+
+            pagedWords = await orderedQuery
+                               .Skip(offset)
+                               .Take(pageSize)
+                               .Select(x => x.aw)
+                               .ToListAsync();
+        }
+        else
+        {
+            // Default: sort by occurrences
+            var orderedQuery = descending
+                ? aggregatedWordsQuery.OrderByDescending(w => w.TotalOccurrences)
+                : aggregatedWordsQuery.OrderBy(w => w.TotalOccurrences);
+
+            pagedWords = await orderedQuery
+                               .Skip(offset)
+                               .Take(pageSize)
+                               .ToListAsync();
+        }
+
+        var wordIds = pagedWords.Select(w => w.WordId).ToList();
+
+        // Fetch JMDict words
+        var jmdictWords = await jitenContext.JMDictWords
+                                            .AsNoTracking()
+                                            .Where(w => wordIds.Contains(w.WordId))
+                                            .Include(w => w.Definitions)
+                                            .ToListAsync();
+
+        var jmdictLookup = jmdictWords.ToDictionary(w => w.WordId);
+
+        // Fetch frequencies
+        var frequencies = await jitenContext.JmDictWordFrequencies
+                                            .AsNoTracking()
+                                            .Where(f => wordIds.Contains(f.WordId))
+                                            .ToListAsync();
+        var freqLookup = frequencies.ToDictionary(f => f.WordId);
+
+        // Build WordDtos - preserve the order from pagedWords
+        var wordDtos = new List<WordDto>();
+        foreach (var pw in pagedWords)
+        {
+            if (!jmdictLookup.TryGetValue(pw.WordId, out var jmWord))
+                continue;
+
+            if (pw.ReadingIndex >= jmWord.ReadingsFurigana.Count)
+                continue;
+
+            var reading = jmWord.ReadingsFurigana[pw.ReadingIndex];
+            freqLookup.TryGetValue(pw.WordId, out var freq);
+
+            var alternativeReadings = jmWord.ReadingsFurigana
+                                            .Select((r, i) => new ReadingDto
+                                                              {
+                                                                  Text = r,
+                                                                  ReadingIndex = (byte)i,
+                                                                  ReadingType = jmWord.ReadingTypes[i],
+                                                                  FrequencyRank = freq?.ReadingsFrequencyRank[i] ?? 0,
+                                                                  FrequencyPercentage = freq?.ReadingsFrequencyPercentage[i] ?? 0
+                                                              })
+                                            .ToList();
+            alternativeReadings.RemoveAt(pw.ReadingIndex);
+
+            var mainReading = new ReadingDto
+                              {
+                                  Text = reading,
+                                  ReadingIndex = pw.ReadingIndex,
+                                  ReadingType = jmWord.ReadingTypes[pw.ReadingIndex],
+                                  FrequencyRank = freq?.ReadingsFrequencyRank[pw.ReadingIndex] ?? 0,
+                                  FrequencyPercentage = freq?.ReadingsFrequencyPercentage[pw.ReadingIndex] ?? 0
+                              };
+
+            wordDtos.Add(new WordDto
+                         {
+                             WordId = jmWord.WordId,
+                             MainReading = mainReading,
+                             AlternativeReadings = alternativeReadings,
+                             PartsOfSpeech = jmWord.PartsOfSpeech.ToHumanReadablePartsOfSpeech(),
+                             Definitions = jmWord.Definitions.ToDefinitionDtos(),
+                             Occurrences = pw.TotalOccurrences,
+                             PitchAccents = jmWord.PitchAccents
+                         });
+        }
+
+        // Apply known states
+        var knownStates = await userService.GetKnownWordsState(
+            wordDtos.Select(w => (w.WordId, w.MainReading.ReadingIndex)).ToList());
+        wordDtos.ApplyKnownWordsState(knownStates);
+
+        var dto = new AccomplishmentVocabularyDto { Words = wordDtos };
+
+        return Ok(new PaginatedResponse<AccomplishmentVocabularyDto>(dto, totalCount, pageSize, offset));
+    }
+
+    #endregion
+
+    #region Profile
+
+    /// <summary>
+    /// Get current user's profile.
+    /// </summary>
+    [HttpGet("profile")]
+    public async Task<IResult> GetProfile()
+    {
+        var userId = userService.UserId;
+        if (string.IsNullOrEmpty(userId)) return Results.Unauthorized();
+
+        var profile = await userContext.UserProfiles
+                                       .AsNoTracking()
+                                       .FirstOrDefaultAsync(p => p.UserId == userId);
+
+        if (profile == null)
+        {
+            // Return default profile
+            return Results.Ok(new UserProfile { UserId = userId, IsPublic = false });
+        }
+
+        return Results.Ok(profile);
+    }
+
+    /// <summary>
+    /// Update current user's profile.
+    /// </summary>
+    [HttpPatch("profile")]
+    public async Task<IResult> UpdateProfile([FromBody] UpdateProfileRequest request)
+    {
+        var userId = userService.UserId;
+        if (string.IsNullOrEmpty(userId)) return Results.Unauthorized();
+
+        var profile = await userContext.UserProfiles
+                                       .FirstOrDefaultAsync(p => p.UserId == userId);
+
+        if (profile == null)
+        {
+            profile = new UserProfile { UserId = userId };
+            userContext.UserProfiles.Add(profile);
+        }
+
+        if (request.IsPublic.HasValue)
+            profile.IsPublic = request.IsPublic.Value;
+
+        await userContext.SaveChangesAsync();
+
+        return Results.Ok(profile);
+    }
+
+    /// <summary>
+    /// Get another user's profile by user ID (limited info if not public).
+    /// </summary>
+    [HttpGet("user/{targetUserId}/profile")]
+    [AllowAnonymous]
+    public async Task<IResult> GetUserProfile(string targetUserId)
+    {
+        // Check user exists
+        var user = await userContext.Users
+                                    .AsNoTracking()
+                                    .FirstOrDefaultAsync(u => u.Id == targetUserId);
+
+        if (user == null)
+            return Results.NotFound(new { message = "User not found" });
+
+        var currentUserId = userService.UserId;
+        var isOwnProfile = currentUserId == targetUserId;
+
+        var profile = await userContext.UserProfiles
+                                       .AsNoTracking()
+                                       .FirstOrDefaultAsync(p => p.UserId == targetUserId);
+
+        if (isOwnProfile)
+        {
+            return Results.Ok(new UserProfileResponse
+                             {
+                                 UserId = user.Id,
+                                 Username = user.UserName ?? string.Empty,
+                                 IsPublic = profile?.IsPublic ?? false
+                             });
+        }
+
+        if (profile == null || !profile.IsPublic)
+        {
+            // Return minimal info for non-public profiles
+            return Results.Ok(new UserProfileResponse
+                             {
+                                 UserId = user.Id,
+                                 Username = user.UserName ?? string.Empty,
+                                 IsPublic = false
+                             });
+        }
+
+        return Results.Ok(new UserProfileResponse
+                         {
+                             UserId = user.Id,
+                             Username = user.UserName ?? string.Empty,
+                             IsPublic = profile.IsPublic
+                         });
+    }
+
+    /// <summary>
+    /// Get a user's profile by username (case-insensitive).
+    /// Returns 404 if user doesn't exist or profile is private (to prevent username enumeration).
+    /// </summary>
+    [HttpGet("profile/{username}")]
+    [AllowAnonymous]
+    public async Task<IResult> GetUserProfileByUsername(string username)
+    {
+        var user = await userContext.Users
+                                    .AsNoTracking()
+                                    .FirstOrDefaultAsync(u => u.NormalizedUserName == username.ToUpperInvariant());
+
+        if (user == null)
+            return Results.NotFound(new { message = "Profile not found" });
+
+        var currentUserId = userService.UserId;
+        var isOwnProfile = currentUserId == user.Id;
+
+        var profile = await userContext.UserProfiles
+                                       .AsNoTracking()
+                                       .FirstOrDefaultAsync(p => p.UserId == user.Id);
+
+        // Return 404 for private profiles (same as non-existent to prevent enumeration)
+        if (!isOwnProfile && (profile == null || !profile.IsPublic))
+            return Results.NotFound(new { message = "Profile not found" });
+
+        return Results.Ok(new UserProfileResponse
+                         {
+                             UserId = user.Id,
+                             Username = user.UserName ?? string.Empty,
+                             IsPublic = profile?.IsPublic ?? false
+                         });
+    }
+
+    /// <summary>
+    /// Get accomplishments for a user by username. Requires own profile or public profile.
+    /// Returns 404 if user doesn't exist or profile is private.
+    /// </summary>
+    [HttpGet("profile/{username}/accomplishments")]
+    [AllowAnonymous]
+    public async Task<IResult> GetUserAccomplishmentsByUsername(string username)
+    {
+        var user = await userContext.Users
+                                    .AsNoTracking()
+                                    .FirstOrDefaultAsync(u => u.NormalizedUserName == username.ToUpperInvariant());
+
+        if (user == null)
+            return Results.NotFound(new { message = "Profile not found" });
+
+        var currentUserId = userService.UserId;
+        var isOwnProfile = currentUserId == user.Id;
+
+        if (!isOwnProfile)
+        {
+            var profile = await userContext.UserProfiles
+                                           .AsNoTracking()
+                                           .FirstOrDefaultAsync(p => p.UserId == user.Id);
+
+            if (profile == null || !profile.IsPublic)
+                return Results.NotFound(new { message = "Profile not found" });
+        }
+
+        var accomplishments = await userContext.UserAccomplishments
+                                               .AsNoTracking()
+                                               .Where(ua => ua.UserId == user.Id)
+                                               .OrderBy(ua => ua.MediaType)
+                                               .ToListAsync();
+
+        return Results.Ok(accomplishments);
+    }
+
+    /// <summary>
+    /// Get aggregated vocabulary across all completed decks by username.
+    /// Requires own profile or public profile.
+    /// Returns 404 if user doesn't exist or profile is private.
+    /// </summary>
+    [HttpGet("profile/{username}/accomplishments/vocabulary")]
+    [AllowAnonymous]
+    public async Task<ActionResult<PaginatedResponse<AccomplishmentVocabularyDto>>> GetAccomplishmentVocabularyByUsername(
+        string username,
+        [FromQuery] Jiten.Core.Data.MediaType? mediaType = null,
+        [FromQuery] int offset = 0,
+        [FromQuery] int pageSize = 100,
+        [FromQuery] string sortBy = "occurrences",
+        [FromQuery] bool descending = true,
+        [FromQuery] string displayFilter = "all")
+    {
+        var user = await userContext.Users
+                                    .AsNoTracking()
+                                    .FirstOrDefaultAsync(u => u.NormalizedUserName == username.ToUpperInvariant());
+
+        if (user == null)
+            return NotFound(new { message = "Profile not found" });
+
+        var targetUserId = user.Id;
+        var currentUserId = userService.UserId;
+        var isOwnProfile = currentUserId == targetUserId;
+
+        if (!isOwnProfile)
+        {
+            var profile = await userContext.UserProfiles
+                                           .AsNoTracking()
+                                           .FirstOrDefaultAsync(p => p.UserId == targetUserId);
+
+            if (profile == null || !profile.IsPublic)
+                return NotFound(new { message = "Profile not found" });
+        }
+
+        pageSize = Math.Clamp(pageSize, 1, 100);
+
+        // Get all completed deck IDs for the user
+        var userCompletedDeckIds = await userContext.UserDeckPreferences
+                                                    .AsNoTracking()
+                                                    .Where(udp => udp.UserId == targetUserId && udp.Status == DeckStatus.Completed)
+                                                    .Select(udp => udp.DeckId)
+                                                    .ToListAsync();
+
+        // Load completed decks with parent relationship
+        var allCompletedDecks = await jitenContext.Decks
+                                                  .AsNoTracking()
+                                                  .Where(d => userCompletedDeckIds.Contains(d.DeckId))
+                                                  .Select(d => new { d.DeckId, d.ParentDeckId, d.MediaType })
+                                                  .ToListAsync();
+
+        // Build effective deck set: include parents, and children only if their parent is NOT completed
+        var completedParentIds = allCompletedDecks
+                                 .Where(d => d.ParentDeckId == null)
+                                 .Select(d => d.DeckId)
+                                 .ToHashSet();
+
+        var effectiveDecks = allCompletedDecks
+                             .Where(d => d.ParentDeckId == null || !completedParentIds.Contains(d.ParentDeckId.Value))
+                             .ToList();
+
+        // Apply media type filter if provided
+        if (mediaType.HasValue)
+        {
+            effectiveDecks = effectiveDecks.Where(d => d.MediaType == mediaType.Value).ToList();
+        }
+
+        var completedDeckIds = effectiveDecks.Select(d => d.DeckId).ToList();
+
+        if (completedDeckIds.Count == 0)
+        {
+            return Ok(new PaginatedResponse<AccomplishmentVocabularyDto>(
+                         new AccomplishmentVocabularyDto { Words = [] }, 0, pageSize, offset));
+        }
+
+        // Aggregate vocabulary across completed decks
+        var aggregatedWordsQuery = jitenContext.DeckWords
+                                               .AsNoTracking()
+                                               .Where(dw => completedDeckIds.Contains(dw.DeckId))
+                                               .GroupBy(dw => new { dw.WordId, dw.ReadingIndex })
+                                               .Select(g => new AggregatedWord
+                                                            {
+                                                                WordId = g.Key.WordId,
+                                                                ReadingIndex = g.Key.ReadingIndex,
+                                                                TotalOccurrences = g.Sum(dw => dw.Occurrences)
+                                                            });
+
+        // Materialise the aggregated words for filtering and sorting
+        var allAggregatedWords = await aggregatedWordsQuery.ToListAsync();
+
+        // Apply displayFilter if authenticated and filter is not "all"
+        if (userService.IsAuthenticated && !string.IsNullOrEmpty(displayFilter) && displayFilter != "all")
+        {
+            var wordKeys = allAggregatedWords.Select(aw => (aw.WordId, aw.ReadingIndex)).ToList();
+            var filterKnownStates = await userService.GetKnownWordsState(wordKeys);
+
+            var distinctWordIds = wordKeys.Select(k => k.WordId).Distinct().ToList();
+            var fsrsStates = await userContext.FsrsCards
+                                              .AsNoTracking()
+                                              .Where(uk => uk.UserId == userService.UserId && distinctWordIds.Contains(uk.WordId))
+                                              .Select(uk => new { uk.WordId, uk.ReadingIndex, uk.State })
+                                              .ToDictionaryAsync(uk => (uk.WordId, uk.ReadingIndex), uk => uk.State);
+
+            allAggregatedWords = allAggregatedWords.Where(aw =>
+            {
+                var key = (aw.WordId, aw.ReadingIndex);
+                var knownState = filterKnownStates.GetValueOrDefault(key, [KnownState.New]);
+                var fsrsState = fsrsStates.GetValueOrDefault(key);
+
+                return displayFilter switch
+                {
+                    "known" => !knownState.Contains(KnownState.New) && fsrsStates.ContainsKey(key),
+                    "young" => knownState.Contains(KnownState.Young),
+                    "mature" => knownState.Contains(KnownState.Mature),
+                    "mastered" => knownState.Contains(KnownState.Mastered),
+                    "blacklisted" => knownState.Contains(KnownState.Blacklisted),
+                    "unknown" => !fsrsStates.ContainsKey(key),
+                    _ => true
+                };
+            }).ToList();
+        }
+
+        int totalCount = allAggregatedWords.Count;
+
+        // Apply sorting
+        IEnumerable<AggregatedWord> sortedWords;
+        if (sortBy.Equals("globalFreq", StringComparison.OrdinalIgnoreCase))
+        {
+            var freqWordIds = allAggregatedWords.Select(aw => aw.WordId).Distinct().ToList();
+            var sortFrequencies = await jitenContext.JmDictWordFrequencies
+                                                    .AsNoTracking()
+                                                    .Where(f => freqWordIds.Contains(f.WordId))
+                                                    .ToDictionaryAsync(f => f.WordId);
+
+            sortedWords = descending
+                ? allAggregatedWords.OrderByDescending(aw =>
+                    sortFrequencies.TryGetValue(aw.WordId, out var f) && aw.ReadingIndex < f.ReadingsFrequencyRank.Count
+                        ? f.ReadingsFrequencyRank[aw.ReadingIndex]
+                        : 0)
+                : allAggregatedWords.OrderBy(aw =>
+                    sortFrequencies.TryGetValue(aw.WordId, out var f) && aw.ReadingIndex < f.ReadingsFrequencyRank.Count
+                        ? f.ReadingsFrequencyRank[aw.ReadingIndex]
+                        : int.MaxValue);
+        }
+        else
+        {
+            // Default to occurrences
+            sortedWords = descending
+                ? allAggregatedWords.OrderByDescending(w => w.TotalOccurrences)
+                : allAggregatedWords.OrderBy(w => w.TotalOccurrences);
+        }
+
+        // Apply pagination
+        var pagedWords = sortedWords.Skip(offset).Take(pageSize).ToList();
+
+        var wordIds = pagedWords.Select(w => w.WordId).ToList();
+
+        var jmdictWords = await jitenContext.JMDictWords
+                                            .AsNoTracking()
+                                            .Where(w => wordIds.Contains(w.WordId))
+                                            .Include(w => w.Definitions)
+                                            .ToListAsync();
+
+        var jmdictLookup = jmdictWords.ToDictionary(w => w.WordId);
+
+        var frequencies = await jitenContext.JmDictWordFrequencies
+                                            .AsNoTracking()
+                                            .Where(f => wordIds.Contains(f.WordId))
+                                            .ToListAsync();
+        var freqLookup = frequencies.ToDictionary(f => f.WordId);
+
+        var wordDtos = new List<WordDto>();
+        foreach (var pw in pagedWords)
+        {
+            if (!jmdictLookup.TryGetValue(pw.WordId, out var jmWord))
+                continue;
+
+            if (pw.ReadingIndex >= jmWord.ReadingsFurigana.Count)
+                continue;
+
+            var reading = jmWord.ReadingsFurigana[pw.ReadingIndex];
+            freqLookup.TryGetValue(pw.WordId, out var freq);
+
+            var alternativeReadings = jmWord.ReadingsFurigana
+                                            .Select((r, i) => new ReadingDto
+                                                              {
+                                                                  Text = r,
+                                                                  ReadingIndex = (byte)i,
+                                                                  ReadingType = jmWord.ReadingTypes[i],
+                                                                  FrequencyRank = freq?.ReadingsFrequencyRank[i] ?? 0,
+                                                                  FrequencyPercentage = freq?.ReadingsFrequencyPercentage[i] ?? 0
+                                                              })
+                                            .ToList();
+            alternativeReadings.RemoveAt(pw.ReadingIndex);
+
+            var mainReading = new ReadingDto
+                              {
+                                  Text = reading,
+                                  ReadingIndex = pw.ReadingIndex,
+                                  ReadingType = jmWord.ReadingTypes[pw.ReadingIndex],
+                                  FrequencyRank = freq?.ReadingsFrequencyRank[pw.ReadingIndex] ?? 0,
+                                  FrequencyPercentage = freq?.ReadingsFrequencyPercentage[pw.ReadingIndex] ?? 0
+                              };
+
+            wordDtos.Add(new WordDto
+                         {
+                             WordId = jmWord.WordId,
+                             MainReading = mainReading,
+                             AlternativeReadings = alternativeReadings,
+                             PartsOfSpeech = jmWord.PartsOfSpeech.ToHumanReadablePartsOfSpeech(),
+                             Definitions = jmWord.Definitions.ToDefinitionDtos(),
+                             Occurrences = pw.TotalOccurrences,
+                             PitchAccents = jmWord.PitchAccents
+                         });
+        }
+
+        var knownStates = await userService.GetKnownWordsState(
+            wordDtos.Select(w => (w.WordId, w.MainReading.ReadingIndex)).ToList());
+        wordDtos.ApplyKnownWordsState(knownStates);
+
+        var dto = new AccomplishmentVocabularyDto { Words = wordDtos };
+
+        return Ok(new PaginatedResponse<AccomplishmentVocabularyDto>(dto, totalCount, pageSize, offset));
+    }
+
+    #endregion
 }

@@ -619,6 +619,18 @@ public partial class AdminController(
         return Ok(new { Message = "Recomputing user coverages for all users has been queued" });
     }
 
+    [HttpPost("recompute-accomplishments")]
+    public async Task<IActionResult> RecomputeUserAccomplishments()
+    {
+        var userIds = await userContext.Users.AsNoTracking().Select(u => u.Id).ToListAsync();
+
+        foreach (var userId in userIds)
+            backgroundJobs.Enqueue<ComputationJob>(job => job.ComputeUserAccomplishments(userId));
+
+        logger.LogInformation("Admin queued recompute accomplishments for all users: UserCount={UserCount}", userIds.Count);
+        return Ok(new { Message = $"Recomputing user accomplishments for {userIds.Count} users has been queued", Count = userIds.Count });
+    }
+
     [HttpPost("recompute-coverage/{userId}")]
     public IActionResult RecomputeUserCoverage(string userId)
     {
