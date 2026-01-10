@@ -87,23 +87,21 @@ public static class MLHelper
         {
             int codePoint = rune.Value;
 
-            switch (codePoint)
+            if (JapaneseTextHelper.IsKanji(rune))
             {
-                case >= 0x4E00 and <= 0x9FFF: // Common Kanji
-                case >= 0x3400 and <= 0x4DBF: // Rare Kanji A
-                case >= 0x20000 and <= 0x2A6DF: // Rare Kanji B (Supplementary Ideographic Plane)
-                case >= 0x2A700 and <= 0x2B73F: // Rare Kanji C
-                    features.KanjiCount++;
-                    break;
-                case >= 0x3040 and <= 0x309F: // Hiragana
-                    features.HiraganaCount++;
-                    break;
-                case >= 0x30A0 and <= 0x30FF: // Katakana
-                    features.KatakanaCount++;
-                    break;
-                default:
-                    features.OtherCount++;
-                    break;
+                features.KanjiCount++;
+            }
+            else if (codePoint is >= 0x3040 and <= 0x309F) // Hiragana
+            {
+                features.HiraganaCount++;
+            }
+            else if (codePoint is >= 0x30A0 and <= 0x30FF) // Katakana
+            {
+                features.KatakanaCount++;
+            }
+            else
+            {
+                features.OtherCount++;
             }
         }
 

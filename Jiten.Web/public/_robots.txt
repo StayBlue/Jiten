@@ -12,6 +12,8 @@ Disallow: /login-success
 Disallow: /reset-password
 Disallow: /settings/*
 Disallow: /google-registration
+Disallow: /profile
+Disallow: /profile/*
 Allow: /decks/media/*/detail
 Allow: /decks/media/list/*
 

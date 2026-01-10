@@ -631,6 +631,18 @@ public partial class AdminController(
         return Ok(new { Message = $"Recomputing user accomplishments for {userIds.Count} users has been queued", Count = userIds.Count });
     }
 
+    [HttpPost("recompute-kanji-grids")]
+    public async Task<IActionResult> RecomputeUserKanjiGrids()
+    {
+        var userIds = await userContext.Users.AsNoTracking().Select(u => u.Id).ToListAsync();
+
+        foreach (var userId in userIds)
+            backgroundJobs.Enqueue<ComputationJob>(job => job.ComputeUserKanjiGrid(userId));
+
+        logger.LogInformation("Admin queued recompute kanji grids for all users: UserCount={UserCount}", userIds.Count);
+        return Ok(new { Message = $"Recomputing kanji grids for {userIds.Count} users has been queued", Count = userIds.Count });
+    }
+
     [HttpPost("recompute-coverage/{userId}")]
     public IActionResult RecomputeUserCoverage(string userId)
     {

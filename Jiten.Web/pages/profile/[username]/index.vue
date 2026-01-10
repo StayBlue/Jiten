@@ -68,16 +68,15 @@
   const mediaTypeAccomplishments = computed(() => accomplishments.value.filter((a) => a.mediaType !== null));
 
   const availableTabs = computed(() => {
-    const tabs = [{ label: 'Global', value: 'global' }];
-    for (const acc of mediaTypeAccomplishments.value) {
-      if (acc.mediaType !== null) {
-        tabs.push({
-          label: getMediaTypeText(acc.mediaType),
-          value: acc.mediaType.toString(),
-        });
-      }
-    }
-    return tabs;
+    const mediaTabs = mediaTypeAccomplishments.value
+      .filter((acc) => acc.mediaType !== null)
+      .map((acc) => ({
+        label: getMediaTypeText(acc.mediaType!),
+        value: acc.mediaType!.toString(),
+      }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+
+    return [{ label: 'Global', value: 'global' }, ...mediaTabs];
   });
 
   const selectedAccomplishment = computed(() => {
@@ -194,6 +193,7 @@
           </TabList>
         </Tabs>
 
+        <!-- Accomplishment Stats -->
         <div v-if="selectedAccomplishment" class="grid grid-cols-2 md:grid-cols-3 gap-4">
           <Card class="text-center">
             <template #content>
@@ -259,11 +259,23 @@
             <Button label="View Vocabulary" icon="pi pi-list" />
           </NuxtLink>
         </div>
-
-        <div v-if="selectedAccomplishment?.lastComputedAt" class="text-center text-sm text-gray-400">
-          Last updated: {{ new Date(selectedAccomplishment.lastComputedAt).toLocaleDateString() }}
-        </div>
       </template>
+
+      <!-- Kanji Grid -->
+      <Card>
+        <template #title>
+          <div class="flex items-center gap-2">
+            <Icon name="material-symbols:grid-view" />
+            Kanji Grid
+          </div>
+        </template>
+        <template #subtitle>
+          <span class="text-xs text-surface-400">Kanji are ordered according to their frequency</span>
+        </template>
+        <template #content>
+          <KanjiGrid :username="displayUsername" />
+        </template>
+      </Card>
     </div>
   </div>
 </template>

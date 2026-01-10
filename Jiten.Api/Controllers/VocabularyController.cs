@@ -86,6 +86,51 @@ public class VocabularyController(JitenDbContext context, IDbContextFactory<Jite
     }
 
     /// <summary>
+    /// Gets the kanji breakdown for a specific word reading.
+    /// </summary>
+    /// <param name="wordId"></param>
+    /// <param name="readingIndex"></param>
+    /// <returns>List of kanji in the word with their metadata.</returns>
+    [HttpGet("{wordId}/{readingIndex}/kanji")]
+    [SwaggerOperation(Summary = "Get kanji breakdown for word", Description = "Returns the kanji characters in a word reading with their metadata (stroke count, JLPT, meanings, frequency).")]
+    [ProducesResponseType(typeof(List<KanjiListDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IResult> GetWordKanji([FromRoute] int wordId, [FromRoute] short readingIndex)
+    {
+        var wordKanjis = await context.WordKanjis
+            .AsNoTracking()
+            .Where(wk => wk.WordId == wordId && wk.ReadingIndex == readingIndex)
+            .OrderBy(wk => wk.Position)
+            .Select(wk => wk.KanjiCharacter)
+            .ToListAsync();
+
+        if (wordKanjis.Count == 0)
+            return Results.Ok(new List<KanjiListDto>());
+        
+
+        var kanjis = await context.Kanjis
+            .AsNoTracking()
+            .Where(k => wordKanjis.Contains(k.Character))
+            .ToDictionaryAsync(k => k.Character);
+
+        // Preserve order based on position in word
+        var result = wordKanjis
+            .Where(c => kanjis.ContainsKey(c))
+            .Select(c => kanjis[c])
+            .Select(k => new KanjiListDto
+            {
+                Character = k.Character,
+                Meanings = k.Meanings,
+                StrokeCount = k.StrokeCount,
+                JlptLevel = k.JlptLevel,
+                FrequencyRank = k.FrequencyRank
+            })
+            .ToList();
+
+        return Results.Ok(result);
+    }
+
+    /// <summary>
     /// Parses the provided text and returns a sequence of parsed and unparsed segments as deck words.
     /// </summary>
     /// <param name="text">Text to parse. Max length 500 characters.</param>

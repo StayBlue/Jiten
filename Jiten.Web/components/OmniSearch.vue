@@ -21,6 +21,21 @@ const highlightedIndex = ref(0);
 
 const { suggestions, totalCount, isLoading, fetchSuggestions, clearSuggestions } = useMediaSuggestions();
 
+const extractFirstKanji = (text: string): string | null => {
+  const kanjiRegex = /[\u4e00-\u9faf\u3400-\u4dbf]/;
+  const match = text.match(kanjiRegex);
+  return match ? match[0] : null;
+};
+
+const kanjiSearchTarget = computed(() => {
+  const text = searchText.value.trim();
+  const kanjiModifierMatch = text.match(/^(.+?)\s*#kanji$/i);
+  if (!kanjiModifierMatch) return null;
+
+  const searchPart = kanjiModifierMatch[1];
+  return extractFirstKanji(searchPart);
+});
+
 const showMediaSection = computed(() => searchText.value.length >= 2);
 
 watch(searchText, (newValue) => {
@@ -63,6 +78,11 @@ const navigateToDeck = async (deckId: number) => {
   await navigateTo(`/decks/media/${deckId}/detail`);
 };
 
+const navigateToKanji = async (character: string) => {
+  isDropdownOpen.value = false;
+  await navigateTo(`/kanji/${encodeURIComponent(character)}`);
+};
+
 const totalOptions = computed(() => {
   if (!showMediaSection.value || suggestions.value.length === 0) {
     return 1;
@@ -99,7 +119,11 @@ const handleKeyDown = (event: KeyboardEvent) => {
 
 const handleSelection = () => {
   if (highlightedIndex.value === 0) {
-    navigateToParse();
+    if (kanjiSearchTarget.value) {
+      navigateToKanji(kanjiSearchTarget.value);
+    } else {
+      navigateToParse();
+    }
   } else if (showMediaSection.value && suggestions.value.length > 0 && highlightedIndex.value === 1) {
     navigateToMediaSearch();
   } else if (showMediaSection.value && suggestions.value.length > 0) {
@@ -189,6 +213,27 @@ const remainingCount = computed(() => {
         role="listbox"
       >
         <div
+          v-if="kanjiSearchTarget"
+          class="px-4 py-3 cursor-pointer flex items-center gap-3 transition-colors"
+          :class="
+            highlightedIndex === 0 ? 'bg-purple-100 dark:bg-purple-900/30' : 'hover:bg-gray-100 dark:hover:bg-gray-700'
+          "
+          role="option"
+          :aria-selected="highlightedIndex === 0"
+          @click="navigateToKanji(kanjiSearchTarget)"
+          @mouseenter="highlightedIndex = 0"
+        >
+          <span class="text-2xl font-bold text-purple-500">{{ kanjiSearchTarget }}</span>
+          <div class="min-w-0 flex-1">
+            <div class="font-medium">View kanji: {{ kanjiSearchTarget }}</div>
+            <div class="text-sm text-gray-500 dark:text-gray-400">Go to kanji details page</div>
+          </div>
+          <div class="text-xs text-gray-400 dark:text-gray-500">
+            <kbd class="px-1.5 py-0.5 bg-gray-200 dark:bg-gray-700 rounded font-mono text-xs">Enter</kbd>
+          </div>
+        </div>
+        <div
+          v-else
           class="px-4 py-3 cursor-pointer flex items-center gap-3 transition-colors"
           :class="
             highlightedIndex === 0 ? 'bg-purple-100 dark:bg-purple-900/30' : 'hover:bg-gray-100 dark:hover:bg-gray-700'
@@ -201,7 +246,7 @@ const remainingCount = computed(() => {
           <Icon name="material-symbols:translate" class="text-xl text-purple-500" />
           <div class="min-w-0 flex-1">
             <div class="font-medium">Parse: "{{ searchText }}"</div>
-            <div class="text-sm text-gray-500 dark:text-gray-400">Look up words and definitions</div>
+            <div class="text-sm text-gray-500 dark:text-gray-400">Look up words and definitions. Use #kanji to view kanji details</div>
           </div>
           <div class="text-xs text-gray-400 dark:text-gray-500">
             <kbd class="px-1.5 py-0.5 bg-gray-200 dark:bg-gray-700 rounded font-mono text-xs">Enter</kbd>

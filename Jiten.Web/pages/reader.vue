@@ -213,7 +213,7 @@
                   Get for Chrome
                 </Button>
               </a>
-              <a href="#firefox-coming-soon" class="no-underline">
+              <a href="https://addons.mozilla.org/en-US/firefox/addon/jiten-reader/" class="no-underline">
                 <Button severity="secondary" size="large" class="w-full sm:w-auto">
                   <Icon name="logos:firefox" class="mr-2" size="1.5em" />
                   Get for Firefox

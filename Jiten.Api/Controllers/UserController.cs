@@ -11,7 +11,9 @@ using Jiten.Core.Data.User;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using StackExchange.Redis;
 using System.Text;
+using System.Text.Json;
 using WanaKanaShaapu;
 
 namespace Jiten.Api.Controllers;
@@ -27,6 +29,8 @@ public class UserController(
     UserDbContext userContext,
     IBackgroundJobClient backgroundJobs,
     ISrsService srsService,
+    IConfiguration configuration,
+    IConnectionMultiplexer redis,
     ILogger<UserController> logger) : ControllerBase
 {
     /// <summary>
@@ -1229,7 +1233,8 @@ public class UserController(
         if (completedDeckIds.Count == 0)
         {
             return Ok(new PaginatedResponse<AccomplishmentVocabularyDto>(
-                         new AccomplishmentVocabularyDto { Words = [] }, 0, pageSize, offset));
+                                                                         new AccomplishmentVocabularyDto { Words = [] }, 0, pageSize,
+                                                                         offset));
         }
 
         // Aggregate vocabulary across completed decks
@@ -1239,8 +1244,7 @@ public class UserController(
                                                .GroupBy(dw => new { dw.WordId, dw.ReadingIndex })
                                                .Select(g => new AggregatedWord
                                                             {
-                                                                WordId = g.Key.WordId,
-                                                                ReadingIndex = g.Key.ReadingIndex,
+                                                                WordId = g.Key.WordId, ReadingIndex = g.Key.ReadingIndex,
                                                                 TotalOccurrences = g.Sum(dw => dw.Occurrences)
                                                             });
 
@@ -1312,9 +1316,7 @@ public class UserController(
             var alternativeReadings = jmWord.ReadingsFurigana
                                             .Select((r, i) => new ReadingDto
                                                               {
-                                                                  Text = r,
-                                                                  ReadingIndex = (byte)i,
-                                                                  ReadingType = jmWord.ReadingTypes[i],
+                                                                  Text = r, ReadingIndex = (byte)i, ReadingType = jmWord.ReadingTypes[i],
                                                                   FrequencyRank = freq?.ReadingsFrequencyRank[i] ?? 0,
                                                                   FrequencyPercentage = freq?.ReadingsFrequencyPercentage[i] ?? 0
                                                               })
@@ -1323,28 +1325,23 @@ public class UserController(
 
             var mainReading = new ReadingDto
                               {
-                                  Text = reading,
-                                  ReadingIndex = pw.ReadingIndex,
-                                  ReadingType = jmWord.ReadingTypes[pw.ReadingIndex],
+                                  Text = reading, ReadingIndex = pw.ReadingIndex, ReadingType = jmWord.ReadingTypes[pw.ReadingIndex],
                                   FrequencyRank = freq?.ReadingsFrequencyRank[pw.ReadingIndex] ?? 0,
                                   FrequencyPercentage = freq?.ReadingsFrequencyPercentage[pw.ReadingIndex] ?? 0
                               };
 
             wordDtos.Add(new WordDto
                          {
-                             WordId = jmWord.WordId,
-                             MainReading = mainReading,
-                             AlternativeReadings = alternativeReadings,
+                             WordId = jmWord.WordId, MainReading = mainReading, AlternativeReadings = alternativeReadings,
                              PartsOfSpeech = jmWord.PartsOfSpeech.ToHumanReadablePartsOfSpeech(),
-                             Definitions = jmWord.Definitions.ToDefinitionDtos(),
-                             Occurrences = pw.TotalOccurrences,
+                             Definitions = jmWord.Definitions.ToDefinitionDtos(), Occurrences = pw.TotalOccurrences,
                              PitchAccents = jmWord.PitchAccents
                          });
         }
 
         // Apply known states
         var knownStates = await userService.GetKnownWordsState(
-            wordDtos.Select(w => (w.WordId, w.MainReading.ReadingIndex)).ToList());
+                                                               wordDtos.Select(w => (w.WordId, w.MainReading.ReadingIndex)).ToList());
         wordDtos.ApplyKnownWordsState(knownStates);
 
         var dto = new AccomplishmentVocabularyDto { Words = wordDtos };
@@ -1429,30 +1426,21 @@ public class UserController(
         if (isOwnProfile)
         {
             return Results.Ok(new UserProfileResponse
-                             {
-                                 UserId = user.Id,
-                                 Username = user.UserName ?? string.Empty,
-                                 IsPublic = profile?.IsPublic ?? false
-                             });
+                              {
+                                  UserId = user.Id, Username = user.UserName ?? string.Empty, IsPublic = profile?.IsPublic ?? false
+                              });
         }
 
         if (profile == null || !profile.IsPublic)
         {
             // Return minimal info for non-public profiles
-            return Results.Ok(new UserProfileResponse
-                             {
-                                 UserId = user.Id,
-                                 Username = user.UserName ?? string.Empty,
-                                 IsPublic = false
-                             });
+            return Results.Ok(new UserProfileResponse { UserId = user.Id, Username = user.UserName ?? string.Empty, IsPublic = false });
         }
 
         return Results.Ok(new UserProfileResponse
-                         {
-                             UserId = user.Id,
-                             Username = user.UserName ?? string.Empty,
-                             IsPublic = profile.IsPublic
-                         });
+                          {
+                              UserId = user.Id, Username = user.UserName ?? string.Empty, IsPublic = profile.IsPublic
+                          });
     }
 
     /// <summary>
@@ -1482,11 +1470,9 @@ public class UserController(
             return Results.NotFound(new { message = "Profile not found" });
 
         return Results.Ok(new UserProfileResponse
-                         {
-                             UserId = user.Id,
-                             Username = user.UserName ?? string.Empty,
-                             IsPublic = profile?.IsPublic ?? false
-                         });
+                          {
+                              UserId = user.Id, Username = user.UserName ?? string.Empty, IsPublic = profile?.IsPublic ?? false
+                          });
     }
 
     /// <summary>
@@ -1600,7 +1586,8 @@ public class UserController(
         if (completedDeckIds.Count == 0)
         {
             return Ok(new PaginatedResponse<AccomplishmentVocabularyDto>(
-                         new AccomplishmentVocabularyDto { Words = [] }, 0, pageSize, offset));
+                                                                         new AccomplishmentVocabularyDto { Words = [] }, 0, pageSize,
+                                                                         offset));
         }
 
         // Aggregate vocabulary across completed decks
@@ -1610,8 +1597,7 @@ public class UserController(
                                                .GroupBy(dw => new { dw.WordId, dw.ReadingIndex })
                                                .Select(g => new AggregatedWord
                                                             {
-                                                                WordId = g.Key.WordId,
-                                                                ReadingIndex = g.Key.ReadingIndex,
+                                                                WordId = g.Key.WordId, ReadingIndex = g.Key.ReadingIndex,
                                                                 TotalOccurrences = g.Sum(dw => dw.Occurrences)
                                                             });
 
@@ -1664,13 +1650,15 @@ public class UserController(
 
             sortedWords = descending
                 ? allAggregatedWords.OrderByDescending(aw =>
-                    sortFrequencies.TryGetValue(aw.WordId, out var f) && aw.ReadingIndex < f.ReadingsFrequencyRank.Count
-                        ? f.ReadingsFrequencyRank[aw.ReadingIndex]
-                        : 0)
+                                                           sortFrequencies.TryGetValue(aw.WordId, out var f) &&
+                                                           aw.ReadingIndex < f.ReadingsFrequencyRank.Count
+                                                               ? f.ReadingsFrequencyRank[aw.ReadingIndex]
+                                                               : 0)
                 : allAggregatedWords.OrderBy(aw =>
-                    sortFrequencies.TryGetValue(aw.WordId, out var f) && aw.ReadingIndex < f.ReadingsFrequencyRank.Count
-                        ? f.ReadingsFrequencyRank[aw.ReadingIndex]
-                        : int.MaxValue);
+                                                 sortFrequencies.TryGetValue(aw.WordId, out var f) &&
+                                                 aw.ReadingIndex < f.ReadingsFrequencyRank.Count
+                                                     ? f.ReadingsFrequencyRank[aw.ReadingIndex]
+                                                     : int.MaxValue);
         }
         else
         {
@@ -1714,9 +1702,7 @@ public class UserController(
             var alternativeReadings = jmWord.ReadingsFurigana
                                             .Select((r, i) => new ReadingDto
                                                               {
-                                                                  Text = r,
-                                                                  ReadingIndex = (byte)i,
-                                                                  ReadingType = jmWord.ReadingTypes[i],
+                                                                  Text = r, ReadingIndex = (byte)i, ReadingType = jmWord.ReadingTypes[i],
                                                                   FrequencyRank = freq?.ReadingsFrequencyRank[i] ?? 0,
                                                                   FrequencyPercentage = freq?.ReadingsFrequencyPercentage[i] ?? 0
                                                               })
@@ -1725,33 +1711,115 @@ public class UserController(
 
             var mainReading = new ReadingDto
                               {
-                                  Text = reading,
-                                  ReadingIndex = pw.ReadingIndex,
-                                  ReadingType = jmWord.ReadingTypes[pw.ReadingIndex],
+                                  Text = reading, ReadingIndex = pw.ReadingIndex, ReadingType = jmWord.ReadingTypes[pw.ReadingIndex],
                                   FrequencyRank = freq?.ReadingsFrequencyRank[pw.ReadingIndex] ?? 0,
                                   FrequencyPercentage = freq?.ReadingsFrequencyPercentage[pw.ReadingIndex] ?? 0
                               };
 
             wordDtos.Add(new WordDto
                          {
-                             WordId = jmWord.WordId,
-                             MainReading = mainReading,
-                             AlternativeReadings = alternativeReadings,
+                             WordId = jmWord.WordId, MainReading = mainReading, AlternativeReadings = alternativeReadings,
                              PartsOfSpeech = jmWord.PartsOfSpeech.ToHumanReadablePartsOfSpeech(),
-                             Definitions = jmWord.Definitions.ToDefinitionDtos(),
-                             Occurrences = pw.TotalOccurrences,
+                             Definitions = jmWord.Definitions.ToDefinitionDtos(), Occurrences = pw.TotalOccurrences,
                              PitchAccents = jmWord.PitchAccents
                          });
         }
 
         var knownStates = await userService.GetKnownWordsState(
-            wordDtos.Select(w => (w.WordId, w.MainReading.ReadingIndex)).ToList());
+                                                               wordDtos.Select(w => (w.WordId, w.MainReading.ReadingIndex)).ToList());
         wordDtos.ApplyKnownWordsState(knownStates);
 
         var dto = new AccomplishmentVocabularyDto { Words = wordDtos };
 
         return Ok(new PaginatedResponse<AccomplishmentVocabularyDto>(dto, totalCount, pageSize, offset));
     }
+
+    #endregion
+
+    #region Kanji Grid
+
+    /// <summary>
+    /// Get kanji grid data for a user profile.
+    /// Returns all kanji ordered by frequency with user's scores.
+    /// </summary>
+    [HttpGet("profile/{username}/kanji-grid")]
+    [AllowAnonymous]
+    public async Task<IResult> GetKanjiGridByUsername(
+        string username,
+        [FromQuery] bool onlySeen = false)
+    {
+        var user = await userContext.Users
+                                    .AsNoTracking()
+                                    .FirstOrDefaultAsync(u => u.NormalizedUserName == username.ToUpperInvariant());
+
+        if (user == null)
+            return Results.NotFound(new { message = "Profile not found" });
+
+        var targetUserId = user.Id;
+        var currentUserId = userService.UserId;
+        var isOwnProfile = currentUserId == targetUserId;
+
+        if (!isOwnProfile)
+        {
+            var profile = await userContext.UserProfiles
+                                           .AsNoTracking()
+                                           .FirstOrDefaultAsync(p => p.UserId == targetUserId);
+
+            if (profile is not { IsPublic: true })
+                return Results.NotFound(new { message = "Profile not found" });
+        }
+
+        // Get all kanji ordered by frequency
+        var redisDb = redis.GetDatabase();
+        const string cacheKey = "jiten:kanji-grid:all-kanji";
+
+        var cached = await redisDb.StringGetAsync(cacheKey);
+        List<CachedKanjiInfo>? allKanji;
+
+        if (!cached.IsNullOrEmpty)
+        {
+            allKanji = JsonSerializer.Deserialize<List<CachedKanjiInfo>>(cached!);
+        }
+        else
+        {
+            allKanji = await jitenContext.Kanjis
+                                         .AsNoTracking()
+                                         .OrderBy(k => k.FrequencyRank ?? int.MaxValue)
+                                         .Select(k => new CachedKanjiInfo(k.Character, k.FrequencyRank, k.JlptLevel))
+                                         .ToListAsync();
+
+            var json = JsonSerializer.Serialize(allKanji);
+            await redisDb.StringSetAsync(cacheKey, json, expiry: TimeSpan.FromHours(1));
+        }
+
+        var userGrid = await userContext.UserKanjiGrids
+                                        .AsNoTracking()
+                                        .FirstOrDefaultAsync(ukg => ukg.UserId == targetUserId);
+
+        var userScores = userGrid?.GetKanjiScoresOnce() ?? new Dictionary<string, double[]>();
+        var maxThreshold = double.Parse(configuration["KanjiGrid:MaxScoreThreshold"] ?? "10.0");
+
+        var kanjiData = allKanji!
+                        .Where(k => !onlySeen || userScores.ContainsKey(k.Character))
+                        .Select(k =>
+                        {
+                            userScores.TryGetValue(k.Character, out var scoreData);
+                            return new KanjiGridItemDto
+                                   {
+                                       Character = k.Character, FrequencyRank = k.FrequencyRank, JlptLevel = k.JlptLevel,
+                                       Score = scoreData?[0] ?? 0, WordCount = (int)(scoreData?[1] ?? 0)
+                                   };
+                        })
+                        .ToList();
+
+        return Results.Ok(new KanjiGridResponseDto
+                          {
+                              Kanji = kanjiData, MaxScoreThreshold = maxThreshold, TotalKanjiCount = allKanji!.Count,
+                              SeenKanjiCount = userScores.Count, LastComputedAt = userGrid?.LastComputedAt
+                          });
+    }
+
+    private record CachedKanjiInfo(string Character, int? FrequencyRank, short? JlptLevel);
 
     #endregion
 }

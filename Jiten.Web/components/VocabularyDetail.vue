@@ -187,6 +187,8 @@
               </div>
             </div>
           </ClientOnly>
+
+          <KanjiBreakdown :word-id="wordId" :reading-index="currentReadingIndex" />
         </div>
 
         <div class="md:min-w-64">

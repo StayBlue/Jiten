@@ -158,6 +158,12 @@ public class Program
 
         [Option(longName: "sync-jmnedict", Required = false, HelpText = "Sync missing JMNedict entries and update partial entries with missing readings/definitions.")]
         public string SyncJMNedict { get; set; }
+
+        [Option(longName: "import-kanjidic", Required = false, HelpText = "Import KANJIDIC2 kanji dictionary from XML file.")]
+        public string ImportKanjidic { get; set; }
+
+        [Option(longName: "populate-word-kanji", Required = false, HelpText = "Populate WordKanji junction table after kanji import.")]
+        public bool PopulateWordKanji { get; set; }
     }
 
     static async Task Main(string[] args)
@@ -200,6 +206,24 @@ public class Program
                             Console.WriteLine("Importing JMdict...");
                             await JmDictHelper.Import(_contextFactory, o.XmlPath, o.DictionaryPath, o.FuriganaPath);
                             await JmDictHelper.ImportJMNedict(_contextFactory, o.NameDictionaryPath);
+                        }
+
+                        if (!string.IsNullOrEmpty(o.ImportKanjidic))
+                        {
+                            if (!File.Exists(o.ImportKanjidic))
+                            {
+                                Console.WriteLine($"KANJIDIC2 file not found: {o.ImportKanjidic}");
+                                return;
+                            }
+
+                            Console.WriteLine("Importing KANJIDIC2...");
+                            await KanjidicHelper.Import(_contextFactory, o.ImportKanjidic);
+                        }
+
+                        if (o.PopulateWordKanji)
+                        {
+                            Console.WriteLine("Populating WordKanji junction table...");
+                            await KanjidicHelper.PopulateWordKanji(_contextFactory);
                         }
 
                         if (o.ExtractFilePath != null)

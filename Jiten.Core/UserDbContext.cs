@@ -32,6 +32,7 @@ public class UserDbContext : IdentityDbContext<User>
 
     public DbSet<UserAccomplishment> UserAccomplishments { get; set; }
     public DbSet<UserProfile> UserProfiles { get; set; }
+    public DbSet<UserKanjiGrid> UserKanjiGrids { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -214,6 +215,20 @@ public class UserDbContext : IdentityDbContext<User>
             entity.HasOne<User>()
                   .WithOne()
                   .HasForeignKey<UserProfile>(up => up.UserId)
+                  .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<UserKanjiGrid>(entity =>
+        {
+            entity.HasKey(ukg => ukg.UserId);
+            entity.Property(ukg => ukg.UserId).HasConversion(guidToString).HasColumnType("uuid").IsRequired();
+            entity.Property(ukg => ukg.KanjiScoresJson).HasColumnType("jsonb").IsRequired();
+            entity.Property(ukg => ukg.LastComputedAt).IsRequired();
+            entity.Ignore(ukg => ukg.KanjiScores);
+
+            entity.HasOne<User>()
+                  .WithOne()
+                  .HasForeignKey<UserKanjiGrid>(ukg => ukg.UserId)
                   .OnDelete(DeleteBehavior.Cascade);
         });
 

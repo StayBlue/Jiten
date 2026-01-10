@@ -140,6 +140,9 @@ public class ComputationJob(
             }
 
             await userContext.SaveChangesAsync();
+
+            // Queue kanji grid computation
+            backgroundJobs.Enqueue<ComputationJob>(job => job.ComputeUserKanjiGrid(userId));
         }
     }
 
@@ -254,6 +257,116 @@ public class ComputationJob(
         public int DeckId { get; set; }
         public double Coverage { get; set; }
         public double UniqueCoverage { get; set; }
+    }
+
+    private static readonly object KanjiGridComputeLock = new();
+    private static readonly HashSet<string> KanjiGridComputingUserIds = new();
+
+    [Queue("coverage")]
+    public async Task ComputeUserKanjiGrid(string userId)
+    {
+        lock (KanjiGridComputeLock)
+        {
+            if (!KanjiGridComputingUserIds.Add(userId))
+            {
+                return;
+            }
+        }
+
+        try
+        {
+            await using var context = await contextFactory.CreateDbContextAsync();
+            await using var userContext = await userContextFactory.CreateDbContextAsync();
+
+            // Get scoring weights from configuration
+            var youngWeight = double.Parse(configuration["KanjiGrid:YoungScoreWeight"] ?? "0.5");
+            var matureWeight = double.Parse(configuration["KanjiGrid:MatureScoreWeight"] ?? "1.0");
+            var masteredWeight = double.Parse(configuration["KanjiGrid:MasteredScoreWeight"] ?? "1.0");
+
+            // Compute kanji scores
+            var sql = $$"""
+                WITH user_known_words AS (
+                    SELECT
+                        fc."WordId",
+                        fc."ReadingIndex",
+                        CASE
+                            WHEN fc."State" = 5 THEN {{masteredWeight}}
+                            WHEN fc."LastReview" IS NOT NULL
+                                 AND (fc."Due" - fc."LastReview") >= INTERVAL '21 days'
+                            THEN {{matureWeight}}
+                            WHEN fc."LastReview" IS NOT NULL
+                            THEN {{youngWeight}}
+                            ELSE 0
+                        END AS weight
+                    FROM "user"."FsrsCards" fc
+                    WHERE fc."UserId" = {0}::uuid
+                      AND fc."State" NOT IN (0, 4)
+                ),
+                kanji_scores AS (
+                    SELECT
+                        wk."KanjiCharacter",
+                        SUM(ukw.weight) AS score,
+                        COUNT(DISTINCT (ukw."WordId", ukw."ReadingIndex")) AS word_count
+                    FROM user_known_words ukw
+                    INNER JOIN "jmdict"."WordKanji" wk
+                        ON wk."WordId" = ukw."WordId"
+                        AND wk."ReadingIndex" = ukw."ReadingIndex"
+                    WHERE ukw.weight > 0
+                    GROUP BY wk."KanjiCharacter"
+                )
+                SELECT
+                    "KanjiCharacter",
+                    score AS "Score",
+                    word_count AS "WordCount"
+                FROM kanji_scores
+            """;
+
+            var kanjiScores = await context.Database
+                .SqlQueryRaw<KanjiScoreResult>(sql, userId)
+                .ToListAsync();
+
+            // Build dictionary for JSONB storage
+            var scoresDict = kanjiScores.ToDictionary(
+                ks => ks.KanjiCharacter,
+                ks => new[] { ks.Score, ks.WordCount }
+            );
+
+            // Upsert the kanji grid
+            var existingGrid = await userContext.UserKanjiGrids
+                .SingleOrDefaultAsync(ukg => ukg.UserId == userId);
+
+            if (existingGrid is null)
+            {
+                existingGrid = new UserKanjiGrid
+                {
+                    UserId = userId,
+                    KanjiScores = scoresDict,
+                    LastComputedAt = DateTimeOffset.UtcNow
+                };
+                await userContext.UserKanjiGrids.AddAsync(existingGrid);
+            }
+            else
+            {
+                existingGrid.KanjiScores = scoresDict;
+                existingGrid.LastComputedAt = DateTimeOffset.UtcNow;
+            }
+
+            await userContext.SaveChangesAsync();
+        }
+        finally
+        {
+            lock (KanjiGridComputeLock)
+            {
+                KanjiGridComputingUserIds.Remove(userId);
+            }
+        }
+    }
+
+    private class KanjiScoreResult
+    {
+        public string KanjiCharacter { get; set; } = string.Empty;
+        public double Score { get; set; }
+        public int WordCount { get; set; }
     }
 
     private static readonly object AccomplishmentComputeLock = new();
@@ -424,17 +537,42 @@ public class ComputationJob(
         var result = new Dictionary<int, int>();
         if (deckIds.Count == 0) return result;
 
-        // Get deck info with MediaType for grouping
-        var deckMediaTypes = await context.Decks
-                                          .AsNoTracking()
-                                          .Where(d => deckIds.Contains(d.DeckId))
-                                          .Select(d => new { d.DeckId, d.MediaType })
-                                          .ToDictionaryAsync(d => d.DeckId, d => d.MediaType);
+        // Get deck info including children for parent decks
+        var decksWithChildren = await context.Decks
+                                             .AsNoTracking()
+                                             .Where(d => deckIds.Contains(d.DeckId))
+                                             .Select(d => new
+                                              {
+                                                  d.DeckId,
+                                                  d.MediaType,
+                                                  ChildIds = d.Children.Select(c => c.DeckId).ToList()
+                                              })
+                                             .ToListAsync();
 
-        // Fetch raw texts in batches
+        var deckMediaTypes = new Dictionary<int, MediaType>();
+        var rawTextDeckIds = new HashSet<int>();
+
+        foreach (var deck in decksWithChildren)
+        {
+            if (deck.ChildIds.Count > 0)
+            {
+                // For parents, we need to fetch the child raw texts
+                foreach (var childId in deck.ChildIds)
+                {
+                    rawTextDeckIds.Add(childId);
+                    deckMediaTypes[childId] = deck.MediaType;
+                }
+            }
+            else
+            {
+                rawTextDeckIds.Add(deck.DeckId);
+                deckMediaTypes[deck.DeckId] = deck.MediaType;
+            }
+        }
+
         var rawTexts = await context.DeckRawTexts
                                     .AsNoTracking()
-                                    .Where(rt => deckIds.Contains(rt.DeckId))
+                                    .Where(rt => rawTextDeckIds.Contains(rt.DeckId))
                                     .Select(rt => new { rt.DeckId, rt.RawText })
                                     .ToListAsync();
 
@@ -452,7 +590,7 @@ public class ComputationJob(
 
             foreach (var rune in rt.RawText.EnumerateRunes())
             {
-                if (!IsKanji(rune)) continue;
+                if (!JapaneseTextHelper.IsKanji(rune)) continue;
 
                 globalKanji.Add(rune);
                 if (mediaTypeKanji.TryGetValue(mediaType, out var kanjiSet))
@@ -469,20 +607,6 @@ public class ComputationJob(
         }
 
         return result;
-    }
-
-    private static bool IsKanji(System.Text.Rune r)
-    {
-        int value = r.Value;
-        return value is
-            (>= 0x4E00 and <= 0x9FFF) or // Main block (Common)
-            (>= 0x3400 and <= 0x4DBF) or // Extension A
-            (>= 0x20000 and <= 0x2A6DF) or // Extension B
-            (>= 0x2A700 and <= 0x2B73F) or // Extension C
-            (>= 0x2B740 and <= 0x2B81F) or // Extension D
-            (>= 0x2B820 and <= 0x2CEAF) or // Extension E
-            (>= 0xF900 and <= 0xFAFF) or // Compatibility Ideographs
-            (>= 0x2F800 and <= 0x2FA1F); // Compatibility Supplement
     }
 
     private async Task<Dictionary<int, int>> ComputeUniqueWordUsedOnceCounts(
@@ -597,6 +721,26 @@ public class ComputationJob(
         string indexFilePath = Path.Join(path, "jiten_kanji_freq.json");
         await File.WriteAllBytesAsync(filePath, bytes);
         await File.WriteAllTextAsync(indexFilePath, index);
+
+        Console.WriteLine("Updating kanji frequency ranks in database...");
+        await using var jitenContext = await contextFactory.CreateDbContextAsync();
+
+        var kanjiRanks = kanjiFrequencies.ToDictionary(f => f.kanji, f => f.rank);
+        var kanjiChars = kanjiRanks.Keys.ToHashSet();
+
+        var kanjisToUpdate = await jitenContext.Kanjis
+            .Where(k => kanjiChars.Contains(k.Character))
+            .ToListAsync();
+
+        foreach (var kanji in kanjisToUpdate)
+        {
+            if (kanjiRanks.TryGetValue(kanji.Character, out int rank))
+            {
+                kanji.FrequencyRank = rank;
+            }
+        }
+
+        await jitenContext.SaveChangesAsync();
 
         Console.WriteLine("Kanji frequency computation complete.");
     }

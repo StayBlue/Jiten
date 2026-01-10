@@ -20,6 +20,8 @@ public class JitenDbContext : DbContext
     public DbSet<JmDictWordFrequency> JmDictWordFrequencies { get; set; }
     public DbSet<JmDictDefinition> Definitions { get; set; }
     public DbSet<JmDictLookup> Lookups { get; set; }
+    public DbSet<Kanji> Kanjis { get; set; }
+    public DbSet<WordKanji> WordKanjis { get; set; }
     
     public DbSet<ExampleSentence> ExampleSentences { get; set; }
     public DbSet<ExampleSentenceWord> ExampleSentenceWords { get; set; }
@@ -246,6 +248,63 @@ public class JitenDbContext : DbContext
             entity.HasOne<JmDictWord>()
                   .WithMany()
                   .HasForeignKey(f => f.WordId);
+        });
+
+        modelBuilder.Entity<Kanji>(entity =>
+        {
+            entity.ToTable("Kanji", "jmdict");
+            entity.HasKey(e => e.Character);
+            entity.Property(e => e.Character)
+                  .HasColumnType("text")
+                  .ValueGeneratedNever()
+                  .IsRequired();
+
+            entity.Property(e => e.OnReadings)
+                  .HasColumnType("text[]");
+
+            entity.Property(e => e.KunReadings)
+                  .HasColumnType("text[]");
+
+            entity.Property(e => e.Meanings)
+                  .HasColumnType("text[]");
+
+            entity.Property(e => e.StrokeCount)
+                  .IsRequired();
+
+            entity.HasIndex(e => e.FrequencyRank)
+                  .HasDatabaseName("IX_Kanji_FrequencyRank");
+
+            entity.HasIndex(e => e.JlptLevel)
+                  .HasDatabaseName("IX_Kanji_JlptLevel");
+
+            entity.HasIndex(e => e.StrokeCount)
+                  .HasDatabaseName("IX_Kanji_StrokeCount");
+        });
+
+        modelBuilder.Entity<WordKanji>(entity =>
+        {
+            entity.ToTable("WordKanji", "jmdict");
+            entity.HasKey(e => new { e.WordId, e.ReadingIndex, e.KanjiCharacter, e.Position });
+
+            entity.Property(e => e.KanjiCharacter)
+                  .HasColumnType("text")
+                  .IsRequired();
+
+            entity.HasIndex(e => e.KanjiCharacter)
+                  .HasDatabaseName("IX_WordKanji_KanjiCharacter");
+
+            entity.HasIndex(e => new { e.WordId, e.ReadingIndex })
+                  .HasDatabaseName("IX_WordKanji_WordId_ReadingIndex");
+
+            entity.HasOne(e => e.Word)
+                  .WithMany()
+                  .HasForeignKey(e => e.WordId)
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(e => e.Kanji)
+                  .WithMany(k => k.WordKanjis)
+                  .HasForeignKey(e => e.KanjiCharacter)
+                  .OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<ExampleSentence>(entity =>

@@ -67,6 +67,7 @@
     frequencies: false,
     coverages: false,
     accomplishments: false,
+    kanjiGrids: false,
     difficulties: false,
     wordReplacementPreview: false,
     wordReplacementExecute: false,
@@ -352,6 +353,44 @@
       console.error('Error recomputing accomplishments:', error);
     } finally {
       isLoading.value.accomplishments = false;
+    }
+  };
+
+  const confirmRecomputeKanjiGrids = () => {
+    confirm.require({
+      message: 'Are you sure you want to recompute kanji grids for all users? This operation may take a long time.',
+      header: 'Confirmation',
+      icon: 'pi pi-exclamation-triangle',
+      acceptClass: 'p-button-primary',
+      rejectClass: 'p-button-secondary',
+      accept: () => recomputeKanjiGrids(),
+      reject: () => {},
+    });
+  };
+
+  const recomputeKanjiGrids = async () => {
+    try {
+      isLoading.value.kanjiGrids = true;
+      const data = await $api<{ count: number }>('/admin/recompute-kanji-grids', {
+        method: 'POST',
+      });
+
+      toast.add({
+        severity: 'success',
+        summary: 'Success',
+        detail: `Recomputing kanji grids for ${data.count} users has been queued`,
+        life: 5000,
+      });
+    } catch (error) {
+      toast.add({
+        severity: 'error',
+        summary: 'Error',
+        detail: 'Failed to recompute kanji grids',
+        life: 5000,
+      });
+      console.error('Error recomputing kanji grids:', error);
+    } finally {
+      isLoading.value.kanjiGrids = false;
     }
   };
 
@@ -906,6 +945,24 @@
               :disabled="isLoading.accomplishments"
               :loading="isLoading.accomplishments"
               @click="confirmRecomputeAccomplishments"
+            />
+          </div>
+        </template>
+      </Card>
+
+      <Card class="shadow-md">
+        <template #title>Recompute Kanji Grids</template>
+        <template #content>
+          <p class="mb-4">Recompute kanji grids for all users without recalculating coverage.</p>
+
+          <div class="flex justify-center">
+            <Button
+              label="Recompute Kanji Grids"
+              icon="pi pi-th-large"
+              class="p-button-warning"
+              :disabled="isLoading.kanjiGrids"
+              :loading="isLoading.kanjiGrids"
+              @click="confirmRecomputeKanjiGrids"
             />
           </div>
         </template>

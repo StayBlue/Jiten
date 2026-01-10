@@ -822,7 +822,7 @@ public static class JitenHelper
 
                 foreach (Rune r in entry.RawText.EnumerateRunes())
                 {
-                    if (!IsKanji(r)) continue;
+                    if (!JapaneseTextHelper.IsKanji(r)) continue;
 
                     if (kanjiStats.TryGetValue(r, out var stats))
                     {
@@ -865,21 +865,6 @@ public static class JitenHelper
         }
 
         return result;
-        
-        static bool IsKanji(Rune r)
-        {
-            int value = r.Value;
-
-            return value is 
-                (>= 0x4E00 and <= 0x9FFF) or   // Main block (Common)
-                (>= 0x3400 and <= 0x4DBF) or   // Extension A
-                (>= 0x20000 and <= 0x2A6DF) or // Extension B (Very common in names)
-                (>= 0x2A700 and <= 0x2B73F) or // Extension C
-                (>= 0x2B740 and <= 0x2B81F) or // Extension D
-                (>= 0x2B820 and <= 0x2CEAF) or // Extension E
-                (>= 0xF900 and <= 0xFAFF) or   // Compatibility Ideographs
-                (>= 0x2F800 and <= 0x2FA1F);   // Compatibility Supplement
-        }
     }
 
 
