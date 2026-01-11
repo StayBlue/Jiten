@@ -163,8 +163,12 @@ public class FsrsScheduler
             card.State = FsrsState.Review;
             card.Step = null;
             var days = FsrsHelper.CalculateNextInterval(stability, DesiredRetention, Parameters, MaximumInterval);
+            
             return TimeSpan.FromDays(days);
         }
+        
+        if (card.Step == null)
+            card.Step = 0;
 
         return rating switch
         {
@@ -206,8 +210,12 @@ public class FsrsScheduler
             card.State = FsrsState.Review;
             card.Step = null;
             var days = FsrsHelper.CalculateNextInterval(stability, DesiredRetention, Parameters, MaximumInterval);
+            
             return TimeSpan.FromDays(days);
         }
+        
+        if (card.Step == null)
+            card.Step = 0;
 
         return rating switch
         {
@@ -222,6 +230,7 @@ public class FsrsScheduler
     private TimeSpan HandleAgainRating(FsrsCard card, TimeSpan[] steps)
     {
         card.Step = 0;
+        
         return steps[0];
     }
 
@@ -250,7 +259,7 @@ public class FsrsScheduler
         }
 
         card.Step++;
-        return steps[card.Step.Value];
+        return steps[card.Step!.Value];
     }
 
     private TimeSpan HandleEasyRating(FsrsCard card)
