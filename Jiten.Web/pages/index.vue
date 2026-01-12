@@ -1,6 +1,8 @@
 <script setup lang="ts">
   import OmniSearch from '~/components/OmniSearch.vue';
 
+  const authStore = useAuthStore();
+
   useHead({
     title: 'Jiten - Vocabulary Lists and Anki Decks for Japanese Media',
     meta: [
@@ -224,7 +226,7 @@
       </Card>
 
       <!-- Community Section -->
-      <Card class="shadow-lg">
+      <Card v-if="!authStore.isAuthenticated" class="shadow-lg">
         <template #content>
           <div class="text-center">
             <h2 class="text-2xl font-bold mb-4">Join the community</h2>
