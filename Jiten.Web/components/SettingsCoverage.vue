@@ -77,11 +77,10 @@
         </div>
       </template>
     </Card>
-    <div v-if="isRefreshing" class="!fixed top-1/3 left-1/3 text-center" style="z-index: 9999">
+    <div v-if="isRefreshing" class="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-black/60 backdrop-blur-sm">
       <div class="text-white font-bold text-lg">Refreshing your coverage, please wait a few seconds…</div>
-      <ProgressSpinner style="width: 50px; height: 50px" stroke-width="8" fill="transparent" animation-duration=".5s" aria-label="Creating your deck" />
+      <ProgressSpinner style="width: 50px; height: 50px" stroke-width="8" fill="transparent" animation-duration=".5s" aria-label="Refreshing coverage" />
     </div>
-<!--    <BlockUI :blocked="isRefreshing" full-screen />-->
   </div>
 </template>
 

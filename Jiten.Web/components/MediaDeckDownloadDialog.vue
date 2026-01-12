@@ -1,6 +1,6 @@
 <script setup lang="ts">
   import { type Deck, DeckDownloadType, DeckFormat, DeckOrder } from '~/types';
-  import { SelectButton, Select, Slider, InputNumber, Checkbox, Dialog, Button, BlockUI, ProgressSpinner } from 'primevue';
+  import { SelectButton, Select, Slider, InputNumber, Checkbox, Dialog, Button, ProgressSpinner } from 'primevue';
   import { debounce } from 'perfect-debounce';
   import { useApiFetch } from '~/composables/useApiFetch';
   import { useAuthStore } from '~/stores/authStore';
@@ -417,7 +417,6 @@
     </div>
   </Dialog>
 
-  <BlockUI :blocked="downloading" full-screen />
   <div v-if="downloading" class="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-black/60 backdrop-blur-sm text-white">
     <ProgressSpinner style="width: 50px; height: 50px" stroke-width="6" />
     <div class="mt-4 font-medium text-lg">Preparing download...</div>
