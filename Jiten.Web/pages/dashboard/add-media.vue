@@ -297,6 +297,11 @@
         formData.append('isAdultOnly', selectedMetadata.value.isAdultOnly.toString());
       }
 
+      // Add isNotOriginallyJapanese from metadata if available
+      if (selectedMetadata.value?.isNotOriginallyJapanese !== undefined) {
+        formData.append('isNotOriginallyJapanese', selectedMetadata.value.isNotOriginallyJapanese.toString());
+      }
+
       // Add relations from metadata if available
       if (selectedMetadata.value?.relations && selectedMetadata.value.relations.length > 0) {
         for (let i = 0; i < selectedMetadata.value.relations.length; i++) {

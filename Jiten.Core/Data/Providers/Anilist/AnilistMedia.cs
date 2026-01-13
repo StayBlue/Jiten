@@ -15,6 +15,7 @@ public class AnilistMedia
     public int? AverageScore { get; set; }
     public int? MeanScore { get; set; }
     public bool IsAdult { get; set; }
+    public string? CountryOfOrigin { get; set; }
     public AnilistRelations? Relations { get; set; }
 
     public DateTime ReleaseDate => new(

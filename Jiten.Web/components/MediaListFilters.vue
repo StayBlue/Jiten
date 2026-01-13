@@ -36,6 +36,21 @@
   const uniqueCoverageMax = defineModel<number | null>('uniqueCoverageMax', { required: true });
   const excludeSequels = defineModel<boolean | null>('excludeSequels', { required: false });
 
+  const NOT_ORIGINALLY_JP_TAG_ID = 249;
+
+  const excludeNotOriginallyJp = computed({
+    get: () => excludeTags.value.includes(NOT_ORIGINALLY_JP_TAG_ID),
+    set: (val: boolean) => {
+      if (val) {
+        if (!excludeTags.value.includes(NOT_ORIGINALLY_JP_TAG_ID)) {
+          excludeTags.value.push(NOT_ORIGINALLY_JP_TAG_ID);
+        }
+      } else {
+        excludeTags.value = excludeTags.value.filter((id) => id !== NOT_ORIGINALLY_JP_TAG_ID);
+      }
+    },
+  });
+
   const popover = ref();
 
   const currentYear = new Date().getFullYear();
@@ -474,10 +489,14 @@
                 </div>
               </div>
 
-              <div v-if="isConnected" class="flex flex-col gap-2">
+              <div class="flex flex-col gap-2">
                 <div class="flex items-center gap-2">
                   <Checkbox v-model="excludeSequels" class="flex-shrink-0" inputId="excludeSequels" binary />
                   <label for="excludeSequels" class="text-sm font-medium text-gray-600 dark:text-gray-300">Exclude sequels and fandiscs</label>
+                </div>
+                <div class="flex items-center gap-2">
+                  <Checkbox v-model="excludeNotOriginallyJp" class="flex-shrink-0" inputId="excludeNotOriginallyJp" binary />
+                  <label for="excludeNotOriginallyJp" class="text-sm font-medium text-gray-600 dark:text-gray-300">Exclude not originally Japanese media</label>
                 </div>
               </div>
             </div>

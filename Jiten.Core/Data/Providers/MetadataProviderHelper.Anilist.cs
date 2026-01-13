@@ -33,6 +33,7 @@ public static partial class MetadataProviderHelper
                                                     description
                                                     genres
                                                     isAdult
+                                                    countryOfOrigin
                                                     tags {
                                                       name
                                                       rank
@@ -106,6 +107,7 @@ public static partial class MetadataProviderHelper
                                                                      Percentage = tag.Rank
                                                                  }).ToList(),
                                                              IsAdultOnly = media.IsAdult,
+                                                             IsNotOriginallyJapanese = media.CountryOfOrigin != "JP",
                                                              Relations = MapAnilistRelations(media.Relations)
                                                          }).ToList() ?? [];
     }
@@ -122,6 +124,7 @@ public static partial class MetadataProviderHelper
                                                     description
                                                     genres
                                                     isAdult
+                                                    countryOfOrigin
                                                     tags {
                                                       name
                                                       rank
@@ -192,6 +195,7 @@ public static partial class MetadataProviderHelper
                        Name = tag.Name,
                        Percentage = tag.Rank
                    }).ToList(), IsAdultOnly = media.IsAdult,
+                   IsNotOriginallyJapanese = media.CountryOfOrigin != "JP",
                    Relations = MapAnilistRelations(media.Relations)
                };
     }
@@ -208,6 +212,7 @@ public static partial class MetadataProviderHelper
                                                     description
                                                     genres
                                                     isAdult
+                                                    countryOfOrigin
                                                     tags {
                                                       name
                                                       rank
@@ -283,6 +288,7 @@ public static partial class MetadataProviderHelper
                        Name = tag.Name,
                        Percentage = tag.Rank
                    }).ToList(), IsAdultOnly = media.IsAdult,
+                   IsNotOriginallyJapanese = media.CountryOfOrigin != "JP",
                    Relations = MapAnilistRelations(media.Relations)
                };
     }

@@ -19,7 +19,7 @@ public static partial class MetadataProviderHelper
         var requestContent = new StringContent(JsonSerializer.Serialize(new
                                                                         {
                                                                             filters = filter, fields =
-                                                                                "id,title,released,description,titles{main,official,lang,title,latin},image{url,sexual}, extlinks{label,url, name}, aliases, rating, tags{spoiler,id,rating}, relations{relation,relation_official,id}",
+                                                                                "id,title,released,description,titles{main,official,lang,title,latin},image{url,sexual}, extlinks{label,url, name}, aliases, rating, olang, tags{spoiler,id,rating}, relations{relation,relation_official,id}",
                                                                             results = 10, page = 1
                                                                         }));
         var http = new HttpClient();
@@ -59,6 +59,7 @@ public static partial class MetadataProviderHelper
                                Image = requestResult.Image?.Url, Aliases = requestResult.Aliases,
                                Rating = (int)Math.Round(requestResult.Rating ?? 0), Genres = tags.Select(t => t.Name).ToList(), Tags = tags,
                                IsAdultOnly = isAdultOnly,
+                               IsNotOriginallyJapanese = requestResult.Olang != "ja",
                                Relations = MapVndbRelations(requestResult.Relations)
                            };
 
@@ -78,7 +79,7 @@ public static partial class MetadataProviderHelper
         var requestContent = new StringContent(JsonSerializer.Serialize(new
                                                                         {
                                                                             filters = filter, fields =
-                                                                                "id,title,released,description,titles{main,official,lang,title,latin},image{url,sexual}, extlinks{label,url, name}, aliases, rating, tags{spoiler,id,rating}, relations{relation,relation_official,id}",
+                                                                                "id,title,released,description,titles{main,official,lang,title,latin},image{url,sexual}, extlinks{label,url, name}, aliases, rating, olang, tags{spoiler,id,rating}, relations{relation,relation_official,id}",
                                                                         }));
         var http = new HttpClient();
         requestContent.Headers.ContentType = new MediaTypeHeaderValue("application/json");
@@ -114,6 +115,7 @@ public static partial class MetadataProviderHelper
                    Links = [new Link { LinkType = LinkType.Vndb, Url = $"https://vndb.org/{requestResult.Id}" }],
                    Image = requestResult.Image?.Url, Aliases = requestResult.Aliases, Rating = (int)Math.Round(requestResult.Rating ?? 0),
                    Genres = tags.Select(t => t.Name).ToList(), Tags = tags, IsAdultOnly = isAdultOnly,
+                   IsNotOriginallyJapanese = requestResult.Olang != "ja",
                    Relations = MapVndbRelations(requestResult.Relations)
                };
     }

@@ -55,6 +55,7 @@ public static partial class MetadataProviderHelper
                    OriginalTitle = result.OriginalTitle, EnglishTitle = result.Title, ReleaseDate = result.ReleaseDate, Links = links,
                    Image = result.PosterPath, Description = result.Description, Aliases = aliases, Rating = (int)(result.VoteAverage * 10),
                    IsAdultOnly = result.Adult, Genres = result.Genres.Select(g => g.Name).ToList(),
+                   IsNotOriginallyJapanese = result.OriginalLanguage != "ja",
                    Tags = keywords.Select(k => new MetadataTag
                    {
                        Name = k.Name,
@@ -104,7 +105,9 @@ public static partial class MetadataProviderHelper
                    Image = result.PosterPath,
                    Links = [new Link { LinkType = LinkType.Tmdb, Url = $"https://www.themoviedb.org/tv/{tmdbId}" }],
                    Description = result.Description, Aliases = aliases, Rating = (int)(result.VoteAverage * 10), IsAdultOnly = result.Adult,
-                   Genres = result.Genres.Select(g => g.Name).ToList(), Tags = keywords.Select(k => new MetadataTag
+                   Genres = result.Genres.Select(g => g.Name).ToList(),
+                   IsNotOriginallyJapanese = result.OriginalLanguage != "ja",
+                   Tags = keywords.Select(k => new MetadataTag
                    {
                        Name = k.Name,
                        Percentage = 100

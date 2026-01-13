@@ -45,6 +45,10 @@ public static partial class MetadataProviderHelper
         if (metadata.IsAdultOnly && deck.DeckGenres.All(dg => dg.Genre != Genre.AdultOnly))
             deck.DeckGenres.Add(new DeckGenre { DeckId = deck.DeckId, Genre = Genre.AdultOnly });
 
+        const int NotOriginallyJpTagId = 249;
+        if (metadata.IsNotOriginallyJapanese && deck.DeckTags.All(dt => dt.TagId != NotOriginallyJpTagId))
+            deck.DeckTags.Add(new DeckTag { DeckId = deck.DeckId, TagId = NotOriginallyJpTagId, Percentage = 100 });
+
         // Add new tags if found (using highest percentage for duplicate mappings)
         if (metadata.Tags.Any())
         {

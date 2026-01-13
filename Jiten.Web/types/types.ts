@@ -192,6 +192,7 @@ export interface Metadata {
   genres?: string[];
   tags?: MetadataTag[];
   isAdultOnly?: boolean;
+  isNotOriginallyJapanese?: boolean;
   relations?: MetadataRelation[];
 }
 

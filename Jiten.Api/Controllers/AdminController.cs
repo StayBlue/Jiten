@@ -76,7 +76,8 @@ public partial class AdminController(
                                         Name = t.Name,
                                         Percentage = t.Percentage
                                     }).ToList(),
-                                    IsAdultOnly = model.IsAdultOnly
+                                    IsAdultOnly = model.IsAdultOnly,
+                                    IsNotOriginallyJapanese = model.IsNotOriginallyJapanese
                                 };
 
             // Parse links and aliases from form data

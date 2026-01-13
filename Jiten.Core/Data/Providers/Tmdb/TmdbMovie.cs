@@ -27,5 +27,6 @@ public class TmdbMovie
     [JsonPropertyName("overview")] public required string Description { get; set; } 
     [JsonPropertyName("vote_average")] public double VoteAverage { get; set; }
     [JsonPropertyName("genres")] public List<TmdbGenre> Genres { get; set; } = new();
-    [JsonPropertyName("adult")] public bool Adult { get; set; } 
+    [JsonPropertyName("adult")] public bool Adult { get; set; }
+    [JsonPropertyName("original_language")] public string? OriginalLanguage { get; set; }
 }

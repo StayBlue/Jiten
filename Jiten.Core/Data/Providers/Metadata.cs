@@ -16,5 +16,6 @@ public class Metadata
     public List<string> Genres { get; set; } = new();
     public List<MetadataTag> Tags { get; set; } = new();
     public bool IsAdultOnly { get; set; }
+    public bool IsNotOriginallyJapanese { get; set; }
     public List<MetadataRelation> Relations { get; set; } = new();
 }

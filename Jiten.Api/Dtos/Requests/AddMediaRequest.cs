@@ -18,6 +18,7 @@ public class AddMediaRequest
     public List<string> Genres { get; set; } = new List<string>();
     public List<AddMediaRequestTag> Tags { get; set; } = new List<AddMediaRequestTag>();
     public bool IsAdultOnly { get; set; }
+    public bool IsNotOriginallyJapanese { get; set; }
     public List<AddMediaRequestRelation> Relations { get; set; } = new List<AddMediaRequestRelation>();
 }
 
