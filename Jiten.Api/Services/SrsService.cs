@@ -126,12 +126,17 @@ public class SrsService(JitenDbContext context, UserDbContext userContext, ILogg
         // Step 6: Build lookup: (WordId, ReadingIndex) → existing FsrsCard
         var existingKanaCardsLookup = existingKanaCards.ToDictionary(c => (c.WordId, c.ReadingIndex));
 
-        // Step 7: Process each kana card
+        // Step 7: Process each kana card (deduplicate to avoid duplicate key errors when multiple kanji readings map to same kana)
         var newKanaCards = new List<FsrsCard>();
         var updatedCount = 0;
+        var processedKanaKeys = new HashSet<(int, byte)>();
 
         foreach (var (wordId, kanaIndex, sourceCard, overwrite) in kanaCardsToSync)
         {
+            // Skip if we've already processed this kana card in this batch
+            if (!processedKanaKeys.Add((wordId, kanaIndex)))
+                continue;
+
             if (existingKanaCardsLookup.TryGetValue((wordId, kanaIndex), out var existingCard))
             {
                 // Card exists - only update if Overwrite is true

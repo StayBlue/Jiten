@@ -176,7 +176,7 @@ public class UserController(
     /// </summary>
     [HttpPost("vocabulary/import-from-anki-txt")]
     [Consumes("multipart/form-data")]
-    public async Task<IResult> AddKnownFromAnkiTxt(IFormFile? file)
+    public async Task<IResult> AddKnownFromAnkiTxt(IFormFile? file, [FromQuery] bool parseWords = false)
     {
         var userId = userService.UserId;
         if (string.IsNullOrEmpty(userId)) return Results.Unauthorized();
@@ -211,7 +211,9 @@ public class UserController(
             return Results.BadRequest("No valid words found in file");
 
         var combinedText = string.Join(Environment.NewLine, validWords);
-        var parsedWords = await Parser.Parser.ParseText(contextFactory, combinedText);
+        var parsedWords = parseWords
+            ? await Parser.Parser.ParseText(contextFactory, combinedText)
+            : await Parser.Parser.GetWordsDirectLookup(contextFactory, validWords);
         var added = await userService.AddKnownWords(parsedWords);
 
         backgroundJobs.Enqueue<ComputationJob>(job => job.ComputeUserCoverage(userId));

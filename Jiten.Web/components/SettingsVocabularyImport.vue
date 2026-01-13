@@ -103,6 +103,7 @@
   const uploadedCount = ref<number | null>(null);
   const addedCount = ref<number | null>(null);
   const skippedCount = ref<number | null>(null);
+  const parseWordsAnkiTxt = ref(false);
 
   async function importFromJpdbApi() {
     if (!jpdbApiKey.value) {
@@ -162,9 +163,10 @@
       return;
     }
 
-    // Ensure it's a TXT file
-    if (file.type !== 'text/plain') {
-      toast.add({ severity: 'error', summary: 'Error', detail: 'Please upload a TXT file.', life: 5000 });
+    // Validate file extension
+    const fileName = file.name.toLowerCase();
+    if (!fileName.endsWith('.txt') && !fileName.endsWith('.csv')) {
+      toast.add({ severity: 'error', summary: 'Error', detail: 'Please upload a .txt or .csv file.', life: 5000 });
       return;
     }
 
@@ -178,7 +180,7 @@
       formData.append('file', file);
 
       // Send the file to the API (server parses and saves to user account)
-      const result = await $api<{ parsed: number; added: number }>('user/vocabulary/import-from-anki-txt', {
+      const result = await $api<{ parsed: number; added: number }>(`user/vocabulary/import-from-anki-txt?parseWords=${parseWordsAnkiTxt.value}`, {
         method: 'POST',
         body: formData,
       });
@@ -196,7 +198,8 @@
       }
     } catch (error) {
       console.error('Error processing Anki file:', error);
-      toast.add({ severity: 'error', detail: 'Failed to process Anki file.', life: 5000 });
+      const errorMessage = error instanceof Error ? error.message : 'Failed to process Anki file.';
+      toast.add({ severity: 'error', summary: 'Error', detail: errorMessage, life: 5000 });
     } finally {
       isLoading.value = false;
     }
@@ -734,6 +737,16 @@
           Warning: This will mark ALL words contained in the deck as known. You will have to remove the lines you don't want manually before uploading your
           file. The words to add need to be the first word on each line. Limited to 50000 words.
         </p>
+
+        <div class="mb-3 flex items-center">
+          <Checkbox id="parseWordsAnkiTxt" v-model="parseWordsAnkiTxt" :binary="true" />
+          <label for="parseWordsAnkiTxt" class="ml-2">
+            <span>Parse words instead of importing directly</span>
+            <span class="text-sm text-gray-600 dark:text-gray-400 block">
+              Only use if you have conjugated verbs instead of the dictionary form (less accurate)
+            </span>
+          </label>
+        </div>
 
         <FileUpload
           mode="basic"
