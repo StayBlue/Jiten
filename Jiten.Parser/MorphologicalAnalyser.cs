@@ -172,9 +172,6 @@ public class MorphologicalAnalyser
         var configPath = morphemesOnly
             ? Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "resources", "sudachi_nouserdic.json")
             : Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "resources", "sudachi.json");
-        // Note: DictionaryPath from config causes issues - Sudachi uses the systemDict path from sudachi.json
-        // which is relative to the config file. Passing null lets Sudachi handle dictionary resolution itself.
-        string? dic = null;
 
         var sudachiStopwatch = diagnostics != null ? Stopwatch.StartNew() : null;
         var rawOutput = SudachiInterop.ProcessText(configPath, combinedText, dic, mode: morphemesOnly ? 'A' : 'C');
