@@ -147,7 +147,8 @@ public class MorphologicalAnalyser
                             .AddJsonFile("appsettings.json", optional: true)
                             .AddEnvironmentVariables()
                             .Build();
-
+        var dic = configuration.GetValue<string>("DictionaryPath");
+        
         // Preprocess each text separately (preserves transformations per-text)
         var processedTexts = new List<string>(texts.Count);
         var originalTexts = new List<string>(texts.Count);
