@@ -12,6 +12,7 @@ using Jiten.Core.Data;
 using Jiten.Core.Data.Authentication;
 using Jiten.Core.Data.JMDict;
 using Jiten.Core.Data.Providers;
+using Jiten.Parser.Diagnostics;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -164,12 +165,22 @@ public class Program
 
         [Option(longName: "populate-word-kanji", Required = false, HelpText = "Populate WordKanji junction table after kanji import.")]
         public bool PopulateWordKanji { get; set; }
+
+        [Option(longName: "parse-test", Required = false, HelpText = "Parse text with verbose diagnostic output. Use @filepath to read from file.")]
+        public string? ParseTest { get; set; }
+
+        [Option(longName: "parse-test-output", Required = false, HelpText = "Output file path for parse-test diagnostics. Defaults to stdout.")]
+        public string? ParseTestOutput { get; set; }
+
+        [Option(longName: "run-parser-tests", Required = false, HelpText = "Run all parser tests with diagnostics and fix suggestions.")]
+        public bool RunParserTests { get; set; }
     }
 
     static async Task Main(string[] args)
     {
         var configuration = new ConfigurationBuilder()
                             .SetBasePath(Directory.GetCurrentDirectory())
+                            .AddJsonFile(Path.Combine("Shared", "sharedsettings.json"), optional: true, reloadOnChange: true)
                             .AddJsonFile("sharedsettings.json", optional: true, reloadOnChange: true)
                             .AddJsonFile("appsettings.json", optional: true, reloadOnChange: true)
                             .AddEnvironmentVariables()
@@ -279,6 +290,16 @@ public class Program
                             await JitenHelper.DebugDeck(_contextFactory, o.DebugDeck.Value);
                         }
 
+                        if (o.ParseTest != null)
+                        {
+                            await ParseTest(o);
+                        }
+
+                        if (o.RunParserTests)
+                        {
+                            await RunParserTests(o);
+                        }
+
                         if (!string.IsNullOrEmpty(o.UserDicMassAdd))
                         {
                             if (string.IsNullOrEmpty(o.XmlPath))
@@ -345,7 +366,10 @@ public class Program
                         {
                             Console.WriteLine("Extracting features...");
                             var featureExtractor = new FileFeatureExtractor(_contextFactory);
-                            await featureExtractor.ExtractFeatures(Jiten.Parser.Parser.ParseTextToDeck, o.ExtractFeatures);
+                            await featureExtractor.ExtractFeatures(
+                                (factory, text, storeRaw, predictDiff, mediaType) =>
+                                    Jiten.Parser.Parser.ParseTextToDeck(factory, text, storeRaw, predictDiff, mediaType),
+                                o.ExtractFeatures);
                             Console.WriteLine("All features extracted.");
                         }
 
@@ -353,7 +377,10 @@ public class Program
                         {
                             Console.WriteLine("Extracting features...");
                             var featureExtractor = new DbFeatureExtractor(_contextFactory);
-                            await featureExtractor.ExtractFeatures(Jiten.Parser.Parser.ParseTextToDeck, o.ExtractFeaturesDb);
+                            await featureExtractor.ExtractFeatures(
+                                (factory, text, storeRaw, predictDiff, mediaType) =>
+                                    Jiten.Parser.Parser.ParseTextToDeck(factory, text, storeRaw, predictDiff, mediaType),
+                                o.ExtractFeaturesDb);
                             Console.WriteLine("All features extracted.");
                         }
 
@@ -1242,5 +1269,135 @@ public class Program
         await SudachiDictionaryProcessor.PruneAndFixSudachiCsvFiles(folderPath, allReadings);
 
         Console.WriteLine($"--- Pruning and fixing complete. ---");
+    }
+
+    private static async Task ParseTest(Options options)
+    {
+        var text = options.ParseTest!;
+
+        // Support @filepath syntax to read from file
+        if (text.StartsWith("@"))
+        {
+            var filePath = text[1..];
+            if (!File.Exists(filePath))
+            {
+                Console.WriteLine($"File not found: {filePath}");
+                return;
+            }
+            text = await File.ReadAllTextAsync(filePath);
+        }
+
+        // Environment diagnostics
+        var currentDir = Directory.GetCurrentDirectory();
+
+        var configuration = new ConfigurationBuilder()
+            .SetBasePath(currentDir)
+            .AddJsonFile(Path.Combine(Environment.CurrentDirectory, "..", "Shared", "sharedsettings.json"), optional: true)
+            .AddJsonFile("sharedsettings.json", optional: true)
+            .AddJsonFile("appsettings.json", optional: true)
+            .Build();
+        var dictionaryPath = configuration.GetValue<string>("DictionaryPath");
+        var dictionaryExists = !string.IsNullOrEmpty(dictionaryPath) && File.Exists(dictionaryPath);
+
+        var diagnostics = new ParserDiagnostics { InputText = text };
+        var sw = Stopwatch.StartNew();
+
+        // Use full Parser.ParseText to exercise JMDict lookup and rescue
+        var deckWords = await Jiten.Parser.Parser.ParseText(_contextFactory, text, diagnostics: diagnostics);
+
+        sw.Stop();
+        diagnostics.TotalElapsedMs = sw.ElapsedMilliseconds;
+
+        var output = new
+        {
+            InputText = text,
+            TotalElapsedMs = sw.ElapsedMilliseconds,
+            TokenCount = deckWords.Count,
+            Sudachi = diagnostics.Sudachi,
+            TokenStages = diagnostics.TokenStages,
+            Tokens = deckWords.Select(w => new
+            {
+                w.OriginalText,
+                w.WordId,
+                w.ReadingIndex,
+                PartsOfSpeech = w.PartsOfSpeech?.Select(p => p.ToString()).ToList(),
+                w.Conjugations
+            }).ToList()
+        };
+
+        var jsonOptions = new JsonSerializerOptions
+        {
+            WriteIndented = true,
+            Encoder = JavaScriptEncoder.Create(UnicodeRanges.All)
+        };
+        var json = JsonSerializer.Serialize(output, jsonOptions);
+
+        if (!string.IsNullOrEmpty(options.ParseTestOutput))
+        {
+            await File.WriteAllTextAsync(options.ParseTestOutput, json);
+            Console.WriteLine($"Diagnostics written to {options.ParseTestOutput}");
+        }
+        else
+        {
+            Console.WriteLine(json);
+        }
+    }
+
+    private static async Task RunParserTests(Options options)
+    {
+        var runner = new DiagnosticTestRunner(_contextFactory);
+        var result = await runner.RunSegmentationTests();
+
+        Console.WriteLine($"=== Parser Test Results ===");
+        Console.WriteLine($"Total: {result.TotalTests}, Passed: {result.Passed}, Failed: {result.Failed}");
+        Console.WriteLine();
+
+        if (result.Failures.Count == 0)
+        {
+            Console.WriteLine("All tests passed!");
+            return;
+        }
+
+        Console.WriteLine($"=== Failures ({result.Failures.Count}) ===");
+        Console.WriteLine();
+
+        var jsonOptions = new JsonSerializerOptions
+        {
+            WriteIndented = true,
+            Encoder = JavaScriptEncoder.Create(UnicodeRanges.All)
+        };
+
+        foreach (var failure in result.Failures.Take(20))
+        {
+            Console.WriteLine($"Input: {failure.Input}");
+            Console.WriteLine($"Expected: [{string.Join(", ", failure.Expected)}]");
+            Console.WriteLine($"Actual:   [{string.Join(", ", failure.Actual)}]");
+
+            if (failure.Analysis != null)
+            {
+                Console.WriteLine($"Type: {failure.Analysis.Type}");
+                Console.WriteLine($"Cause: {failure.Analysis.ProbableCause ?? "Unknown"}");
+                if (!string.IsNullOrEmpty(failure.Analysis.SuggestedFix))
+                {
+                    Console.WriteLine($"Suggested Fix:");
+                    Console.WriteLine(failure.Analysis.SuggestedFix);
+                }
+            }
+
+            Console.WriteLine();
+        }
+
+        if (result.Failures.Count > 20)
+        {
+            Console.WriteLine($"... and {result.Failures.Count - 20} more failures.");
+        }
+
+        // Output full diagnostics to file if specified
+        if (!string.IsNullOrEmpty(options.ParseTestOutput))
+        {
+            var json = JsonSerializer.Serialize(result, jsonOptions);
+            await File.WriteAllTextAsync(options.ParseTestOutput, json);
+            Console.WriteLine($"Full diagnostics written to {options.ParseTestOutput}");
+        }
     }
 }

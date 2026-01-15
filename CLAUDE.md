@@ -264,6 +264,84 @@ Required settings (see `.env.example` in README):
 - Run single test: `dotnet test --filter "FullyQualifiedName~DeconjugatorTests.DeconjugationTest"`
 - Tests require Shared resources to be present
 
+### Autonomous Parser Testing
+
+The parser has a self-diagnostic system accessible via CLI commands. Use these to test, debug, and fix parser issues.
+
+**Test a single input with full diagnostics:**
+```bash
+dotnet run --project Jiten.Cli -- --parse-test "飲んだから"
+dotnet run --project Jiten.Cli -- --parse-test "食べている" --parse-test-output diag.json
+dotnet run --project Jiten.Cli -- --parse-test @input.txt  # Read from file
+```
+
+**Run batch parser tests with failure analysis:**
+```bash
+dotnet run --project Jiten.Cli -- --run-parser-tests
+dotnet run --project Jiten.Cli -- --run-parser-tests --parse-test-output failures.json
+```
+
+**Interpreting diagnostic output:**
+
+The JSON output contains:
+- `sudachi.tokens`: Raw Sudachi morphological analysis (surface, POS, dictionary form, reading)
+- `sudachi.rawOutput`: Unparsed Sudachi output for debugging edge cases
+- `tokenStages`: Each processing stage with timing and modifications made
+- `results`: Final parsed tokens with part of speech
+
+**Failure types and what to look for:**
+
+1. **OverSegmentation** - Parser split tokens that should remain combined
+   - Check `sudachi.tokens` - did Sudachi split incorrectly?
+   - Check `tokenStages` - did a Combine* method fail to merge?
+   - Fix: Add entry to `SpecialCases2` or `SpecialCases3` in `MorphologicalAnalyser.cs`
+
+2. **UnderSegmentation** - Parser combined tokens that should be separate
+   - Check which stage merged the tokens (look for `"type": "merge"` in modifications)
+   - Fix: Add exclusion in the relevant Combine* method or add to `PreprocessText()` split patterns
+
+3. **TokenMismatch** - Token count matches but content differs
+   - Usually a POS classification issue or wrong dictionary form lookup
+   - Check `sudachi.tokens[].partOfSpeech` for misclassification
+
+**Key files for parser fixes:**
+
+- `Jiten.Parser/MorphologicalAnalyser.cs`:
+  - `SpecialCases2` / `SpecialCases3`: Hardcoded token combinations (line 21-49)
+  - `MisparsesRemove`: Tokens to filter out (line 55-59)
+  - `Combine*` methods: Token merging logic
+  - `PreprocessText()`: Text preprocessing and forced splits (line 435-488)
+  - `RepairNTokenisation()`: Fixes ん-form tokenisation issues
+
+- `Shared/resources/deconjugator.json`:
+  - Rule-based verb/adjective deconjugation rules (~1500 lines)
+  - Rule types: `stdrule`, `rewriterule`, `onlyfinalrule`, `neverfinalrule`, `contextrule`
+  - Each rule has: `dec_end` (dictionary ending), `con_end` (conjugated ending), `dec_tag`/`con_tag` (grammar tags)
+  - **Search intelligently** - file is large, search for specific endings or rule types
+  - Example: To find past tense rules, search for `"detail": "past"`
+
+- `Shared/resources/user_dic.xml`:
+  - Custom Sudachi user dictionary entries
+  - Use to add words Sudachi doesn't recognise or to override incorrect parses
+  - Format: `だしませんでした,1676,1676,777,出す,動詞,非自立可能,*,*,*,*,ダシマセンデシタ,だしませんでした,*,*,*,*,*`
+  - 0 見出し (TRIE 用), 1 左連接ID, 2 右連接ID, 3 コスト, 4 見出し (解析結果表示用), 5 品詞1, 6 品詞2, 7 品詞3, 8 品詞4, 9 品詞 (活用型), 10 品詞 (活用形), 11 読み, 12 正規化表記, 13 辞書形ID, 14 分割タイプ, 15 A単位分割情報, 16 B単位分割情報, 17 ※未使用
+  - Full spec at https://github.com/WorksApplications/Sudachi/blob/develop/docs/user_dict.md
+  - After editing, regenerate `user_dic.dic` using Sudachi tools `sudachi ubuild "Y:\CODE\Jiten\Shared\resources\user_dic.xml" -s "S:\Jiten\sudachi.rs\resources\system_full.dic" -o "Y:\CODE\Jiten\Shared\resources\user_dic.dic"`
+  - **Search intelligently** - file contains many entries, search for specific words
+
+**Autonomous fix workflow:**
+
+1. Run `--run-parser-tests` to identify failures
+2. For each failure, run `--parse-test "input"` to get full diagnostics
+3. Analyse the `sudachi` and `tokenStages` sections to identify the cause
+4. Apply the appropriate fix:
+   - Sudachi issue → Add to `user_dic.xml` or `PreprocessText()` splits
+   - Missing combination → Add to `SpecialCases2/3`
+   - Wrong merge → Modify relevant `Combine*` method
+   - Deconjugation issue → Check/add rules in `deconjugator.json`
+5. Re-run the failing test to verify the fix
+6. Run full test suite to check for regressions
+
 ## Important Architectural Notes
 
 ### Dependency Flow
