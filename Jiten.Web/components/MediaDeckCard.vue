@@ -211,17 +211,27 @@
       <template #title>
         <div class="flex justify-between items-start">
           <span>{{ localiseTitle(deck) }}</span>
-          <div v-if="authStore.isAuthenticated" class="flex flex-row items-center gap-1 h-6">
-            <div class="flex items-center gap-2">
+          <div class="flex flex-row items-center gap-1 h-6">
+            <div v-if="authStore.isAuthenticated" class="flex items-center gap-2">
               <i v-if="deck.isFavourite" class="pi pi-star-fill text-yellow-500 text-lg" />
               <i v-if="deck.isIgnored" class="pi pi-eye-slash text-gray-800 dark:text-gray-300 text-lg" />
               <span v-if="deck.status && deck.status !== DeckStatus.None" :class="['text-sm font-bold', statusColor]">
                 {{ getDeckStatusText(deck.status) }}
               </span>
             </div>
-            <button type="button" class="p-1.5 rounded hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors" @click="toggleMenu">
-              <i class="pi pi-ellipsis-v text-gray-600 dark:text-gray-300" />
-            </button>
+            <Tooltip content="View stats">
+              <router-link
+                :to="`/decks/media/${deck.deckId}/stats`"
+                class="inline-block p-1.5 rounded hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors cursor-pointer"
+              >
+                <i class="pi pi-chart-bar text-primary-500" />
+              </router-link>
+            </Tooltip>
+            <Tooltip v-if="authStore.isAuthenticated" content="More options">
+              <button type="button" class="p-1.5 rounded hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors cursor-pointer" @click="toggleMenu">
+                <i class="pi pi-ellipsis-v text-primary-500" />
+              </button>
+            </Tooltip>
           </div>
         </div>
       </template>
@@ -390,7 +400,6 @@
                   <div class="flex flex-col md:flex-row gap-2">
                     <Button as="router-link" :to="`/decks/media/${deck.deckId}/detail`" label="Details" class="text-center" icon="pi pi-eye" />
                     <Button as="router-link" :to="`/decks/media/${deck.deckId}/vocabulary`" label="Vocabulary" class="text-center" icon="pi pi-book" />
-                    <Button v-if="!isCompact" as="router-link" :to="`/decks/media/${deck.deckId}/stats`" label="Stats" class="text-center" icon="pi pi-chart-bar" />
                     <Button label="Download deck" class="text-center" @click="showDownloadDialog = true" icon="pi pi-download" />
                     <Button
                       v-if="!isCompact && displayAdminFunctions"
