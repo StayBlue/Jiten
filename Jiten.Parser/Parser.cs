@@ -1167,25 +1167,39 @@ namespace Jiten.Parser
                 if (wordCache == null || wordCache.Count == 0)
                     continue;
 
-                List<JmDictWord> matches = new();
+                List<(JmDictWord match, int readingIndex)> matchesWithReading = new();
 
                 foreach (var id in matchesIds)
                 {
                     if (!wordCache.TryGetValue(id, out var match)) continue;
-                    if (match.Readings != null && match.Readings.Any(r => r == word))
-                        matches.Add(match);
+                    var readingIndex = match.Readings?.IndexOf(word) ?? -1;
+                    if (readingIndex >= 0)
+                        matchesWithReading.Add((match, readingIndex));
                 }
 
-                if (matches.Count == 0)
+                if (matchesWithReading.Count == 0)
                     continue;
 
-                var bestMatch = matches.OrderByDescending(m => m.GetPriorityScore(WanaKana.IsKana(word))).First();
+                // Fetch frequency data from database
+                var candidateWordIds = matchesWithReading.Select(m => m.match.WordId).ToList();
+                await using var context = await _contextFactory.CreateDbContextAsync();
+                var frequencies = await context.JmDictWordFrequencies
+                    .AsNoTracking()
+                    .Where(f => candidateWordIds.Contains(f.WordId))
+                    .ToDictionaryAsync(f => f.WordId);
 
-                var readingIndex = bestMatch.Readings?.IndexOf(word) ?? -1;
-                if (readingIndex == -1)
-                    continue;
+                // Order by frequency rank (lower = more frequent = better)
+                var best = matchesWithReading
+                    .OrderBy(m =>
+                    {
+                        if (frequencies.TryGetValue(m.match.WordId, out var freq) &&
+                            freq.ReadingsFrequencyRank.Count > m.readingIndex)
+                            return freq.ReadingsFrequencyRank[m.readingIndex];
+                        return int.MaxValue; // No frequency data = lowest priority
+                    })
+                    .First();
 
-                matchedWords.Add(new DeckWord() { WordId = bestMatch.WordId, ReadingIndex = (byte)readingIndex, OriginalText = word });
+                matchedWords.Add(new DeckWord { WordId = best.match.WordId, ReadingIndex = (byte)best.readingIndex, OriginalText = word });
             }
 
             return ExcludeFinalMisparses(matchedWords);
