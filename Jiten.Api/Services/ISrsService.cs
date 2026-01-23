@@ -23,5 +23,6 @@ public interface ISrsService
     /// <param name="userId">User ID</param>
     /// <param name="cards">Collection of cards to sync with their overwrite flags</param>
     /// <param name="syncDateTime">Timestamp for the sync operation</param>
-    Task SyncKanaReadingBatch(string userId, IEnumerable<(int WordId, byte ReadingIndex, FsrsCard SourceCard, bool Overwrite)> cards, DateTime syncDateTime);
+    /// <returns>Number of new kana cards created</returns>
+    Task<int> SyncKanaReadingBatch(string userId, IEnumerable<(int WordId, byte ReadingIndex, FsrsCard SourceCard, bool Overwrite)> cards, DateTime syncDateTime);
 }

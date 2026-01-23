@@ -77,10 +77,10 @@ public class SrsService(JitenDbContext context, UserDbContext userContext, ILogg
     /// <summary>
     /// Syncs FSRS state from multiple kanji reading cards to their corresponding kana reading cards (batch optimised).
     /// </summary>
-    public async Task SyncKanaReadingBatch(string userId, IEnumerable<(int WordId, byte ReadingIndex, FsrsCard SourceCard, bool Overwrite)> cards, DateTime syncDateTime)
+    public async Task<int> SyncKanaReadingBatch(string userId, IEnumerable<(int WordId, byte ReadingIndex, FsrsCard SourceCard, bool Overwrite)> cards, DateTime syncDateTime)
     {
         var cardsList = cards.ToList();
-        if (cardsList.Count == 0) return;
+        if (cardsList.Count == 0) return 0;
 
         // Step 1: Extract all unique WordIds
         var wordIds = cardsList.Select(c => c.WordId).Distinct().ToList();
@@ -114,7 +114,7 @@ public class SrsService(JitenDbContext context, UserDbContext userContext, ILogg
             kanaCardsToSync.Add((wordId, (byte)kanaIndex, sourceCard, overwrite));
         }
 
-        if (kanaCardsToSync.Count == 0) return;
+        if (kanaCardsToSync.Count == 0) return 0;
 
         // Step 5: Fetch all existing kana FsrsCards in a single query
         var targetWordIds = kanaCardsToSync.Select(k => k.WordId).Distinct().ToList();
@@ -183,5 +183,7 @@ public class SrsService(JitenDbContext context, UserDbContext userContext, ILogg
             logger.LogInformation("Batch synced kana readings: {NewCount} created, {UpdatedCount} updated",
                 newKanaCards.Count, updatedCount);
         }
+
+        return newKanaCards.Count;
     }
 }

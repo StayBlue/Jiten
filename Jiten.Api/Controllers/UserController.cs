@@ -513,7 +513,7 @@ public class UserController(
 
     /// <summary>
     /// Add known words for the current user by frequency rank range (inclusive).
-    /// For each JMdict word in the range, all its readings are added as Known if not already present.
+    /// Only readings whose per-reading frequency rank falls within the range are imported.
     /// </summary>
     [HttpPost("vocabulary/import-from-frequency/{minFrequency:int}/{maxFrequency:int}")]
     public async Task<IResult> ImportWordsFromFrequency(int minFrequency, int maxFrequency)
@@ -524,60 +524,68 @@ public class UserController(
         if (minFrequency < 0 || maxFrequency < minFrequency || maxFrequency > 10000)
             return Results.BadRequest("Invalid frequency range");
 
-        // Fetch candidate word IDs by frequency range
-        var wordIds = await jitenContext.JmDictWordFrequencies
-                                        .AsNoTracking()
-                                        .Where(f => f.FrequencyRank >= minFrequency && f.FrequencyRank <= maxFrequency)
-                                        .OrderBy(f => f.FrequencyRank)
-                                        .Select(f => f.WordId)
-                                        .Distinct()
-                                        .ToListAsync();
+        // Use raw SQL with PostgreSQL unnest to efficiently filter per-reading frequency ranks
+        var targetReadings = await jitenContext.Database
+            .SqlQuery<ReadingFrequencyResult>($"""
+                SELECT f."WordId", (idx - 1)::smallint AS "ReadingIndex", rank AS "FrequencyRank"
+                FROM jmdict."WordFrequencies" f,
+                     unnest(f."ReadingsFrequencyRank") WITH ORDINALITY AS t(rank, idx)
+                WHERE rank >= {minFrequency} AND rank <= {maxFrequency} AND rank > 0
+                ORDER BY rank
+                """)
+            .ToListAsync();
 
-        if (wordIds.Count == 0)
-            return Results.BadRequest("No words found for the requested frequency range");
+        if (targetReadings.Count == 0)
+            return Results.BadRequest("No readings found for the requested frequency range");
 
-        // Load JMdict words for the selected IDs
-        var jmdictWords = await jitenContext.JMDictWords
-                                            .AsNoTracking()
-                                            .Where(w => wordIds.Contains(w.WordId))
-                                            .ToListAsync();
-
-        if (jmdictWords.Count == 0)
-            return Results.BadRequest("No valid JMdict words found for the requested frequency range");
-
-        var jmdictWordIds = jmdictWords.Select(w => w.WordId).ToList();
+        var targetWordIds = targetReadings.Select(r => r.WordId).Distinct().ToList();
 
         // Determine which entries are already known (by word + reading index)
         var alreadyKnown = await userContext.FsrsCards
                                             .AsNoTracking()
-                                            .Where(uk => uk.UserId == userId && jmdictWordIds.Contains(uk.WordId))
+                                            .Where(uk => uk.UserId == userId && targetWordIds.Contains(uk.WordId))
                                             .ToListAsync();
+
+        var alreadyKnownSet = alreadyKnown.Select(uk => (uk.WordId, (short)uk.ReadingIndex)).ToHashSet();
 
         List<FsrsCard> toInsert = new();
 
-        foreach (var word in jmdictWords)
+        foreach (var target in targetReadings)
         {
-            for (var i = 0; i < word.Readings.Count; i++)
-            {
-                if (alreadyKnown.Any(uk => uk.WordId == word.WordId && uk.ReadingIndex == i))
-                    continue;
+            if (alreadyKnownSet.Contains((target.WordId, target.ReadingIndex)))
+                continue;
 
-                toInsert.Add(new FsrsCard(userId, word.WordId, (byte)i, due: DateTime.UtcNow, lastReview: DateTime.UtcNow,
-                                          state: FsrsState.Mastered));
-            }
+            toInsert.Add(new FsrsCard(userId, target.WordId, (byte)target.ReadingIndex,
+                                      due: DateTime.UtcNow, lastReview: DateTime.UtcNow,
+                                      state: FsrsState.Mastered));
         }
 
+        var kanaSyncCount = 0;
         if (toInsert.Count > 0)
         {
             await userContext.FsrsCards.AddRangeAsync(toInsert);
             await userContext.SaveChangesAsync();
+
+            // Sync kana readings for imported kanji cards
+            var cardsToSync = toInsert
+                .GroupBy(c => c.WordId)
+                .Select(g => g.First())
+                .Select(c => (c.WordId, c.ReadingIndex, c, false))
+                .ToList();
+
+            if (cardsToSync.Count > 0)
+            {
+                kanaSyncCount = await srsService.SyncKanaReadingBatch(userId, cardsToSync, DateTime.UtcNow);
+            }
         }
 
         backgroundJobs.Enqueue<ComputationJob>(job => job.ComputeUserCoverage(userId));
 
+        var uniqueWords = toInsert.Select(c => c.WordId).Distinct().Count();
+        var totalForms = toInsert.Count + kanaSyncCount;
         logger.LogInformation("User imported words from frequency range: UserId={UserId}, MinFreq={MinFrequency}, MaxFreq={MaxFrequency}, WordCount={WordCount}, FormCount={FormCount}",
-                              userId, minFrequency, maxFrequency, jmdictWords.Count, toInsert.Count);
-        return Results.Ok(new { words = jmdictWords.Count, forms = toInsert.Count });
+                              userId, minFrequency, maxFrequency, uniqueWords, totalForms);
+        return Results.Ok(new { words = uniqueWords, forms = totalForms });
     }
 
 
@@ -1822,6 +1830,7 @@ public class UserController(
     }
 
     private record CachedKanjiInfo(string Character, int? FrequencyRank, short? JlptLevel);
+    private record ReadingFrequencyResult(int WordId, short ReadingIndex, int FrequencyRank);
 
     #endregion
 }
