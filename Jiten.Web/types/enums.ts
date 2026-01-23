@@ -103,8 +103,7 @@ export enum DifficultyDisplayStyle {
 }
 
 export enum DifficultyValueDisplayStyle {
-  StartsAt1 = 0,
-  StartsAt0 = 1,
+  ZeroToFive = 1,
   Percentage = 2,
 }
 

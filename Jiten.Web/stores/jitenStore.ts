@@ -164,11 +164,16 @@ export const useJitenStore = defineStore('jiten', () => {
   });
 
   const difficultyValueDisplayStyleCookie = useCookie<DifficultyValueDisplayStyle>('jiten-difficulty-value-display-style', {
-    default: () => 0,
+    default: () => DifficultyValueDisplayStyle.ZeroToFive,
     watch: true,
     maxAge: 60 * 60 * 24 * 365, // 1 year
     path: '/',
   });
+
+  // Migrate users from removed "1 to 6" option (value 0) to "0 to 5" (value 1)
+  if (difficultyValueDisplayStyleCookie.value === 0) {
+    difficultyValueDisplayStyleCookie.value = DifficultyValueDisplayStyle.ZeroToFive;
+  }
 
   const difficultyValueDisplayStyle = ref<DifficultyValueDisplayStyle>(difficultyValueDisplayStyleCookie.value);
 
