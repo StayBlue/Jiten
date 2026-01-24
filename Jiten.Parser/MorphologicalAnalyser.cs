@@ -79,6 +79,7 @@ public class MorphologicalAnalyser
         ("に", "とって", PartOfSpeech.Expression),
         ("何と", "も", PartOfSpeech.Adverb),
         ("なくて", "も", PartOfSpeech.Expression),
+        ("なんに", "も", PartOfSpeech.Adverb),
     ];
 
     private static readonly List<string> HonorificsSuffixes = ["さん", "ちゃん", "くん"];
@@ -87,7 +88,7 @@ public class MorphologicalAnalyser
 
     private static readonly HashSet<string> MisparsesRemove =
     [
-        "そ", "る", "ま", "ふ", "ち", "ほ", "す", "じ", "なさ", "い", "ぴ", "ふあ", "ぷ", "ちゅ", "にっ", "じら", "タ", "け", "イ", "イッ", "ほっ",
+        "そ", "る", "ま", "ふ", "ち", "ほ", "す", "じ", "なさ", "い", "ぴ", "ふあ", "ぷ", "ちゅ", "にっ", "じら", "タ", "け", "イ", "イッ", "ほっ", "そっ",
         "ウー", "うー", "ううう", "うう", "ウウウウ", "ウウ", "ううっ", "かー", "ぐわー", "違", "タ"
     ];
 
@@ -243,6 +244,7 @@ public class MorphologicalAnalyser
             }
 
             wordInfos = TrackStage(diagnostics, "SplitCompoundAuxiliaryVerbs", wordInfos, SplitCompoundAuxiliaryVerbs);
+            wordInfos = TrackStage(diagnostics, "SplitTatteParticle", wordInfos, SplitTatteParticle);
             wordInfos = TrackStage(diagnostics, "RepairNTokenisation", wordInfos, RepairNTokenisation);
             wordInfos = TrackStage(diagnostics, "ProcessSpecialCases", wordInfos, ProcessSpecialCases);
             wordInfos = TrackStage(diagnostics, "CombineInflections", wordInfos, CombineInflections);
@@ -287,6 +289,12 @@ public class MorphologicalAnalyser
                 word.PartOfSpeech = PartOfSpeech.Interjection;
 
             if (word is { Text: "つ", PartOfSpeech: PartOfSpeech.Suffix })
+                word.PartOfSpeech = PartOfSpeech.Counter;
+
+            // 人 after a numeral should be the counter にん, not the suffix じん
+            if (word is { Text: "人", PartOfSpeech: PartOfSpeech.Suffix } &&
+                i > 0 && (wordInfos[i - 1].PartOfSpeech == PartOfSpeech.Numeral ||
+                          wordInfos[i - 1].HasPartOfSpeechSection(PartOfSpeechSection.Numeral)))
                 word.PartOfSpeech = PartOfSpeech.Counter;
 
             if (word.Text is "だー" or "だあ")
@@ -391,6 +399,67 @@ public class MorphologicalAnalyser
 
             result.Add(mainVerb);
             result.Add(auxVerb);
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Splits the conjunctive particle たって/だって into た/だ (past auxiliary) + って (quotative particle)
+    /// when it follows a verb in 連用形 (infinitive/stem form).
+    /// Sudachi treats たって as a single 接続助詞 but it should be た + って for proper deconjugation.
+    /// Examples: 出たって → 出 + た + って, 行ったって → 行っ + た + って
+    /// </summary>
+    private List<WordInfo> SplitTatteParticle(List<WordInfo> wordInfos)
+    {
+        if (wordInfos.Count < 2) return wordInfos;
+
+        var result = new List<WordInfo>(wordInfos.Count + 2);
+
+        for (int i = 0; i < wordInfos.Count; i++)
+        {
+            var word = wordInfos[i];
+
+            // Check if this is たって/だって as a conjunctive particle following a verb
+            if (i > 0 &&
+                word.PartOfSpeech == PartOfSpeech.Particle &&
+                word.HasPartOfSpeechSection(PartOfSpeechSection.ConjunctionParticle) &&
+                word.Text is "たって" or "だって")
+            {
+                var prev = wordInfos[i - 1];
+
+                // Only split if preceded by verb/adjective in a stem form (連用形 or similar)
+                if (prev.PartOfSpeech is PartOfSpeech.Verb or PartOfSpeech.IAdjective or PartOfSpeech.Auxiliary)
+                {
+                    // Determine which past marker to use
+                    string pastMarker = word.Text == "たって" ? "た" : "だ";
+
+                    // Add the past auxiliary verb (た/だ)
+                    result.Add(new WordInfo
+                    {
+                        Text = pastMarker,
+                        DictionaryForm = pastMarker,
+                        NormalizedForm = pastMarker,
+                        PartOfSpeech = PartOfSpeech.Auxiliary,
+                        Reading = pastMarker
+                    });
+
+                    // Add the quotative particle (って)
+                    result.Add(new WordInfo
+                    {
+                        Text = "って",
+                        DictionaryForm = "って",
+                        NormalizedForm = "って",
+                        PartOfSpeech = PartOfSpeech.Particle,
+                        PartOfSpeechSection1 = PartOfSpeechSection.ConjunctionParticle,
+                        Reading = "って"
+                    });
+
+                    continue;
+                }
+            }
+
+            result.Add(word);
         }
 
         return result;
@@ -873,6 +942,16 @@ public class MorphologicalAnalyser
         text = Regex.Replace(text, "もやる", $"も{_stopToken}やる");
         text = Regex.Replace(text, "べや", $"べ{_stopToken}や");
         text = Regex.Replace(text, "はいい", $"は{_stopToken}いい");
+        text = Regex.Replace(text, "元国王", $"元{_stopToken}国王");
+        text = Regex.Replace(text, "なんだろう", $"なん{_stopToken}だろう");
+        
+
+        // Fix Sudachi misparsing いやあんま as いやあん + ま instead of いや + あんま
+        text = Regex.Replace(text, "いやあんま", $"いや{_stopToken}あんま");
+
+        // Fix Sudachi misparsing 外出/家出 + ない forms as compound noun + adjective
+        // Should be 外/家 + 出ない (verb negative) in colloquial speech
+        text = Regex.Replace(text, "(外|家)出(ない|なかった|なく)", $"$1{_stopToken}出$2");
 
         // Replace line ending ellipsis with a sentence ender to be able to flatten later
         text = text.Replace("…\r", "。\r").Replace("…\n", "。\n");
@@ -1208,6 +1287,10 @@ public class MorphologicalAnalyser
                     break;
 
                 if (currentWord.Text.EndsWith("ん") && nextWord.Text is "だ" or "です")
+                    break;
+
+                // Don't merge contracted copula じゃ - it starts a new clause (じゃない, じゃねえか, etc.)
+                if (nextWord.Text == "じゃ" && nextWord.DictionaryForm == "だ")
                     break;
 
                 // Don't merge na-adjective + copula で (e.g., たくさん + で should stay separate)
@@ -1697,6 +1780,7 @@ public class MorphologicalAnalyser
                 && currentWord.Text != "だろ"
                 && currentWord.Text != "ハズ"
                 && (currentWord.Text != "だ" || currentWord.Text == "だ" && previousWord.Text[^1] == 'ん')
+                && !(currentWord.Text == "じゃ" && currentWord.DictionaryForm == "だ")
                )
             {
                 previousWord.Text += currentWord.Text;
@@ -1770,6 +1854,16 @@ public class MorphologicalAnalyser
                     || wordInfos[i].DictionaryForm == "がる"
                     || (wordInfos[i].DictionaryForm == "ら" &&
                         wordInfos[i - 1].PartOfSpeech == PartOfSpeech.Pronoun && wordInfos[i - 1].Text != "貴様")))
+            {
+                currentWord.Text += nextWord.Text;
+            }
+            // Handle がったり misparsed as adverb after adjective stem (e.g., 怖がったり, 悲しがったり)
+            // Sudachi sometimes parses these as: adj-stem + がったり (adverb) instead of correctly splitting
+            else if (nextWord.PartOfSpeech == PartOfSpeech.Adverb
+                     && nextWord.Text == "がったり"
+                     && currentWord.PartOfSpeech == PartOfSpeech.IAdjective
+                     && !currentWord.Text.EndsWith("い")
+                     && currentWord.DictionaryForm.EndsWith("い"))
             {
                 currentWord.Text += nextWord.Text;
             }

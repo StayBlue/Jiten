@@ -64,7 +64,7 @@ public class MorphologicalAnalyserTests
     [InlineData("しながき", new[] { "しながき" })]
     [InlineData("楽しさ求めて", new[] { "楽しさ", "求めて" })]
     [InlineData("日常のなかにも", new[] { "日常", "の", "なかにも" })]
-    [InlineData("ほんとは好きなんだと", new[] { "ほんと", "は", "好き","なんだと" })]
+    [InlineData("ほんとは好きなんだと", new[] { "ほんと", "は", "好き", "なんだと" })]
     [InlineData("内緒なの", new[] { "内緒", "なの" })]
     [InlineData("魚が好きじゃない", new[] { "魚", "が", "好き", "じゃない" })]
     [InlineData("物語になってく", new[] { "物語", "に", "なってく" })]
@@ -118,7 +118,7 @@ public class MorphologicalAnalyserTests
     [InlineData("になりそうだけど", new[] { "に", "なりそう", "だけど" })]
     [InlineData("これは辛い選択になりそうだな", new[] { "これ", "は", "辛い", "選択", "に", "なりそう", "だ", "な" })]
     [InlineData("はっきりしそうだな", new[] { "はっきりしそう", "だ", "な" })]
-    [InlineData("泣きそうなんだけど", new[] { "泣きそう","なんだ", "けど" })]
+    [InlineData("泣きそうなんだけど", new[] { "泣きそう", "なんだ", "けど" })]
     [InlineData("これですね", new[] { "これ", "です", "ね" })]
     [InlineData("忘れなく", new[] { "忘れなく" })]
     [InlineData("じゃないですか", new[] { "じゃない", "ですか" })]
@@ -532,6 +532,12 @@ public class MorphologicalAnalyserTests
     [InlineData("人道の港", new[] { "人道", "の", "港" })]
     // JMnedict celebrity names - keep as single token (in JMnedict)
     [InlineData("加藤紀子", new[] { "加藤紀子" })]
+    [InlineData("わかってねえじゃねえか", new[] { "わかってねえ", "じゃねえ", "か" })]
+    [InlineData("なんにもしたくないときもある", new[] { "なんにも", "したくない", "とき", "も", "ある" })]
+    [InlineData("いやあんま外出ないから", new[] { "いや", "あんま", "外", "出ない", "から" })]
+    [InlineData("外出ない", new[] { "外", "出ない" })]
+    [InlineData("家出なかった", new[] { "家", "出なかった" })]
+    [InlineData("普通は驚いたり恐がったり無視したりするものなのに", new[] { "普通", "は", "驚いたり", "恐がったり", "無視したり", "する", "もの", "なのに" })]
     public async Task SegmentationTest(string text, string[] expectedResult)
     {
         (await Parse(text)).Should().Equal(expectedResult);
