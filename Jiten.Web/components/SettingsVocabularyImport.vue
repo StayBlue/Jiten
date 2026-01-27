@@ -8,6 +8,7 @@
   import { useJitenStore } from '~/stores/jitenStore';
   import { useToast } from 'primevue/usetoast';
   import AnkiConnectImport from '~/components/AnkiConnectImport.vue';
+  import SettingsFsrsParameters from '~/components/SettingsFsrsParameters.vue';
   import type { FsrsExportDto, FsrsImportResultDto } from '~/types/types';
 
   const toast = useToast();
@@ -553,6 +554,8 @@
       </template>
     </Card>
 
+    <SettingsFsrsParameters class="mb-4" />
+
     <AnkiConnectImport class="mb-4" @import-complete="fetchKnownWordsAmount" />
 
     <Card class="mb-4">
@@ -561,15 +564,14 @@
       </template>
       <template #content>
         <p class="mb-3">
-          Export and import your complete vocabulary with full data. This includes card states, review history, stability, difficulty,
-          and due dates. Use this for complete backups or transferring data between accounts.
+          Export and import your complete vocabulary with full data. This includes card states, review history, stability, difficulty, and due dates. Use this
+          for complete backups or transferring data between accounts.
         </p>
 
         <div class="mb-4">
           <h4 class="text-md font-semibold mb-2">Export</h4>
           <Button icon="pi pi-download" label="Export Complete Vocabulary" :loading="fsrsIsLoading" class="w-full md:w-auto" @click="downloadFsrsVocabulary" />
         </div>
-
 
         <div class="mb-3">
           <h4 class="text-md font-semibold mb-2">Import</h4>

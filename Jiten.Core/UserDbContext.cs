@@ -26,6 +26,7 @@ public class UserDbContext : IdentityDbContext<User>
     public DbSet<UserMetadata> UserMetadatas { get; set; }
     public DbSet<ApiKey> ApiKeys { get; set; }
     public DbSet<UserDeckPreference> UserDeckPreferences { get; set; }
+    public DbSet<UserFsrsSettings> UserFsrsSettings { get; set; }
 
     public DbSet<FsrsCard> FsrsCards { get; set; }
     public DbSet<FsrsReviewLog> FsrsReviewLogs { get; set; }
@@ -229,6 +230,20 @@ public class UserDbContext : IdentityDbContext<User>
             entity.HasOne<User>()
                   .WithOne()
                   .HasForeignKey<UserKanjiGrid>(ukg => ukg.UserId)
+                  .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<UserFsrsSettings>(entity =>
+        {
+            entity.HasKey(ufs => ufs.UserId);
+            entity.Property(ufs => ufs.UserId).HasConversion(guidToString).HasColumnType("uuid").IsRequired();
+            entity.Property(ufs => ufs.ParametersJson).HasColumnType("jsonb").IsRequired();
+            entity.Property(ufs => ufs.DesiredRetention).HasColumnType("double precision");
+            entity.Ignore(ufs => ufs.Parameters);
+
+            entity.HasOne<User>()
+                  .WithOne()
+                  .HasForeignKey<UserFsrsSettings>(ufs => ufs.UserId)
                   .OnDelete(DeleteBehavior.Cascade);
         });
 

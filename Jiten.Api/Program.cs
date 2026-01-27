@@ -433,6 +433,7 @@ builder.Services.AddResponseCompression(options =>
 builder.Services.AddScoped<ParseJob>();
 builder.Services.AddScoped<ReparseJob>();
 builder.Services.AddScoped<ComputationJob>();
+builder.Services.AddScoped<SrsRecomputeJob>();
 
 builder.Services.AddHangfire(configuration =>
                                  configuration.SetDataCompatibilityLevel(CompatibilityLevel.Version_180)

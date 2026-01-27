@@ -13,7 +13,7 @@ public class FsrsSchedulerOptions
     /// <summary>
     /// Target retention rate (default: 0.9)
     /// </summary>
-    public double DesiredRetention { get; set; } = 0.9;
+    public double DesiredRetention { get; set; } = FsrsConstants.DefaultDesiredRetention;
 
     /// <summary>
     /// Learning step intervals for new cards (default: 1min, 10min)

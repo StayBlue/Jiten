@@ -6,6 +6,11 @@ namespace Jiten.Core.Data.FSRS;
 public static class FsrsConstants
 {
     /// <summary>
+    /// Default target retention rate
+    /// </summary>
+    public const double DefaultDesiredRetention = 0.9;
+
+    /// <summary>
     /// Minimum allowed stability value to prevent division by zero
     /// </summary>
     public const double StabilityMin = 0.001;

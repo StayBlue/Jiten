@@ -171,6 +171,19 @@ export interface GlobalStats {
   totalMedia: number;
 }
 
+export interface FsrsParametersResponse {
+  parameters: string;
+  isDefault: boolean;
+  desiredRetention: number;
+}
+
+export interface SrsRecomputeBatchResponse {
+  processed: number;
+  total: number;
+  lastCardId: number;
+  done: boolean;
+}
+
 export interface MetadataRelation {
   externalId: string;
   linkType: number;
