@@ -791,7 +791,7 @@ public class MorphologicalAnalyser
     #region RepairNTokenisation Helpers
 
     private static string NormalizeToHiragana(string text) =>
-        KanaNormalizer.Normalize(WanaKana.ToHiragana(text));
+        KanaNormalizer.Normalize(WanaKana.ToHiragana(text, new DefaultOptions { ConvertLongVowelMark = false }));
 
     private static bool IsNdaVerbForm(HashSet<DeconjugationForm> forms) =>
         forms.Any(f => f.Tags.Count > 0 &&
