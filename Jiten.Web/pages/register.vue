@@ -1,5 +1,7 @@
 <script setup lang="ts">
   const { $api } = useNuxtApp();
+  const runtimeConfig = useRuntimeConfig();
+  const recaptchaEnabled = !!runtimeConfig.public.recaptcha?.v2SiteKey;
 
   const form = reactive({
     username: '',
@@ -10,7 +12,11 @@
   });
 
   const recaptchaResponse = ref();
-  useRecaptchaProvider();
+  if (recaptchaEnabled) {
+    useRecaptchaProvider();
+  }
+
+  const RecaptchaCheckboxComponent = recaptchaEnabled ? resolveComponent('RecaptchaCheckbox') : null;
 
   const isLoading = ref(false);
   const message = ref<string | null>(null);
@@ -116,10 +122,10 @@
 
     isLoading.value = true;
     try {
-      if (!recaptchaResponse.value) {
+      if (recaptchaEnabled && !recaptchaResponse.value) {
         throw new Error('Please complete the reCAPTCHA.');
       }
-      await $api('/auth/register', { method: 'POST', body: { ...form, recaptchaResponse: recaptchaResponse.value } });
+      await $api('/auth/register', { method: 'POST', body: { ...form, recaptchaResponse: recaptchaResponse.value || '' } });
       message.value =
         "Registration successful. Please check your email to confirm your account. If you don't receive the email within a few minutes, please contact us on Discord or send an email to contact@jiten.moe from the email address you used to register for a manual confirmation.";
     } catch (err: any) {
@@ -195,7 +201,7 @@
           </div>
         </div>
 
-        <RecaptchaCheckbox v-model="recaptchaResponse" class="my-2" />
+        <component v-if="RecaptchaCheckboxComponent" :is="RecaptchaCheckboxComponent" v-model="recaptchaResponse" class="my-2" />
         <Button type="submit" :disabled="isLoading" class="w-full">{{ isLoading ? 'Registering...' : 'Register' }}</Button>
       </form>
       <p v-if="message" class="text-amber-400">{{ message }}</p>

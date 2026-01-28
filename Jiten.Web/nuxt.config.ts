@@ -41,9 +41,14 @@ export default defineNuxtConfig({
   runtimeConfig: {
     public: {
       baseURL: 'https://localhost:7299/api/',
-      recaptcha:{
-        v2SiteKey: process.env.NUXT_PUBLIC_RECAPTCHA_V2_SITE_KEY || '',
-      }
+      googleSignInClientId: process.env.NUXT_PUBLIC_GOOGLE_SIGNIN_CLIENT_ID || '',
+      ...(process.env.NUXT_PUBLIC_RECAPTCHA_V2_SITE_KEY
+        ? {
+            recaptcha: {
+              v2SiteKey: process.env.NUXT_PUBLIC_RECAPTCHA_V2_SITE_KEY,
+            },
+          }
+        : {}),
     },
   },
   modules: [
@@ -55,9 +60,9 @@ export default defineNuxtConfig({
     '@nuxtjs/seo',
     'nuxt-link-checker',
     '@nuxt/scripts',
-    'nuxt-umami',
-    'nuxt-vue3-google-signin',
-    'vue-recaptcha/nuxt'
+    ...(process.env.NUXT_PUBLIC_SCRIPTS_UMAMI_ANALYTICS_WEBSITE_ID ? ['nuxt-umami'] : []),
+    ...(process.env.NUXT_PUBLIC_GOOGLE_SIGNIN_CLIENT_ID ? ['nuxt-vue3-google-signin'] : []),
+    ...(process.env.NUXT_PUBLIC_RECAPTCHA_V2_SITE_KEY ? ['vue-recaptcha/nuxt'] : []),
   ],
   primevue: {
     options: {
@@ -73,8 +78,8 @@ export default defineNuxtConfig({
     families: {
       'Noto+Sans+JP': {
         wght: [400, 700],
-        ital: [400, 700] // if you need italic
-      }
+        ital: [400, 700], // if you need italic
+      },
     },
     display: 'swap',
     preload: true,
@@ -115,22 +120,31 @@ export default defineNuxtConfig({
       },
     ],
   },
-  umami: {
-    id: process.env.NUXT_PUBLIC_SCRIPTS_UMAMI_ANALYTICS_WEBSITE_ID || '',
-    host: process.env.NUXT_PUBLIC_SCRIPTS_UMAMI_ANALYTICS_HOST_URL || '',
-    autoTrack: true,
-    proxy: 'cloak',
-    ignoreLocalhost: true,
-  },
-  googleSignIn:{
-    clientId: process.env.NUXT_PUBLIC_GOOGLE_SIGNIN_CLIENT_ID || '',
-  },
-  devServer: process.env.NODE_ENV === 'development'
+  ...(process.env.NUXT_PUBLIC_SCRIPTS_UMAMI_ANALYTICS_WEBSITE_ID
     ? {
-      https: {
-        key: fs.readFileSync(path.resolve(__dirname, 'localhost-key.pem')).toString(),
-        cert: fs.readFileSync(path.resolve(__dirname, 'localhost.pem')).toString()
+        umami: {
+          id: process.env.NUXT_PUBLIC_SCRIPTS_UMAMI_ANALYTICS_WEBSITE_ID,
+          host: process.env.NUXT_PUBLIC_SCRIPTS_UMAMI_ANALYTICS_HOST_URL || '',
+          autoTrack: true,
+          proxy: 'cloak',
+          ignoreLocalhost: true,
+        },
       }
-    }
-    : {}
+    : {}),
+  ...(process.env.NUXT_PUBLIC_GOOGLE_SIGNIN_CLIENT_ID
+    ? {
+        googleSignIn: {
+          clientId: process.env.NUXT_PUBLIC_GOOGLE_SIGNIN_CLIENT_ID,
+        },
+      }
+    : {}),
+  devServer:
+    process.env.NODE_ENV === 'development'
+      ? {
+          https: {
+            key: fs.readFileSync(path.resolve(__dirname, 'localhost-key.pem')).toString(),
+            cert: fs.readFileSync(path.resolve(__dirname, 'localhost.pem')).toString(),
+          },
+        }
+      : {},
 });

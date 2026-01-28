@@ -2,8 +2,11 @@
   import { ref, reactive, onMounted } from 'vue';
   import { useAuthStore } from '~/stores/authStore';
   import type { LoginRequest } from '~/types/types';
-  import { type CredentialResponse } from 'vue3-google-signin';
 
+  const runtimeConfig = useRuntimeConfig();
+  const googleSignInEnabled = !!runtimeConfig.public.googleSignInClientId;
+
+  const GoogleSignInButtonComponent = googleSignInEnabled ? resolveComponent('GoogleSignInButton') : null;
 
   const authStore = useAuthStore();
   const router = useRouter();
@@ -31,7 +34,7 @@
     }
   }
 
-  const handleGoogleOnSuccess = async (response: CredentialResponse) => {
+  const handleGoogleOnSuccess = async (response: { credential?: string }) => {
     const { credential } = response;
 
     try {
@@ -78,8 +81,8 @@
               {{ authStore.isLoading ? 'Logging in...' : 'Login' }}
             </Button>
           </div>
-          <div>
-            <GoogleSignInButton @success="handleGoogleOnSuccess" @error="handleGoogleOnError"></GoogleSignInButton>
+          <div v-if="GoogleSignInButtonComponent">
+            <component :is="GoogleSignInButtonComponent" @success="handleGoogleOnSuccess" @error="handleGoogleOnError" />
           </div>
         </div>
         <div>
