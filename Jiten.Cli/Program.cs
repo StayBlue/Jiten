@@ -37,7 +37,6 @@ public class Program
         var diagnosticCommands = new DiagnosticCommands(context);
         var dictionaryCommands = new DictionaryCommands(context);
         var adminCommands = new AdminCommands(context);
-        var wordSetCommands = new WordSetCommands(context);
         var mlCommands = new MlCommands(context);
         var metadataCommands = new MetadataCommands();
         var benchmarkCommands = new BenchmarkCommands(context);
@@ -169,8 +168,6 @@ public class Program
                 Console.WriteLine("For --create-wordset-from-pos, you need to specify --set-slug, --set-name, and --pos.");
                 return;
             }
-
-            await wordSetCommands.CreateWordSetFromPartOfSpeech(options.SetSlug, options.SetName, options.SetDescription, options.Pos, options.SyncKana);
         }
 
         if (options.CreateWordSetFromCsv)
@@ -186,8 +183,6 @@ public class Program
                 Console.WriteLine($"CSV file not found: {options.CsvFile}");
                 return;
             }
-
-            await wordSetCommands.CreateWordSetFromCsv(options.SetSlug, options.SetName, options.SetDescription, options.CsvFile, options.SyncKana);
         }
 
         // Admin commands
