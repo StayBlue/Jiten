@@ -29,6 +29,8 @@ Before you begin, make sure you have the following installed on your machine:
 - **Docker Compose:** [Download and install Docker Compose](https://docs.docker.com/compose/install/)
 - **Git:** To clone the repository ([Download Git](https://git-scm.com/downloads))
 
+For development instructions, go to [DEVELOPMENT.md](./DEVELOPMENT.md)
+
 ## Installation Steps - Frontend
 
 ### 1. Clone the Repository
