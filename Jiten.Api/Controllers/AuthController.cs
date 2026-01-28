@@ -351,6 +351,11 @@ public class AuthController : ControllerBase
     [AllowAnonymous]
     public async Task<ActionResult<TokenResponse>> GoogleSignIn([FromBody] GoogleLoginRequest loginRequest)
     {
+        if (string.IsNullOrWhiteSpace(_configuration["Google:ClientId"]))
+        {
+            return NotFound(new { message = "Google Sign-In is not configured" });
+        }
+
         if (string.IsNullOrWhiteSpace(loginRequest.IdToken))
         {
             return BadRequest(new { message = "Missing idToken" });
