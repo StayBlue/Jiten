@@ -40,7 +40,8 @@ public class VocabularyController(JitenDbContext context, IDbContextFactory<Jite
         if (word == null)
             return Results.NotFound();
 
-        var frequency = context.JmDictWordFrequencies.AsNoTracking().First(f => f.WordId == word.WordId);
+        var frequency = context.JmDictWordFrequencies.AsNoTracking()
+            .FirstOrDefault(f => f.WordId == word.WordId);
 
         var usedInMediaByType = await context.DeckWords.AsNoTracking()
                                              .Where(dw => dw.WordId == wordId && dw.ReadingIndex == readingIndex)
@@ -59,9 +60,10 @@ public class VocabularyController(JitenDbContext context, IDbContextFactory<Jite
         var mainReading = new ReadingDto()
                           {
                               Text = word.ReadingsFurigana[readingIndex], ReadingIndex = readingIndex,
-                              ReadingType = word.ReadingTypes[readingIndex], FrequencyRank = frequency.ReadingsFrequencyRank[readingIndex],
-                              FrequencyPercentage = frequency.ReadingsFrequencyPercentage[readingIndex].ZeroIfNaN(),
-                              UsedInMediaAmount = frequency.ReadingsUsedInMediaAmount[readingIndex],
+                              ReadingType = word.ReadingTypes[readingIndex],
+                              FrequencyRank = frequency?.ReadingsFrequencyRank[readingIndex] ?? 0,
+                              FrequencyPercentage = frequency?.ReadingsFrequencyPercentage[readingIndex].ZeroIfNaN() ?? 0,
+                              UsedInMediaAmount = frequency?.ReadingsUsedInMediaAmount[readingIndex] ?? 0,
                               UsedInMediaAmountByType = usedInMediaByType
                           };
 
@@ -69,11 +71,9 @@ public class VocabularyController(JitenDbContext context, IDbContextFactory<Jite
                                                    .Select((r, i) => new ReadingDto
                                                                      {
                                                                          Text = r, ReadingIndex = (byte)i, ReadingType = word.ReadingTypes[i],
-                                                                         FrequencyRank =
-                                                                             frequency.ReadingsFrequencyRank[i],
-                                                                         FrequencyPercentage =
-                                                                             frequency.ReadingsFrequencyPercentage[i].ZeroIfNaN(),
-                                                                         UsedInMediaAmount = frequency.ReadingsUsedInMediaAmount[i]
+                                                                         FrequencyRank = frequency?.ReadingsFrequencyRank[i] ?? 0,
+                                                                         FrequencyPercentage = frequency?.ReadingsFrequencyPercentage[i].ZeroIfNaN() ?? 0,
+                                                                         UsedInMediaAmount = frequency?.ReadingsUsedInMediaAmount[i] ?? 0
                                                                      })
                                                    .ToList();
         
