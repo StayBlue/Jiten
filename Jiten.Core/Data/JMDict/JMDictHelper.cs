@@ -495,7 +495,6 @@ public static class JmDictHelper
         wordInfos.First(w => w.WordId == 1074630).Priorities?.Add("jiten");
         wordInfos.First(w => w.WordId == 1111330).Priorities?.Add("jiten");
         wordInfos.First(w => w.WordId == 1116190).Priorities?.Add("jiten");
-        wordInfos.First(w => w.WordId == 5060001).Priorities?.Add("jiten");
         wordInfos.First(w => w.WordId == 2815290).Priorities?.Add("jiten");
         wordInfos.First(w => w.WordId == 1157170).Priorities?.Add("jiten");
         wordInfos.First(w => w.WordId == 2855934).Priorities?.Add("jiten");
@@ -521,13 +520,7 @@ public static class JmDictHelper
                                                                   {
                                                                       PartsOfSpeech = ["prt"], EnglishMeanings = ["indicates na-adjective"]
                                                                   });
-        wordInfos.First(w => w.WordId == 5141615).PartsOfSpeech.Add("n");
         wordInfos.First(w => w.WordId == 1524610).PartsOfSpeech.Add("n");
-        wordInfos.First(w => w.WordId == 5141615).Definitions.Add(new JmDictDefinition()
-                                                                  {
-                                                                      PartsOfSpeech = ["n"],
-                                                                      EnglishMeanings = ["street in front of station"]
-                                                                  });
 
         context.JMDictWords.AddRange(wordInfos);
 
@@ -715,6 +708,14 @@ public static class JmDictHelper
             nameWord.Priorities.Add("name");
         }
 
+        nameWords.First(w => w.WordId == 5060001).Priorities?.Add("jiten");
+        nameWords.First(w => w.WordId == 5141615).PartsOfSpeech.Add("n");
+        nameWords.First(w => w.WordId == 5141615).Definitions.Add(new JmDictDefinition()
+        {
+            PartsOfSpeech = ["n"],
+            EnglishMeanings = ["street in front of station"]
+        });
+
         // Validate entries before database insertion
         int beforeValidation = nameWords.Count;
         nameWords = nameWords.Where(w =>
@@ -759,7 +760,7 @@ public static class JmDictHelper
     public static async Task<bool> SyncMissingJMNedict(IDbContextFactory<JitenDbContext> contextFactory, string dtdPath, string jmneDictPath)
     {
         Console.WriteLine("Starting JMNedict sync...");
-        
+
         Regex reg = new Regex(@"<!ENTITY (.*) ""(.*)"">");
 
         var dtdLines = await File.ReadAllLinesAsync(dtdPath);
@@ -1814,7 +1815,7 @@ public static class JmDictHelper
         customWordInfos.Add(new JmDictWord
                             {
                                 WordId = 8000002, Readings = ["逢魔", "おうま"], ReadingsFurigana = ["逢[おう]魔[ま]", "おうま"],
-                                ReadingTypes = [JmDictReadingType.Reading, JmDictReadingType.KanaReading], 
+                                ReadingTypes = [JmDictReadingType.Reading, JmDictReadingType.KanaReading],
                                 PitchAccents = [0],
                                 Definitions =
                                 [
