@@ -1,0 +1,102 @@
+import { defineStore } from 'pinia';
+import { type DifficultyDisplayStyle, DifficultyValueDisplayStyle, TitleLanguage } from '~/types';
+
+const YEAR = 60 * 60 * 24 * 365;
+
+function createCookieState<T>(key: string, defaultValue: T): Ref<T> {
+  const cookie = useCookie<T>(`jiten-${key}`, {
+    default: () => defaultValue,
+    watch: true,
+    maxAge: YEAR,
+    path: '/',
+  });
+
+  const state = ref<T>(cookie.value) as Ref<T>;
+
+  watch(state, (newValue) => {
+    cookie.value = newValue;
+  });
+
+  return state;
+}
+
+export const useJitenStore = defineStore('jiten', () => {
+  const titleLanguage = createCookieState<TitleLanguage>('title-language', TitleLanguage.Romaji);
+  const displayFurigana = createCookieState<boolean>('display-furigana', true);
+  const darkMode = createCookieState<boolean>('dark-mode', false);
+  const displayAdminFunctions = createCookieState<boolean>('display-admin-functions', false);
+  const readingSpeed = createCookieState<number>('reading-speed', 14000);
+  const displayAllNsfw = createCookieState<boolean>('display-all-nsfw', false);
+  const hideVocabularyDefinitions = createCookieState<boolean>('hide-vocabulary-definitions', false);
+  const hideCoverageBorders = createCookieState<boolean>('hide-coverage-borders', false);
+  const hideGenres = createCookieState<boolean>('hide-genres', false);
+  const hideTags = createCookieState<boolean>('hide-tags', false);
+  const hideRelations = createCookieState<boolean>('hide-relations', false);
+  const difficultyDisplayStyle = createCookieState<DifficultyDisplayStyle>('difficulty-display-style', 0);
+
+  const difficultyValueDisplayStyleCookie = useCookie<DifficultyValueDisplayStyle>('jiten-difficulty-value-display-style', {
+    default: () => DifficultyValueDisplayStyle.ZeroToFive,
+    watch: true,
+    maxAge: YEAR,
+    path: '/',
+  });
+
+  // Migrate users from removed "1 to 6" option (value 0) to "0 to 5" (value 1)
+  if (difficultyValueDisplayStyleCookie.value === 0) {
+    difficultyValueDisplayStyleCookie.value = DifficultyValueDisplayStyle.ZeroToFive;
+  }
+
+  const difficultyValueDisplayStyle = ref<DifficultyValueDisplayStyle>(difficultyValueDisplayStyleCookie.value);
+
+  watch(difficultyValueDisplayStyle, (newValue) => {
+    difficultyValueDisplayStyleCookie.value = newValue;
+  });
+
+
+  const getKnownWordIds = (): number[] => {
+    if (import.meta.client) {
+      try {
+        const stored = localStorage.getItem('jiten-known-word-ids');
+        return stored ? JSON.parse(stored) : [];
+      } catch (error) {
+        console.error('Error reading known word IDs from localStorage:', error);
+        return [];
+      }
+    }
+    return [];
+  };
+
+  const knownWordIds = ref<number[]>([]);
+  let isInitialized = false;
+
+  const ensureInitialized = () => {
+    if (!isInitialized && import.meta.client) {
+      knownWordIds.value = getKnownWordIds();
+      isInitialized = true;
+    }
+  };
+
+  onMounted(() => {
+    ensureInitialized();
+  });
+
+  return {
+    getKnownWordIds,
+
+    // state
+    titleLanguage,
+    displayFurigana,
+    darkMode,
+    displayAdminFunctions,
+    readingSpeed,
+    knownWordIds,
+    displayAllNsfw,
+    hideVocabularyDefinitions,
+    hideCoverageBorders,
+    hideGenres,
+    hideTags,
+    hideRelations,
+    difficultyDisplayStyle,
+    difficultyValueDisplayStyle
+  };
+});

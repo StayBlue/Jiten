@@ -1,0 +1,2 @@
+patchedDependencies:
+  vue-recaptcha: patches/vue-recaptcha.patch

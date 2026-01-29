@@ -1,0 +1,29 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+deleted file mode 100644
+index 1cbfa04ba0062109017debd1f56afe56bececf16..0000000000000000000000000000000000000000
+diff --git a/dist/nuxt.cjs b/dist/nuxt.cjs
+index 679b9e9c0cdcd31c17038a179aa3b61a6e96f2ad..9b13661326b54ac9ee63a7631ec8e47090ee8330 100644
+--- a/dist/nuxt.cjs
++++ b/dist/nuxt.cjs
+@@ -15,7 +15,7 @@ var _default = (0, _kit.defineNuxtModule)({
+     name: "vue-recaptcha",
+     configKey: "recaptcha",
+     compatibility: {
+-      nuxt: "^3.0.0"
++      nuxt: "^3.0.0 || ^4.0.0"
+     }
+   },
+   defaults: {
+diff --git a/dist/nuxt.mjs b/dist/nuxt.mjs
+index b5c5d3f30cb52ab1377a8c9bb9f0387261cc2c31..9bba8426755001b3ccd7219e60a6957cc78b8ffd 100644
+--- a/dist/nuxt.mjs
++++ b/dist/nuxt.mjs
+@@ -9,7 +9,7 @@ export default defineNuxtModule({
+     name: "vue-recaptcha",
+     configKey: "recaptcha",
+     compatibility: {
+-      nuxt: "^3.0.0"
++      nuxt: "^3.0.0 || ^4.0.0"
+     }
+   },
+   defaults: {
