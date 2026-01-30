@@ -1,5 +1,4 @@
 <script setup lang="ts">
-  import ConfirmDialog from 'primevue/confirmdialog';
   import type { VocabularyOption } from '~/components/VocabularyOptionGrid.vue';
 
   definePageMeta({ middleware: ['auth'] });
@@ -124,6 +123,5 @@
 
     <SettingsVocabularyDangerZoneCard class="mt-4" @changed="onPanelChanged" />
 
-    <ConfirmDialog />
   </div>
 </template>

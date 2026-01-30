@@ -391,9 +391,9 @@
                         icon="pi pi-book"
                       />
                     </Tooltip>
-                    <Tooltip content="Download deck">
+                    <Tooltip content="Download / Learn">
                       <Button
-                        :label="isCompact ? undefined : 'Download deck'"
+                        :label="isCompact ? undefined : 'Download / Learn'"
                         class="text-center"
                         icon="pi pi-download"
                         @click="showDownloadDialog = true"

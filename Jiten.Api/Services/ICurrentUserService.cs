@@ -11,6 +11,7 @@ public interface ICurrentUserService
     Task<Dictionary<(int WordId, byte ReadingIndex), List<KnownState>>> GetKnownWordsState(IEnumerable<(int WordId, byte ReadingIndex)> keys);
     Task<List<KnownState>> GetKnownWordState(int wordId, byte readingIndex);
     Task<int> AddKnownWords(IEnumerable<DeckWord> deckWords);
+    Task<int> BlacklistWords(IEnumerable<DeckWord> deckWords);
     Task AddKnownWord(int wordId, byte readingIndex);
     Task RemoveKnownWord(int wordId, byte readingIndex);
 }

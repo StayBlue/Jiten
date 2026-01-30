@@ -73,7 +73,7 @@
           <Button v-tooltip="'View vocabulary'" as="router-link" :to="`/decks/media/${deck.deckId}/vocabulary`" size="small" class="p-button-sm">
             <Icon name="material-symbols:menu-book-outline" size="1.5em" />
           </Button>
-          <Button v-tooltip="'Download deck'" size="small" class="p-button-sm" @click="showDownloadDialog = true">
+          <Button v-tooltip="'Download / Learn'" size="small" class="p-button-sm" @click="showDownloadDialog = true">
             <Icon name="material-symbols:download" size="1.5em" />
           </Button>
         </div>

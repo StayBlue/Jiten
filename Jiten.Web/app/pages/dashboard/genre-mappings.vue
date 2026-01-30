@@ -9,7 +9,6 @@ import InputText from 'primevue/inputtext';
 import Select from 'primevue/select';
 import Tag from 'primevue/tag';
 import Toast from 'primevue/toast';
-import ConfirmDialog from 'primevue/confirmdialog';
 import { useToast } from 'primevue/usetoast';
 import { useConfirm } from 'primevue/useconfirm';
 import { LinkType, Genre } from '~/types/enums';

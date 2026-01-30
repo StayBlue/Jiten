@@ -269,6 +269,73 @@ public class CurrentUserService(
         return (toInsert.Count);
     }
 
+    public async Task<int> BlacklistWords(IEnumerable<DeckWord> deckWords)
+    {
+        if (!IsAuthenticated) return 0;
+        var words = deckWords?.ToList() ?? [];
+        if (words.Count == 0) return 0;
+
+        var wordIds = words.Select(w => w.WordId).Distinct().ToList();
+
+        var jmdictWords = await jitenDbContext.JMDictWords
+                                              .AsNoTracking()
+                                              .Where(w => wordIds.Contains(w.WordId))
+                                              .Select(w => new { w.WordId, w.ReadingTypes })
+                                              .ToDictionaryAsync(w => w.WordId);
+
+        var pairs = new List<(int WordId, byte ReadingIndex)>();
+        var seen = new HashSet<(int, byte)>();
+        foreach (var word in words)
+        {
+            if (!jmdictWords.TryGetValue(word.WordId, out var jw)) continue;
+            if (word.ReadingIndex >= jw.ReadingTypes.Count) continue;
+
+            var key = (word.WordId, word.ReadingIndex);
+            if (seen.Add(key))
+                pairs.Add(key);
+        }
+
+        if (pairs.Count == 0) return 0;
+
+        DateTime now = DateTime.UtcNow;
+        List<int> pairWordIds = pairs.Select(p => p.WordId).Distinct().ToList();
+        List<FsrsCard> existing = await userContext.FsrsCards
+                                                   .Where(uk => uk.UserId == UserId && pairWordIds.Contains(uk.WordId))
+                                                   .ToListAsync();
+        var existingSet = existing.ToDictionary(e => (e.WordId, e.ReadingIndex));
+
+        List<FsrsCard> toInsert = new();
+        var cardsToSync = new List<(int WordId, byte ReadingIndex, FsrsCard SourceCard, bool Overwrite)>();
+
+        foreach (var p in pairs)
+        {
+            if (!existingSet.TryGetValue(p, out var existingUk))
+            {
+                var newCard = new FsrsCard(UserId!, p.WordId, p.ReadingIndex, due: now, lastReview: now,
+                                           state: FsrsState.Blacklisted);
+                toInsert.Add(newCard);
+                cardsToSync.Add((newCard.WordId, newCard.ReadingIndex, newCard, true));
+            }
+            else
+            {
+                existingUk.State = FsrsState.Blacklisted;
+                cardsToSync.Add((existingUk.WordId, existingUk.ReadingIndex, existingUk, true));
+            }
+        }
+
+        if (toInsert.Count > 0)
+            await userContext.FsrsCards.AddRangeAsync(toInsert);
+
+        await userContext.SaveChangesAsync();
+
+        if (cardsToSync.Count > 0)
+        {
+            await srsService.SyncKanaReadingBatch(UserId!, cardsToSync, now);
+        }
+
+        return (toInsert.Count);
+    }
+
     public async Task AddKnownWord(int wordId, byte readingIndex)
     {
         await AddKnownWords([new DeckWord { WordId = wordId, ReadingIndex = readingIndex }]);

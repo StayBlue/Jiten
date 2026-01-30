@@ -62,6 +62,7 @@ export enum DeckFormat {
   Txt = 3,
   TxtRepeated = 4,
   Yomitan = 5,
+  Learn = 6,
 }
 
 export enum DeckOrder {

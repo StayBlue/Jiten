@@ -5,7 +5,6 @@
   import Select from 'primevue/select';
   import DatePicker from 'primevue/datepicker';
   import InputNumber from 'primevue/inputnumber';
-  import ConfirmDialog from 'primevue/confirmdialog';
   import Toast from 'primevue/toast';
   import { useConfirm } from 'primevue/useconfirm';
   import { useToast } from 'primevue/usetoast';
