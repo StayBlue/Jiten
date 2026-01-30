@@ -37,6 +37,18 @@ public class MorphologicalAnalyser
         "頂く", // kanji form of いただく
     ];
 
+    // Subsidiary verbs (補助動詞) for giving/receiving that combine with て-form verbs
+    // e.g., 食べてあげる, 読んでくれる, 教えてもらう, 愛してあげられる
+    private static readonly HashSet<string> TeFormSubsidiaryVerbs =
+    [
+        "あげる", "上げる",
+        "くれる", "呉れる",
+        "もらう", "貰う",
+        "やる",
+        "さしあげる", "差し上げる",
+        "くださる", "下さる",
+    ];
+
     // Mapping from auxiliary verb dictionary form to its stem for splitting compound tokens
     // Used to split Sudachi tokens like し終わっ (dict: し終わる) → し + 終わっ
     private static readonly Dictionary<string, string> AuxiliaryVerbStems = new()
@@ -82,6 +94,7 @@ public class MorphologicalAnalyser
         ("何と", "も", PartOfSpeech.Adverb),
         ("なくて", "も", PartOfSpeech.Expression),
         ("なんに", "も", PartOfSpeech.Adverb),
+        ("なん", "で", PartOfSpeech.Adverb),
     ];
 
     private static readonly List<string> HonorificsSuffixes = ["さん", "ちゃん", "くん"];
@@ -992,6 +1005,7 @@ public class MorphologicalAnalyser
             if (current.Text.EndsWith("ん") && current.Text.Length > 1 && current.Text != "ん" &&
                 !IsNaAdjectiveToken(current) &&
                 current.PartOfSpeech != PartOfSpeech.Suffix &&
+                !NormalizeToHiragana(current.DictionaryForm).EndsWith("ん") &&
                 i + 1 < split.Count && split[i + 1].Text is "だ" or "で")
             {
                 var candidateText = current.Text + split[i + 1].Text;
@@ -1119,9 +1133,17 @@ public class MorphologicalAnalyser
         // Should be この + 手紙 (tegami - letter)
         text = Regex.Replace(text, "この手紙", $"この{_stopToken}手紙");
 
+        // Fix Sudachi misparsing 少女の手 as 少 (prefix) + 女の手 (expression)
+        // Should be 少女 (girl) + の + 手 (hand)
+        text = Regex.Replace(text, "少女の手", $"少女{_stopToken}の手");
+
         // Fix Sudachi misparsing 外出/家出 + ない forms as compound noun + adjective
         // Should be 外/家 + 出ない (verb negative) in colloquial speech
         text = Regex.Replace(text, "(外|家)出(ない|なかった|なく)", $"$1{_stopToken}出$2");
+
+        // Normalise emphatic ぶっち → ぶち (colloquial gemination)
+        // e.g., ぶっち切れる → ぶち切れる ("to become enraged")
+        text = Regex.Replace(text, "ぶっち切", "ぶち切");
 
         // Fix emphatic っ/ッ at clause boundaries causing Sudachi to misparse
         // e.g., 止まらないっ！ → Sudachi sees ないっ as な + いっ (行く te-form)
@@ -1260,7 +1282,20 @@ public class MorphologicalAnalyser
                     if (w1.Text == sc.Item1 && w2.Text == sc.Item2)
                     {
                         var newWord = new WordInfo(w1) { Text = w1.Text + w2.Text };
-                        newWord.DictionaryForm = newWord.Text;
+
+                        // For verb merges where the first token is a conjugated verb form,
+                        // preserve the original dictionary form (e.g., し+て → して with DictionaryForm=する)
+                        // This enables compound lookups like 手にする to work correctly
+                        if (sc.Item3 == PartOfSpeech.Verb &&
+                            !string.IsNullOrEmpty(w1.DictionaryForm) &&
+                            w1.DictionaryForm != w1.Text)
+                        {
+                            newWord.DictionaryForm = w1.DictionaryForm;
+                        }
+                        else
+                        {
+                            newWord.DictionaryForm = newWord.Text;
+                        }
 
                         if (sc.Item3 != null)
                         {
@@ -1291,7 +1326,7 @@ public class MorphologicalAnalyser
             }
 
 
-            if (w1.Text == "だし")
+            if (w1.Text == "だし" && w1.PartOfSpeech != PartOfSpeech.Verb && newList.Count > 0)
             {
                 var da = new WordInfo
                          {
@@ -1741,7 +1776,7 @@ public class MorphologicalAnalyser
             // that are often not in JMDict, causing lookup failures. Keep them separate for better parsing.
             if (nextWord.HasPartOfSpeechSection(PartOfSpeechSection.PossibleDependant) &&
                 currentWord.PartOfSpeech == PartOfSpeech.Verb && !currentWord.Text.EndsWith("たり") &&
-                nextWord.DictionaryForm is "得る" or "する" or "しまう" or "おる" or "こなす" or "いく" or "貰う" or "いる" or "ない")
+                nextWord.DictionaryForm is "得る" or "する" or "しまう" or "おる" or "こなす" or "いく" or "貰う" or "いる" or "ない" or "だす")
             {
                 currentWord.Text += nextWord.Text;
             }
@@ -1818,21 +1853,40 @@ public class MorphologicalAnalyser
                 }
             }
 
-            // Pattern 2: Word ending in て/で + いる or ない (2 tokens)
-            // Handles cases where て is already combined with the verb/adjective (e.g., うらやましがられて + いる, 進んで + ない)
+            // Pattern 2: Word ending in て/で + subsidiary verb (2 tokens)
+            // Handles cases where て is already combined with the verb/adjective (e.g., うらやましがられて + いる, 進んで + ない, 愛して + あげられる)
             if (i + 1 < wordInfos.Count)
             {
                 WordInfo nextWord = wordInfos[i + 1];
 
                 if ((currentWord.Text.EndsWith("て") || currentWord.Text.EndsWith("で")) &&
-                    nextWord.HasPartOfSpeechSection(PartOfSpeechSection.PossibleDependant) &&
-                    nextWord.DictionaryForm is "いる" or "ない")
+                    currentWord.PartOfSpeech is PartOfSpeech.Verb or PartOfSpeech.IAdjective &&
+                    nextWord.PartOfSpeech == PartOfSpeech.Verb)
                 {
-                    WordInfo combinedWord = new WordInfo(currentWord);
-                    combinedWord.Text += nextWord.Text;
-                    newList.Add(combinedWord);
-                    i += 2;
-                    continue;
+                    bool isKnownSubsidiary =
+                        (nextWord.HasPartOfSpeechSection(PartOfSpeechSection.PossibleDependant) &&
+                         nextWord.DictionaryForm is "いる" or "ない") ||
+                        TeFormSubsidiaryVerbs.Contains(nextWord.DictionaryForm) ||
+                        TeFormSubsidiaryVerbs.Contains(nextWord.NormalizedForm);
+
+                    // Handle conjugated subsidiary verbs (e.g., あげられる = potential/passive of あげる)
+                    // Sudachi may tag these as standalone verbs rather than subsidiary forms
+                    if (!isKnownSubsidiary)
+                    {
+                        var deconj = Deconjugator.Instance;
+                        string nextHiragana = KanaNormalizer.Normalize(WanaKana.ToHiragana(nextWord.Text));
+                        var forms = deconj.Deconjugate(nextHiragana);
+                        isKnownSubsidiary = forms.Any(f => TeFormSubsidiaryVerbs.Contains(f.Text));
+                    }
+
+                    if (isKnownSubsidiary)
+                    {
+                        WordInfo combinedWord = new WordInfo(currentWord);
+                        combinedWord.Text += nextWord.Text;
+                        newList.Add(combinedWord);
+                        i += 2;
+                        continue;
+                    }
                 }
             }
 

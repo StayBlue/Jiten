@@ -1768,7 +1768,7 @@ namespace Jiten.Parser
             var dictForm = verb.DictionaryForm;
 
             // Try to deconjugate the dictionary form
-            if (string.IsNullOrEmpty(dictForm) || dictForm == verb.Text)
+            if (string.IsNullOrEmpty(dictForm))
             {
                 var deconjugated = Deconjugator.Instance.Deconjugate(WanaKana.ToHiragana(verb.Text));
                 if (deconjugated.Count == 0) return null;
@@ -1788,10 +1788,14 @@ namespace Jiten.Parser
                 if (startIndex <= lastConsumedIndex)
                     continue;
 
-                // Skip if first token is a particle or suffix (e.g. たち plural marker)
+                // Skip if first token is a particle
                 var firstWord = wordInfos[startIndex];
-                if (firstWord.PartOfSpeech == PartOfSpeech.Particle || firstWord.PartOfSpeech == PartOfSpeech.Suffix)
+                if (firstWord.PartOfSpeech == PartOfSpeech.Particle)
                     continue;
+
+                // When a suffix (e.g. たち) starts the window, only accept Expression-typed matches
+                // to avoid spurious compounds while still allowing idiomatic expressions (e.g. 手を抜く)
+                bool expressionOnly = firstWord.PartOfSpeech == PartOfSpeech.Suffix;
 
                 // Skip if any token in the window is punctuation (SupplementarySymbol)
                 // This prevents combining tokens across punctuation boundaries like commas
@@ -1811,21 +1815,26 @@ namespace Jiten.Parser
                 var prefix = string.Concat(wordInfos.Skip(startIndex).Take(windowSize - 1).Select(w => w.Text));
                 var candidate = prefix + dictForm;
 
-                lock (CompoundCacheLock)
+                // Skip cache when expressionOnly — cached result may have been validated
+                // with looser criteria from a non-suffix context
+                if (!expressionOnly)
                 {
-                    if (CompoundExpressionCache.TryGetValue(candidate, out var cached))
+                    lock (CompoundCacheLock)
                     {
-                        if (cached.validExpression)
-                            return (startIndex, candidate, cached.wordId!.Value);
+                        if (CompoundExpressionCache.TryGetValue(candidate, out var cached))
+                        {
+                            if (cached.validExpression)
+                                return (startIndex, candidate, cached.wordId!.Value);
 
-                        // If we have something in the cache but it's not marked as valid, try a smaller window
-                        continue;
+                            // If we have something in the cache but it's not marked as valid, try a smaller window
+                            continue;
+                        }
                     }
                 }
 
                 if (_lookups.TryGetValue(candidate, out var wordIds) && wordIds.Count > 0)
                 {
-                    var validWordId = await FindValidCompoundWordId(wordIds);
+                    var validWordId = await FindValidCompoundWordId(wordIds, expressionOnly);
                     if (validWordId.HasValue)
                     {
                         lock (CompoundCacheLock)
@@ -1841,7 +1850,7 @@ namespace Jiten.Parser
                 var hiraganaCandidate = WanaKana.ToHiragana(candidate, new DefaultOptions() { ConvertLongVowelMark = false });
                 if (hiraganaCandidate != candidate && _lookups.TryGetValue(hiraganaCandidate, out wordIds) && wordIds.Count > 0)
                 {
-                    var validWordId = await FindValidCompoundWordId(wordIds);
+                    var validWordId = await FindValidCompoundWordId(wordIds, expressionOnly);
                     if (validWordId.HasValue)
                     {
                         lock (CompoundCacheLock)
@@ -1863,7 +1872,7 @@ namespace Jiten.Parser
             return null;
         }
 
-        private static async Task<int?> FindValidCompoundWordId(List<int> wordIds)
+        private static async Task<int?> FindValidCompoundWordId(List<int> wordIds, bool expressionOnly = false)
         {
             try
             {
@@ -1878,6 +1887,8 @@ namespace Jiten.Parser
                     if (posList.Contains(PartOfSpeech.Expression))
                         return wordId;
                 }
+
+                if (expressionOnly) return null;
 
                 // Second pass: accept any valid compound POS
                 foreach (var wordId in wordIds)
