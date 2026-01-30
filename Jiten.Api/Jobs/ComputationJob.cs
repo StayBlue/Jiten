@@ -93,6 +93,28 @@ public class ComputationJob(
     }
 
     [Queue("coverage")]
+    public async Task ComputeDeckCoverageForAllUsers(int deckId)
+    {
+        await using var ctx = await userContextFactory.CreateDbContextAsync();
+
+        var fsrsEligible = ctx.FsrsCards
+            .GroupBy(c => c.UserId)
+            .Where(g => g.Count() >= 10)
+            .Select(g => g.Key);
+
+        var wordSetEligible = ctx.UserWordSetStates
+            .Select(s => s.UserId)
+            .Distinct();
+
+        var userIds = await fsrsEligible.Union(wordSetEligible).ToListAsync();
+
+        foreach (var userId in userIds)
+        {
+            await ComputeUserDeckCoverage(userId, deckId);
+        }
+    }
+
+    [Queue("coverage")]
     public async Task ComputeUserDeckCoverage(string userId, int deckId)
     {
         // Prevent duplicate concurrent computations for the same user

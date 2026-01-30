@@ -242,12 +242,13 @@ public class UserController(
                                             .ToListAsync();
 
         List<FsrsCard> toInsert = new();
+        var alreadyKnownSet = alreadyKnown.Select(uk => (uk.WordId, (int)uk.ReadingIndex)).ToHashSet();
 
         foreach (var word in jmdictWords)
         {
             for (var i = 0; i < word.Readings.Count; i++)
             {
-                if (alreadyKnown.Any(uk => uk.WordId == word.WordId && uk.ReadingIndex == i))
+                if (alreadyKnownSet.Contains((word.WordId, i)))
                     continue;
 
                 toInsert.Add(new FsrsCard(userId, word.WordId, (byte)i, due: DateTime.UtcNow, lastReview: DateTime.UtcNow,
@@ -703,7 +704,7 @@ public class UserController(
         var userId = userService.UserId;
         if (string.IsNullOrEmpty(userId)) return Results.Unauthorized();
 
-        var metadata = userContext.UserMetadatas.SingleOrDefault(m => m.UserId == userId);
+        var metadata = await userContext.UserMetadatas.SingleOrDefaultAsync(m => m.UserId == userId);
         if (metadata == null)
             return Results.Ok(new UserMetadata());
 
@@ -1037,13 +1038,14 @@ public class UserController(
         var result = cards.Select(c =>
         {
             var word = wordLookup.GetValueOrDefault(c.WordId);
+            var hasValidReading = word != null && c.ReadingIndex < word.Readings.Count;
 
             return new FsrsCardWithWordDto
                    {
                        CardId = c.CardId, WordId = c.WordId, ReadingIndex = c.ReadingIndex, State = c.State, Step = c.Step,
                        Stability = EnsureValidNumber(c.Stability), Difficulty = EnsureValidNumber(c.Difficulty), Due = c.Due,
-                       LastReview = c.LastReview, WordText = word?.Readings[c.ReadingIndex] ?? "",
-                       ReadingType = word?.ReadingTypes[c.ReadingIndex] ?? JmDictReadingType.Reading
+                       LastReview = c.LastReview, WordText = hasValidReading ? word!.Readings[c.ReadingIndex] : "",
+                       ReadingType = hasValidReading ? word!.ReadingTypes[c.ReadingIndex] : JmDictReadingType.Reading
                    };
         }).ToList();
 

@@ -7,7 +7,7 @@ using Jiten.Cli;
 
 namespace Jiten.Api.Jobs;
 
-public class ParseJob(IDbContextFactory<JitenDbContext> contextFactory, IDbContextFactory<UserDbContext> userContextFactory, IBackgroundJobClient backgroundJobs)
+public class ParseJob(IDbContextFactory<JitenDbContext> contextFactory, IBackgroundJobClient backgroundJobs)
 {
     [Queue("parse")]
     public async Task Parse(Metadata metadata, MediaType deckType, bool storeRawText = false)
@@ -105,8 +105,8 @@ public class ParseJob(IDbContextFactory<JitenDbContext> contextFactory, IDbConte
             await MetadataProviderHelper.ProcessRelations(relationContext, deck.DeckId, metadata.Relations);
         }
 
-        // Queue coverage computation jobs for all users with at least 10 known words
-        await QueueCoverageJobsForDeck(deck);
+        // Queue coverage computation for all eligible users
+        backgroundJobs.Enqueue<ComputationJob>(job => job.ComputeDeckCoverageForAllUsers(deck.DeckId));
 
         // Queue coverage statistics computation for main deck and all children
         QueueStatsComputationForDeckTree(deck);
@@ -220,22 +220,6 @@ public class ParseJob(IDbContextFactory<JitenDbContext> contextFactory, IDbConte
             ".mokuro" => await new MokuroExtractor().Extract(filePath, false),
             _ => await File.ReadAllTextAsync(filePath)
         };
-    }
-
-    private async Task QueueCoverageJobsForDeck(Deck deck)
-    {
-        await using var userContext = await userContextFactory.CreateDbContextAsync();
-
-        var userIds = await userContext.Users
-                                       .Where(u => userContext.FsrsCards.Count(c => c.UserId == u.Id) >= 10 ||
-                                                   userContext.UserWordSetStates.Any(s => s.UserId == u.Id))
-                                       .Select(u => u.Id)
-                                       .ToListAsync();
-
-        foreach (var userId in userIds)
-        {
-                backgroundJobs.Enqueue<ComputationJob>(job => job.ComputeUserDeckCoverage(userId, deck.DeckId));
-        }
     }
 
     private void QueueStatsComputationForDeckTree(Deck deck)

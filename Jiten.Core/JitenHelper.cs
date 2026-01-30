@@ -964,34 +964,12 @@ public static class JitenHelper
                                  .Where(w => wordIds.Contains(w.WordId))
                                  .ToListAsync();
 
-        var query = new List<(JmDictWord word, JmDictWordFrequency frequency)>();
-
-        foreach (var wf in wordFrequencies)
-        {
-            foreach (var w in words)
-            {
-                if (wf.WordId == w.WordId)
-                {
-                    query.Add(new(w, wf));
-                }
-            }
-        }
-
-        // var rarestWords = query.OrderByDescending(x => x.frequency.FrequencyRank)
-        //                        .Take(100)
-        //                        .ToList();
-        //
-        // Console.WriteLine("First 100 rarest words in deck:");
-        // foreach (var item in rarestWords)
-        // {
-        //     Console.WriteLine(item.word.Readings[0] + " - " + item.frequency.FrequencyRank);
-        // }
-
+        var wordFrequenciesById = wordFrequencies.ToDictionary(wf => wf.WordId);
 
         Dictionary<int, int> wordFrequencyBy10k = new Dictionary<int, int>();
         foreach (var w in words)
         {
-            var frequencyRank = wordFrequencies.First(wf => wf.WordId == w.WordId).FrequencyRank;
+            var frequencyRank = wordFrequenciesById[w.WordId].FrequencyRank;
             var nRank = frequencyRank / 1000;
 
             if (wordFrequencyBy10k.ContainsKey(nRank))

@@ -40,7 +40,10 @@ public class VocabularyController(JitenDbContext context, IDbContextFactory<Jite
         if (word == null)
             return Results.NotFound();
 
-        var frequency = context.JmDictWordFrequencies.AsNoTracking().First(f => f.WordId == word.WordId);
+        if (readingIndex >= word.Readings.Count)
+            return Results.NotFound();
+
+        var frequency = await context.JmDictWordFrequencies.AsNoTracking().FirstOrDefaultAsync(f => f.WordId == word.WordId);
 
         var usedInMediaByType = await context.DeckWords.AsNoTracking()
                                              .Where(dw => dw.WordId == wordId && dw.ReadingIndex == readingIndex)
@@ -59,9 +62,10 @@ public class VocabularyController(JitenDbContext context, IDbContextFactory<Jite
         var mainReading = new ReadingDto()
                           {
                               Text = word.ReadingsFurigana[readingIndex], ReadingIndex = readingIndex,
-                              ReadingType = word.ReadingTypes[readingIndex], FrequencyRank = frequency.ReadingsFrequencyRank[readingIndex],
-                              FrequencyPercentage = frequency.ReadingsFrequencyPercentage[readingIndex].ZeroIfNaN(),
-                              UsedInMediaAmount = frequency.ReadingsUsedInMediaAmount[readingIndex],
+                              ReadingType = word.ReadingTypes[readingIndex],
+                              FrequencyRank = frequency?.ReadingsFrequencyRank[readingIndex] ?? 0,
+                              FrequencyPercentage = frequency?.ReadingsFrequencyPercentage[readingIndex].ZeroIfNaN() ?? 0,
+                              UsedInMediaAmount = frequency?.ReadingsUsedInMediaAmount[readingIndex] ?? 0,
                               UsedInMediaAmountByType = usedInMediaByType
                           };
 
@@ -70,10 +74,10 @@ public class VocabularyController(JitenDbContext context, IDbContextFactory<Jite
                                                                      {
                                                                          Text = r, ReadingIndex = (byte)i, ReadingType = word.ReadingTypes[i],
                                                                          FrequencyRank =
-                                                                             frequency.ReadingsFrequencyRank[i],
+                                                                             frequency?.ReadingsFrequencyRank[i] ?? 0,
                                                                          FrequencyPercentage =
-                                                                             frequency.ReadingsFrequencyPercentage[i].ZeroIfNaN(),
-                                                                         UsedInMediaAmount = frequency.ReadingsUsedInMediaAmount[i]
+                                                                             frequency?.ReadingsFrequencyPercentage[i].ZeroIfNaN() ?? 0,
+                                                                         UsedInMediaAmount = frequency?.ReadingsUsedInMediaAmount[i] ?? 0
                                                                      })
                                                    .ToList();
         
@@ -269,77 +273,76 @@ public class VocabularyController(JitenDbContext context, IDbContextFactory<Jite
     [ProducesResponseType(typeof(List<ExampleSentenceDto>), StatusCodes.Status200OK)]
     public async Task<List<ExampleSentenceDto>> GetRandomExampleSentences([FromRoute] int wordId, [FromRoute] int readingIndex,
                                                                           [FromBody] List<int> alreadyLoaded, [FromRoute] MediaType? mediaType = null)
-
     {
-        // Fetch candidate sentences with deck info, ensuring we don't duplicate the same sentence
-        var candidates = await context.ExampleSentenceWords
-                                      .AsNoTracking()
-                                      .Where(w => w.WordId == wordId && w.ReadingIndex == readingIndex)
-                                      .Join(
-                                            context.ExampleSentences.AsNoTracking(),
-                                            w => w.ExampleSentenceId,
-                                            s => s.SentenceId,
-                                            (word, sentence) => new { Word = word, Sentence = sentence }
-                                           )
-                                      .Join(
-                                            context.Decks.AsNoTracking(),
-                                            js => js.Sentence.DeckId,
-                                            d => d.DeckId,
-                                            (js, deck) => new { js.Word, js.Sentence, Deck = deck }
-                                           )
-                                      .Where(j => !mediaType.HasValue || j.Deck.MediaType == mediaType.Value)
-                                      .Select(j => new
-                                                   {
-                                                       SentenceId = j.Sentence.SentenceId,
-                                                       j.Sentence.Text,
-                                                       j.Word.Position,
-                                                       j.Word.Length,
-                                                       DeckId = j.Deck.DeckId,
-                                                       ParentDeckId = j.Deck.ParentDeckId
-                                                   })
-                                      .ToListAsync();
+        // Subquery: distinct sentence IDs for this word+reading (not materialised)
+        var sentenceIdSubquery = context.ExampleSentenceWords
+            .Where(w => w.WordId == wordId && w.ReadingIndex == readingIndex)
+            .Select(w => w.ExampleSentenceId)
+            .Distinct();
 
-        // De-duplicate by sentence id (a word can appear multiple times in the same sentence)
-        var distinctBySentence = candidates
-                                 .GroupBy(c => c.SentenceId)
-                                 .Select(g => g.First())
-                                 .ToList();
-
-        // Exclude sentences from decks that are already loaded, considering parent-child relationship
-        var filtered = distinctBySentence
-                       .Where(c => !alreadyLoaded.Contains(c.DeckId) && !alreadyLoaded.Contains(c.ParentDeckId ?? -1))
-                       .OrderBy(_ => Guid.NewGuid())
-                       .Take(3)
-                       .ToList();
-
-        // Build DTOs. Keep SourceDeck as the actual (possibly child) deck, and include parent in SourceDeckParent
-        var childDeckIds = filtered.Select(f => f.DeckId).Distinct().ToList();
-        var childDecks = await context.Decks.AsNoTracking()
-                                    .Where(d => childDeckIds.Contains(d.DeckId))
-                                    .ToDictionaryAsync(d => d.DeckId, d => d);
-        var parentIds = filtered.Where(f => f.ParentDeckId.HasValue).Select(f => f.ParentDeckId!.Value).Distinct().ToList();
-        var parents = await context.Decks.AsNoTracking()
-                                 .Where(d => parentIds.Contains(d.DeckId))
-                                 .ToDictionaryAsync(d => d.DeckId, d => d);
-
-        var result = new List<ExampleSentenceDto>();
-        foreach (var f in filtered)
-        {
-            childDecks.TryGetValue(f.DeckId, out var sourceDeck);
-            Deck? parentDeck = null;
-            if (f.ParentDeckId.HasValue)
-                parents.TryGetValue(f.ParentDeckId.Value, out parentDeck);
-
-            result.Add(new ExampleSentenceDto
+        // Filter, deduplicate, exclude already-loaded decks, sample 3 random — all in SQL
+        var picked = await context.ExampleSentences
+            .AsNoTracking()
+            .Where(s => sentenceIdSubquery.Contains(s.SentenceId))
+            .Join(context.Decks.AsNoTracking(),
+                  s => s.DeckId, d => d.DeckId,
+                  (s, d) => new { Sentence = s, Deck = d })
+            .Where(j => !mediaType.HasValue || j.Deck.MediaType == mediaType.Value)
+            .Where(j => !alreadyLoaded.Contains(j.Deck.DeckId)
+                     && (!j.Deck.ParentDeckId.HasValue || !alreadyLoaded.Contains(j.Deck.ParentDeckId.Value)))
+            .OrderBy(_ => EF.Functions.Random())
+            .Take(3)
+            .Select(j => new
             {
-                Text = f.Text,
-                WordPosition = f.Position,
-                WordLength = f.Length,
+                SentenceId = j.Sentence.SentenceId,
+                j.Sentence.Text,
+                DeckId = j.Deck.DeckId,
+                ParentDeckId = j.Deck.ParentDeckId
+            })
+            .ToListAsync();
+
+        if (picked.Count == 0) return [];
+
+        // Fetch word position/length for the selected sentences (at most a handful of rows)
+        var selectedIds = picked.Select(p => p.SentenceId).ToList();
+        var positionMap = (await context.ExampleSentenceWords
+            .AsNoTracking()
+            .Where(w => w.WordId == wordId && w.ReadingIndex == readingIndex
+                        && selectedIds.Contains(w.ExampleSentenceId))
+            .Select(w => new { w.ExampleSentenceId, w.Position, w.Length })
+            .ToListAsync())
+            .DistinctBy(w => w.ExampleSentenceId)
+            .ToDictionary(w => w.ExampleSentenceId);
+
+        // Build DTOs
+        var childDeckIds = picked.Select(p => p.DeckId).Distinct().ToList();
+        var childDecks = await context.Decks.AsNoTracking()
+            .Where(d => childDeckIds.Contains(d.DeckId))
+            .ToDictionaryAsync(d => d.DeckId, d => d);
+
+        var parentIds = picked.Where(p => p.ParentDeckId.HasValue).Select(p => p.ParentDeckId!.Value).Distinct().ToList();
+        var parentDecks = parentIds.Count > 0
+            ? await context.Decks.AsNoTracking()
+                .Where(d => parentIds.Contains(d.DeckId))
+                .ToDictionaryAsync(d => d.DeckId, d => d)
+            : new Dictionary<int, Deck>();
+
+        return picked.Select(p =>
+        {
+            positionMap.TryGetValue(p.SentenceId, out var pos);
+            childDecks.TryGetValue(p.DeckId, out var sourceDeck);
+            Deck? parentDeck = null;
+            if (p.ParentDeckId.HasValue)
+                parentDecks.TryGetValue(p.ParentDeckId.Value, out parentDeck);
+
+            return new ExampleSentenceDto
+            {
+                Text = p.Text,
+                WordPosition = pos?.Position ?? 0,
+                WordLength = pos?.Length ?? 0,
                 SourceDeck = sourceDeck!,
                 SourceDeckParent = parentDeck
-            });
-        }
-
-        return result;
+            };
+        }).ToList();
     }
 }

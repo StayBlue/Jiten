@@ -519,7 +519,7 @@ builder.Services.AddHangfireServer((options) =>
 {
     options.ServerName = "ParseServer";
     options.Queues = ["parse", "reparse"];
-    options.WorkerCount = Environment.ProcessorCount / 4;
+    options.WorkerCount = Math.Max(1, Environment.ProcessorCount / 4);
     options.ShutdownTimeout = TimeSpan.FromMinutes(30);
     options.StopTimeout = TimeSpan.FromMinutes(30);
 });
@@ -528,7 +528,7 @@ builder.Services.AddHangfireServer((options) =>
 {
     options.ServerName = "DefaultServer";
     options.Queues = ["default"];
-    options.WorkerCount = Environment.ProcessorCount / 4;
+    options.WorkerCount = Math.Max(1, Environment.ProcessorCount / 4);
     options.ShutdownTimeout = TimeSpan.FromMinutes(30);
     options.StopTimeout = TimeSpan.FromMinutes(30);
 });

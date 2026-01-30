@@ -16,7 +16,7 @@ public class EnumSchemaFilter : ISchemaFilter
         
         foreach (var value in Enum.GetValues(context.Type))
         {
-            var intValue = (int)value;
+            var intValue = Convert.ToInt32(value);
             var name = Enum.GetName(context.Type, value);
             
             schema.Enum.Add(new OpenApiInteger(intValue));

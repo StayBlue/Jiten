@@ -33,8 +33,11 @@ public class MediaDeckController(
     UserDbContext userContext,
     ICurrentUserService currentUserService,
     IConfiguration configuration,
-    ILogger<MediaDeckController> logger) : ControllerBase
+    ILogger<MediaDeckController> logger,
+    IHttpClientFactory httpClientFactory) : ControllerBase
 {
+    private record DeckIdWithCount(int DeckId, int TotalCount);
+
     private class DeckWithOccurrences
     {
         public Deck Deck { get; set; } = null!;
@@ -152,20 +155,21 @@ public class MediaDeckController(
                                       FROM all_matches
                                       GROUP BY "DeckId"
                                   )
-                                  SELECT r."DeckId"
+                                  SELECT r."DeckId", COUNT(*) OVER() AS "TotalCount"
                                   FROM ranked r
                                   JOIN jiten."Decks" d ON r."DeckId" = d."DeckId"
                                   WHERE d."ParentDeckId" IS NULL
                                   ORDER BY r.best_match ASC, r.length_ratio DESC, r.best_type ASC, r.best_score DESC
+                                  LIMIT {{limit}}
                                   """;
 
-        var allMatchingDeckIds = await context.Database.SqlQuery<int>(sql).ToListAsync();
-        var totalCount = allMatchingDeckIds.Count;
+        var results = await context.Database.SqlQuery<DeckIdWithCount>(sql).ToListAsync();
 
-        if (totalCount == 0)
+        if (results.Count == 0)
             return Ok(new MediaSuggestionsResponse());
 
-        var orderedDeckIds = allMatchingDeckIds.Take(limit).ToList();
+        var totalCount = results[0].TotalCount;
+        var orderedDeckIds = results.Select(r => r.DeckId).ToList();
 
         var decks = await context.Decks
             .AsNoTracking()
@@ -1042,12 +1046,12 @@ public class MediaDeckController(
     {
         int pageSize = 100;
 
-        var deck = context.Decks.AsNoTracking().FirstOrDefault(d => d.DeckId == id);
+        var deck = await context.Decks.AsNoTracking().FirstOrDefaultAsync(d => d.DeckId == id);
 
         if (deck == null)
             return new PaginatedResponse<DeckVocabularyListDto?>(null, 0, pageSize, offset ?? 0);
 
-        var parentDeck = context.Decks.AsNoTracking().FirstOrDefault(d => d.DeckId == deck.ParentDeckId);
+        var parentDeck = await context.Decks.AsNoTracking().FirstOrDefaultAsync(d => d.DeckId == deck.ParentDeckId);
         var parentDeckDto = parentDeck != null ? new DeckDto(parentDeck) : null;
 
         var query = context.DeckWords.AsNoTracking().Where(dw => dw.DeckId == id);
@@ -1107,17 +1111,26 @@ public class MediaDeckController(
                                  .ToList();
 
         var wordIds = deckWordsList.Select(dw => dw.WordId).ToList();
+        var uniqueWordIds = wordIds.Distinct().ToList();
 
-        var jmdictWords = context.JMDictWords.AsNoTracking()
-                                 .Where(w => wordIds.Contains(w.WordId))
-                                 .Include(w => w.Definitions)
+        var jmdictWordsDict = context.JMDictWords.AsNoTracking()
+                                    .Where(w => uniqueWordIds.Contains(w.WordId))
+                                    .Include(w => w.Definitions)
+                                    .ToDictionary(w => w.WordId);
+
+        var wordIdOrder = new Dictionary<int, int>(capacity: wordIds.Count);
+        for (int i = 0; i < wordIds.Count; i++)
+        {
+            wordIdOrder.TryAdd(wordIds[i], i);
+        }
+
+        var words = deckWordsList.Select(dw => new { dw, jmDictWord = jmdictWordsDict.GetValueOrDefault(dw.WordId) })
+                                 .OrderBy(dw => wordIdOrder.GetValueOrDefault(dw.dw.WordId, int.MaxValue))
                                  .ToList();
 
-        var words = deckWordsList.Select(dw => new { dw, jmDictWord = jmdictWords.FirstOrDefault(w => w.WordId == dw.WordId) })
-                                 .OrderBy(dw => wordIds.IndexOf(dw.dw.WordId))
-                                 .ToList();
-
-        var frequencies = context.JmDictWordFrequencies.AsNoTracking().Where(f => wordIds.Contains(f.WordId)).ToList();
+        var frequencies = context.JmDictWordFrequencies.AsNoTracking()
+                                .Where(f => uniqueWordIds.Contains(f.WordId))
+                                .ToDictionary(f => f.WordId);
 
         DeckVocabularyListDto dto = new() { ParentDeck = parentDeckDto, Deck = deck, Words = new() };
 
@@ -1132,30 +1145,27 @@ public class MediaDeckController(
 
             var reading = word.jmDictWord.ReadingsFurigana[word.dw.ReadingIndex];
 
+            frequencies.TryGetValue(word.dw.WordId, out var frequency);
+
             List<ReadingDto> alternativeReadings = word.jmDictWord.ReadingsFurigana
                                                        .Select((r, i) => new ReadingDto
                                                                          {
                                                                              Text = r, ReadingIndex = (byte)i,
-                                                                             ReadingType = word.jmDictWord.ReadingTypes[i], FrequencyRank =
-                                                                                 frequencies.First(f => f.WordId == word.dw.WordId)
-                                                                                            .ReadingsFrequencyRank[i],
-                                                                             FrequencyPercentage =
-                                                                                 frequencies.First(f => f.WordId == word.dw.WordId)
-                                                                                            .ReadingsFrequencyPercentage[i]
+                                                                             ReadingType = word.jmDictWord.ReadingTypes[i],
+                                                                             FrequencyRank = frequency?.ReadingsFrequencyRank[i] ?? 0,
+                                                                             FrequencyPercentage = frequency?.ReadingsFrequencyPercentage[i] ?? 0
                                                                          })
                                                        .ToList();
 
             // Remove current
             alternativeReadings.RemoveAt(word.dw.ReadingIndex);
 
-            var frequency = frequencies.First(f => f.WordId == word.dw.WordId);
-
             var mainReading = new ReadingDto()
                               {
                                   Text = reading, ReadingIndex = word.dw.ReadingIndex,
                                   ReadingType = word.jmDictWord.ReadingTypes[word.dw.ReadingIndex],
-                                  FrequencyRank = frequency.ReadingsFrequencyRank[word.dw.ReadingIndex],
-                                  FrequencyPercentage = frequency.ReadingsFrequencyPercentage[word.dw.ReadingIndex]
+                                  FrequencyRank = frequency?.ReadingsFrequencyRank[word.dw.ReadingIndex] ?? 0,
+                                  FrequencyPercentage = frequency?.ReadingsFrequencyPercentage[word.dw.ReadingIndex] ?? 0
                               };
 
             var wordDto = new WordDto
@@ -1188,7 +1198,7 @@ public class MediaDeckController(
     {
         int pageSize = 25;
 
-        var deck = context.Decks.AsNoTracking()
+        var deck = await context.Decks.AsNoTracking()
                           .Include(d => d.Children)
                           .Include(d => d.Links)
                           .Include(d => d.DeckGenres)
@@ -1198,16 +1208,16 @@ public class MediaDeckController(
                           .ThenInclude(r => r.TargetDeck)
                           .Include(d => d.RelationshipsAsTarget)
                           .ThenInclude(r => r.SourceDeck)
-                          .FirstOrDefault(d => d.DeckId == id);
+                          .FirstOrDefaultAsync(d => d.DeckId == id);
 
         if (deck == null)
             return new PaginatedResponse<DeckDetailDto?>(null, 0, pageSize, offset ?? 0);
 
-        var parentDeck = context.Decks.AsNoTracking().Include(d => d.DeckGenres).Include(d => d.DeckTags).ThenInclude(dt => dt.Tag)
-                                .FirstOrDefault(d => d.DeckId == deck.ParentDeckId);
+        var parentDeck = await context.Decks.AsNoTracking().Include(d => d.DeckGenres).Include(d => d.DeckTags).ThenInclude(dt => dt.Tag)
+                                .FirstOrDefaultAsync(d => d.DeckId == deck.ParentDeckId);
         var subDecks = context.Decks.AsNoTracking().Include(d => d.DeckGenres).Include(d => d.DeckTags).ThenInclude(dt => dt.Tag)
                               .Where(d => d.ParentDeckId == id);
-        int totalCount = subDecks.Count();
+        int totalCount = await subDecks.CountAsync();
 
         subDecks = subDecks
                    .OrderBy(dw => dw.DeckOrder)
@@ -1218,7 +1228,7 @@ public class MediaDeckController(
         mainDeckDto.Relationships = DeckRelationshipDto.FromDeck(deck.RelationshipsAsSource, deck.RelationshipsAsTarget);
         List<DeckDto> subdeckDtos = [];
 
-        var subDeckList = subDecks.ToList();
+        var subDeckList = await subDecks.ToListAsync();
         foreach (var subDeck in subDeckList)
             subdeckDtos.Add(new DeckDto(subDeck));
 
@@ -1891,35 +1901,15 @@ public class MediaDeckController(
     [ProducesResponseType(typeof(List<int>), StatusCodes.Status200OK)]
     public async Task<List<int>> GetMediaDeckIdsByLinkId(LinkType linkType, string id)
     {
-        var links = await context.Decks
-                                 .Include(d => d.Links)
-                                 .Where(d => d.Links.Any(l => l.LinkType == linkType))
-                                 .SelectMany(d => d.Links.Where(l => l.LinkType == linkType)
-                                                   .Select(l => new { DeckId = d.DeckId, Url = l.Url }))
-                                 .ToListAsync();
+        var suffix = "/" + id.ToLowerInvariant();
 
-        var result = new List<int>();
-
-        foreach (var link in links)
-        {
-            // Remove trailing slash if present
-            var url = link.Url.TrimEnd('/');
-
-            // Get the last part of the URL (after the last slash)
-            var lastSlashIndex = url.LastIndexOf('/');
-            if (lastSlashIndex == -1)
-                continue;
-
-            var urlId = url.Substring(lastSlashIndex + 1);
-
-            // If the extracted ID matches the provided ID, add the deck ID to the result
-            if (urlId.Equals(id, StringComparison.OrdinalIgnoreCase))
-            {
-                result.Add(link.DeckId);
-            }
-        }
-
-        return result;
+        return await context.Set<Link>()
+                            .Where(l => l.LinkType == linkType)
+                            .Where(l => l.Url.ToLower().EndsWith(suffix) ||
+                                        l.Url.ToLower().EndsWith(suffix + "/"))
+                            .Select(l => l.DeckId)
+                            .Distinct()
+                            .ToListAsync();
     }
 
     /// <summary>
@@ -1982,7 +1972,7 @@ public class MediaDeckController(
                              };
         var embedJson = JsonSerializer.Serialize(discordPayload);
         var webhook = configuration["DiscordWebhook"];
-        using var httpClient = new HttpClient();
+        using var httpClient = httpClientFactory.CreateClient();
         var content = new StringContent(embedJson, Encoding.UTF8, "application/json");
         var result = await httpClient.PostAsync(webhook, content);
 

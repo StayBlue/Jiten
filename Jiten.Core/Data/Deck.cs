@@ -211,24 +211,26 @@ public class Deck
             return;
 
         DeckWords = new List<DeckWord>();
+        var deckWordLookup = new Dictionary<(int, byte), DeckWord>();
 
         foreach (var child in Children.OrderBy(c => c.DeckOrder))
         {
             foreach (var childDeckWord in child.DeckWords)
             {
-                var existingDeckWord = DeckWords.FirstOrDefault(dw => dw.WordId == childDeckWord.WordId &&
-                                                                      dw.ReadingIndex == childDeckWord.ReadingIndex);
-                if (existingDeckWord != null)
+                var key = (childDeckWord.WordId, childDeckWord.ReadingIndex);
+                if (deckWordLookup.TryGetValue(key, out var existingDeckWord))
                 {
                     existingDeckWord.Occurrences += childDeckWord.Occurrences;
                 }
                 else
                 {
-                    DeckWords.Add(new DeckWord
-                                  {
-                                      DeckId = DeckId, WordId = childDeckWord.WordId, ReadingIndex = childDeckWord.ReadingIndex,
-                                      Occurrences = childDeckWord.Occurrences, OriginalText = childDeckWord.OriginalText, Deck = this
-                                  });
+                    var newDeckWord = new DeckWord
+                                     {
+                                         DeckId = DeckId, WordId = childDeckWord.WordId, ReadingIndex = childDeckWord.ReadingIndex,
+                                         Occurrences = childDeckWord.Occurrences, OriginalText = childDeckWord.OriginalText, Deck = this
+                                     };
+                    DeckWords.Add(newDeckWord);
+                    deckWordLookup[key] = newDeckWord;
                 }
             }
         }
@@ -246,14 +248,21 @@ public class Deck
         StringBuilder sb = new();
 
         var wordIds = DeckWords.Select(dw => dw.WordId).ToList();
+        var uniqueWordIds = wordIds.Distinct().ToList();
 
-        var jmdictWords = context.JMDictWords.AsNoTracking()
-                                 .Where(w => wordIds.Contains(w.WordId))
-                                 .Include(w => w.Definitions)
-                                 .ToList();
+        var jmdictWordsDict = context.JMDictWords.AsNoTracking()
+                                    .Where(w => uniqueWordIds.Contains(w.WordId))
+                                    .Include(w => w.Definitions)
+                                    .ToDictionary(w => w.WordId);
 
-        var words = DeckWords.Select(dw => new { dw, jmDictWord = jmdictWords.FirstOrDefault(w => w.WordId == dw.WordId) })
-                             .OrderBy(dw => wordIds.IndexOf(dw.dw.WordId))
+        var wordIdOrder = new Dictionary<int, int>(capacity: wordIds.Count);
+        for (int i = 0; i < wordIds.Count; i++)
+        {
+            wordIdOrder.TryAdd(wordIds[i], i);
+        }
+
+        var words = DeckWords.Select(dw => new { dw, jmDictWord = jmdictWordsDict.GetValueOrDefault(dw.WordId) })
+                             .OrderBy(dw => wordIdOrder.GetValueOrDefault(dw.dw.WordId, int.MaxValue))
                              .ToList();
         foreach (var word in words)
         {

@@ -63,6 +63,7 @@ public class ReaderController(
 
         var wordIndex = 0;
         var positionInCombined = 0;
+        var positionCache = new Dictionary<int, int>();
         for (var i = 0; i < request.Text.Length; i++)
         {
             var paragraphWords = new List<DeckWord>();
@@ -71,9 +72,16 @@ public class ReaderController(
             while (wordIndex < allParsedWords.Count)
             {
                 var word = allParsedWords[wordIndex];
-                var wordPosition = combinedText.IndexOf(word.OriginalText, positionInCombined, StringComparison.Ordinal);
+                int wordPosition;
+                if (positionCache.Remove(wordIndex, out var cached))
+                {
+                    wordPosition = cached;
+                }
+                else
+                {
+                    wordPosition = combinedText.IndexOf(word.OriginalText, positionInCombined, StringComparison.Ordinal);
+                }
 
-                // Word not found from current position - skip it
                 if (wordPosition < 0)
                 {
                     wordIndex++;
@@ -87,13 +95,22 @@ public class ReaderController(
                     var foundCloserWord = false;
                     for (var lookAhead = 1; lookAhead <= 5 && wordIndex + lookAhead < allParsedWords.Count; lookAhead++)
                     {
-                        var futureWord = allParsedWords[wordIndex + lookAhead];
-                        var futurePos = combinedText.IndexOf(futureWord.OriginalText, positionInCombined, StringComparison.Ordinal);
+                        var futureIdx = wordIndex + lookAhead;
+                        int futurePos;
+                        if (positionCache.TryGetValue(futureIdx, out var cachedFuture))
+                        {
+                            futurePos = cachedFuture;
+                        }
+                        else
+                        {
+                            var futureWord = allParsedWords[futureIdx];
+                            futurePos = combinedText.IndexOf(futureWord.OriginalText, positionInCombined, StringComparison.Ordinal);
+                            if (futurePos >= 0)
+                                positionCache[futureIdx] = futurePos;
+                        }
 
                         if (futurePos >= 0 && futurePos < wordPosition)
                         {
-                            // Found a subsequent word that appears BEFORE our current match
-                            // This means our current match jumped too far - skip it
                             foundCloserWord = true;
                             break;
                         }
@@ -106,11 +123,9 @@ public class ReaderController(
                     }
                 }
 
-                // Word is beyond current paragraph - let a later paragraph iteration handle it
                 if (wordPosition >= paragraphEnd)
                     break;
 
-                // Word is within current paragraph
                 if (wordPosition >= paragraphOffsets[i])
                 {
                     paragraphWords.Add(word);
@@ -123,21 +138,21 @@ public class ReaderController(
             parsedParagraphs.Add(paragraphWords);
         }
 
-        var wordIds = parsedParagraphs.SelectMany(p => p).Select(w => w.WordId).ToList();
-        var jmdictWords = await context.JMDictWords.Where(w => wordIds.Contains(w.WordId)).Include(w => w.Definitions).ToListAsync();
+        var wordIds = parsedParagraphs.SelectMany(p => p).Select(w => w.WordId).Distinct().ToList();
+        var jmdictWords = await context.JMDictWords.Where(w => wordIds.Contains(w.WordId)).Include(w => w.Definitions).ToDictionaryAsync(w => w.WordId);
         var frequencyData = await context.JmDictWordFrequencies
                                          .AsNoTracking()
                                          .Where(f => wordIds.Contains(f.WordId))
                                          .ToDictionaryAsync(f => f.WordId, f => f);
 
+        var knownStates = await currentUserService.GetKnownWordsState(
+            parsedParagraphs.SelectMany(p => p.Select(dw => (dw.WordId, dw.ReadingIndex))).Distinct().ToList());
 
         for (var i = 0; i < parsedParagraphs.Count; i++)
         {
             List<DeckWord>? parsedWords = parsedParagraphs[i];
             List<ReaderToken> tokens = new();
             int currentPosition = 0;
-
-            var knownStates = await currentUserService.GetKnownWordsState(parsedWords.Select(dw => (dw.WordId, dw.ReadingIndex)).ToList());
 
             foreach (var word in parsedWords)
             {
@@ -150,7 +165,7 @@ public class ReaderController(
                                    End = position + word.OriginalText.Length, Length = word.OriginalText.Length,
                                    Conjugations = word.Conjugations
                                });
-                    var jmdictWord = jmdictWords.First(jw => jw.WordId == word.WordId);
+                    var jmdictWord = jmdictWords[word.WordId];
                     knownStates.TryGetValue((word.WordId, word.ReadingIndex), out var knownState);
                     var readerWord = new ReaderWord()
                                      {
