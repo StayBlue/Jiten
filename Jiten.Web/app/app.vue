@@ -23,6 +23,9 @@
 <template>
   <div id="app" class="flex flex-col min-h-screen">
     <NuxtLoadingIndicator />
+    <ClientOnly>
+      <MaintenanceBanner />
+    </ClientOnly>
     <AppHeader />
     <div class="container mx-auto pl-4 pr-4 max-w-6xl flex-grow pb-2">
       <NuxtPage />
