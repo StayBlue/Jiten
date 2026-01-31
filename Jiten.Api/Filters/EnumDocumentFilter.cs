@@ -118,7 +118,7 @@ public class EnumDocumentFilter : IDocumentFilter
         foreach (var value in Enum.GetValues(enumType))
         {
             var name = Enum.GetName(enumType, value);
-            var intValue = (int)value;
+            var intValue = Convert.ToInt32(value);
 
             schema.Enum.Add(new OpenApiInteger(intValue));
             enumNames.Add(name);

@@ -10,4 +10,8 @@ public class KnownWordAmountDto
     public int MasteredForm { get; set; }
     public int Blacklisted { get; set; }
     public int BlacklistedForm { get; set; }
+    public int WordSetMastered { get; set; }
+    public int WordSetMasteredForm { get; set; }
+    public int WordSetBlacklisted { get; set; }
+    public int WordSetBlacklistedForm { get; set; }
 }

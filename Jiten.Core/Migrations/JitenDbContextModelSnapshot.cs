@@ -719,6 +719,64 @@ namespace Jiten.Core.Migrations
                     b.ToTable("Tags", "jiten");
                 });
 
+            modelBuilder.Entity("Jiten.Core.Data.User.WordSet", b =>
+                {
+                    b.Property<int>("SetId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("SetId"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("Slug")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<int>("WordCount")
+                        .HasColumnType("integer");
+
+                    b.HasKey("SetId");
+
+                    b.HasIndex("Slug")
+                        .IsUnique()
+                        .HasDatabaseName("IX_WordSet_Slug");
+
+                    b.ToTable("WordSets", "jiten");
+                });
+
+            modelBuilder.Entity("Jiten.Core.Data.User.WordSetMember", b =>
+                {
+                    b.Property<int>("SetId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("WordId")
+                        .HasColumnType("integer");
+
+                    b.Property<short>("ReadingIndex")
+                        .HasColumnType("smallint");
+
+                    b.Property<int>("Position")
+                        .HasColumnType("integer");
+
+                    b.HasKey("SetId", "WordId", "ReadingIndex");
+
+                    b.HasIndex("WordId", "ReadingIndex")
+                        .HasDatabaseName("IX_WordSetMember_WordId_ReadingIndex");
+
+                    b.ToTable("WordSetMembers", "jiten");
+                });
+
             modelBuilder.Entity("Jiten.Core.Data.Deck", b =>
                 {
                     b.HasOne("Jiten.Core.Data.Deck", "ParentDeck")
@@ -980,6 +1038,22 @@ namespace Jiten.Core.Migrations
             modelBuilder.Entity("Jiten.Core.Data.Tag", b =>
                 {
                     b.Navigation("DeckTags");
+                });
+
+            modelBuilder.Entity("Jiten.Core.Data.User.WordSetMember", b =>
+                {
+                    b.HasOne("Jiten.Core.Data.User.WordSet", "Set")
+                        .WithMany("Members")
+                        .HasForeignKey("SetId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Set");
+                });
+
+            modelBuilder.Entity("Jiten.Core.Data.User.WordSet", b =>
+                {
+                    b.Navigation("Members");
                 });
 #pragma warning restore 612, 618
         }

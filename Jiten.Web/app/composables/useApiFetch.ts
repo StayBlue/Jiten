@@ -1,0 +1,179 @@
+import { PaginatedResponse } from '~/types/types';
+import type { AsyncDataRequestStatus, UseFetchOptions } from '#app';
+
+function setup401ErrorHandler(
+  error: Ref<Error | null | undefined>,
+  execute: (opts?: any) => Promise<void>,
+  request: string | (() => string),
+  authStore: ReturnType<typeof useAuthStore>
+): void {
+  if (!import.meta.client) return;
+
+  const isHandling401 = ref(false);
+
+  watch(error, async (newError) => {
+    if (!newError || isHandling401.value) return;
+
+    const fetchError = newError as any;
+    const is401 = fetchError.status === 401 || fetchError.statusCode === 401;
+
+    if (!is401) return;
+
+    isHandling401.value = true;
+
+    try {
+      const url = typeof request === 'function' ? request() : request;
+      if (url.includes('/auth/')) return;
+
+      if (!authStore.isRefreshing) {
+        const refreshSuccess = await authStore.refreshAccessToken();
+        if (!refreshSuccess) return;
+      } else {
+        while (authStore.isRefreshing) {
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+      }
+
+      error.value = undefined;
+      await execute();
+    } finally {
+      isHandling401.value = false;
+    }
+  });
+}
+
+function buildFetchOptions(
+  opts: any,
+  authStore: ReturnType<typeof useAuthStore>,
+  request: string | (() => string)
+) {
+  const tokenCheckPromise = import.meta.client && authStore.isAuthenticated
+    ? authStore.ensureValidToken()
+    : Promise.resolve(true);
+
+  const key = generateRequestKey(request);
+  const uniqueKey = `api-${key}-${safeStringifyQuery(opts?.query)}`;
+
+  const headers = new Headers(opts?.headers || {});
+  applySSRProxyHeaders(headers);
+
+  if (authStore.accessToken) {
+    headers.set('Authorization', `Bearer ${authStore.accessToken}`);
+  }
+
+  return {
+    ...opts,
+    headers,
+    key: uniqueKey,
+    server: opts?.server ?? true,
+    lazy: opts?.lazy ?? false,
+    async onRequest({ options }: any) {
+      await tokenCheckPromise;
+      if (authStore.accessToken) {
+        options.headers.set('Authorization', `Bearer ${authStore.accessToken}`);
+      }
+    }
+  };
+}
+
+export function useApiFetch<T>(
+  request: string | (() => string),
+  opts?: any
+): {
+  data: Ref<T | null | undefined>;
+  status: Ref<AsyncDataRequestStatus>;
+  error: Ref<Error | null | undefined>;
+  refresh: (opts?: any) => Promise<void>;
+  execute: (opts?: any) => Promise<void>;
+} {
+  const authStore = useAuthStore();
+  const options = buildFetchOptions(opts, authStore, request);
+
+  const { data, status, error, refresh, execute } = useFetch<T>(request, {
+    baseURL: useRuntimeConfig().public.baseURL,
+    ...options
+  });
+
+  setup401ErrorHandler(error, execute, request, authStore);
+
+  return { data, status, error, refresh, execute };
+}
+
+export  function useApiFetchPaginated<T>(
+  request: string | (() => string),
+  opts?: any
+): {
+  data: Ref<PaginatedResponse<T> | null | undefined>;
+  status: Ref<AsyncDataRequestStatus>;
+  error: Ref<Error | null | undefined>;
+  refresh: (opts?: any) => Promise<void>;
+  execute: (opts?: any) => Promise<void>;
+} {
+  const config = useRuntimeConfig();
+  const authStore = useAuthStore();
+  const options = buildFetchOptions(opts, authStore, request);
+
+  const { data, status, error, refresh, execute } = useFetch<PaginatedResponse<T>>(request, {
+    baseURL: config.public.baseURL,
+    ...options,
+  });
+
+  setup401ErrorHandler(error, execute, request, authStore);
+
+  const paginatedData = computed(() => {
+    if (data.value) {
+      return new PaginatedResponse<T>(
+        data.value.data,
+        data.value.totalItems,
+        data.value.pageSize,
+        data.value.currentOffset
+      );
+    }
+    return null;
+  });
+
+  return {
+    data: paginatedData,
+    status,
+    error,
+    refresh,
+    execute,
+  };
+}
+
+// Helper function to generate a safe key from request parameter
+const generateRequestKey = (request: string | (() => string)) => {
+  if (typeof request === 'string') {
+    return request;
+  } else if (typeof request === 'function') {
+    try {
+      return request();
+    } catch (e) {
+      return 'dynamic-request';
+    }
+  } else {
+    return String(request);
+  }
+};
+
+// Helper function to safely stringify query parameters
+const safeStringifyQuery = (query: any) => {
+  if (!query || typeof query !== 'object') return '{}';
+
+  try {
+    // Convert reactive values to their actual values
+    const plainQuery: Record<string, any> = {};
+    for (const [key, value] of Object.entries(query)) {
+      // Handle Vue refs and computed values
+      if (value && typeof value === 'object' && 'value' in value) {
+        plainQuery[key] = value.value;
+      } else {
+        plainQuery[key] = value;
+      }
+    }
+    return JSON.stringify(plainQuery);
+  } catch (e) {
+    // Fallback if JSON.stringify still fails
+    return Object.keys(query).sort().join('-');
+  }
+};

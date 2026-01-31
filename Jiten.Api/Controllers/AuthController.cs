@@ -34,6 +34,7 @@ public class AuthController : ControllerBase
     private readonly IMemoryCache _memoryCache;
     private readonly ApiKeyService _apiKeyService;
     private readonly ILogger<AuthController> _logger;
+    private readonly IHttpClientFactory _httpClientFactory;
 
     public AuthController(
         UserManager<User> userManager,
@@ -46,7 +47,8 @@ public class AuthController : ControllerBase
         UrlEncoder urlEncoder,
         IMemoryCache memoryCache,
         ApiKeyService apiKeyService,
-        ILogger<AuthController> logger)
+        ILogger<AuthController> logger,
+        IHttpClientFactory httpClientFactory)
     {
         _userManager = userManager;
         _signInManager = signInManager;
@@ -59,6 +61,7 @@ public class AuthController : ControllerBase
         _memoryCache = memoryCache;
         _apiKeyService = apiKeyService;
         _logger = logger;
+        _httpClientFactory = httpClientFactory;
     }
 
     [HttpPost("register")]
@@ -67,7 +70,7 @@ public class AuthController : ControllerBase
         if (!ModelState.IsValid) return BadRequest(ModelState);
 
         if (!await ValidateRecaptcha(model.RecaptchaResponse))
-            BadRequest(new { message = "Recaptcha verification failed." });
+            return BadRequest(new { message = "Recaptcha verification failed." });
 
         if (!model.TosAccepted)
             return BadRequest(new { message = "You must accept the terms of service to register." });
@@ -236,7 +239,7 @@ public class AuthController : ControllerBase
         if (!ModelState.IsValid) return BadRequest(ModelState);
 
         if (!await ValidateRecaptcha(model.RecaptchaResponse))
-            BadRequest(new { message = "Recaptcha verification failed." });
+            return BadRequest(new { message = "Recaptcha verification failed." });
 
         var user = await _userManager.FindByEmailAsync(model.Email);
         if (user == null || !await _userManager.IsEmailConfirmedAsync(user) || user.PasswordHash == null)
@@ -488,7 +491,7 @@ public class AuthController : ControllerBase
         }
 
         var remoteIp = HttpContext.Connection.RemoteIpAddress?.ToString();
-        using (var http = new HttpClient())
+        using (var http = _httpClientFactory.CreateClient())
         {
             var form = new FormUrlEncodedContent([
                 new KeyValuePair<string, string>("secret", recaptchaSecret),

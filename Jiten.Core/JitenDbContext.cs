@@ -36,6 +36,9 @@ public class JitenDbContext : DbContext
 
     public DbSet<DeckRelationship> DeckRelationships { get; set; }
 
+    public DbSet<WordSet> WordSets { get; set; }
+    public DbSet<WordSetMember> WordSetMembers { get; set; }
+
     public JitenDbContext()
     {
     }
@@ -485,6 +488,28 @@ public class JitenDbContext : DbContext
 
             entity.HasIndex(dr => dr.SourceDeckId).HasDatabaseName("IX_DeckRelationships_SourceDeckId");
             entity.HasIndex(dr => dr.TargetDeckId).HasDatabaseName("IX_DeckRelationships_TargetDeckId");
+        });
+
+        modelBuilder.Entity<WordSet>(entity =>
+        {
+            entity.ToTable("WordSets", "jiten");
+            entity.HasKey(ws => ws.SetId);
+            entity.Property(ws => ws.Slug).HasMaxLength(50).IsRequired();
+            entity.Property(ws => ws.Name).HasMaxLength(100).IsRequired();
+            entity.Property(ws => ws.CreatedAt).IsRequired();
+            entity.HasIndex(ws => ws.Slug).IsUnique().HasDatabaseName("IX_WordSet_Slug");
+        });
+
+        modelBuilder.Entity<WordSetMember>(entity =>
+        {
+            entity.ToTable("WordSetMembers", "jiten");
+            entity.HasKey(wsm => new { wsm.SetId, wsm.WordId, wsm.ReadingIndex });
+            entity.HasOne(wsm => wsm.Set)
+                  .WithMany(ws => ws.Members)
+                  .HasForeignKey(wsm => wsm.SetId)
+                  .OnDelete(DeleteBehavior.Cascade);
+            entity.HasIndex(wsm => new { wsm.WordId, wsm.ReadingIndex })
+                  .HasDatabaseName("IX_WordSetMember_WordId_ReadingIndex");
         });
 
         base.OnModelCreating(modelBuilder);

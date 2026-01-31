@@ -229,6 +229,11 @@ public static class PosMapper
         if (allowInterjectionFallback && convertedPosList.Contains(PartOfSpeech.Interjection))
             return true;
 
+        // Sudachi 形状詞 (NaAdjective) includes words that JMDict tags as adj-pn (PrenounAdjectival)
+        // Examples: この, その, あの, どの, こんな, そんな, あんな, どんな
+        if (sudachiPos == PartOfSpeech.NaAdjective && convertedPosList.Contains(PartOfSpeech.PrenounAdjectival))
+            return true;
+
         return false;
     }
 

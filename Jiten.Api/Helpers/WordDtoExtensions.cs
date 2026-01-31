@@ -1,5 +1,5 @@
 using Jiten.Api.Dtos;
-using Jiten.Core.Data.User;
+using Jiten.Core.Data;
 
 namespace Jiten.Api.Helpers;
 

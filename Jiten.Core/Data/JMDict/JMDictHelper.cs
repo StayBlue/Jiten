@@ -11,6 +11,7 @@ namespace Jiten.Core.Data.JMDict;
 public static class JmDictHelper
 {
     private static readonly Dictionary<string, string> _entities = new Dictionary<string, string>();
+    private static readonly Dictionary<string, string> _entitiesReverse = new Dictionary<string, string>();
 
     private static readonly Dictionary<string, string> _posDictionary = new()
                                                                         {
@@ -362,6 +363,7 @@ public static class JmDictHelper
         foreach (var reading in wordInfos)
         {
             List<JmDictLookup> lookups = new();
+            var addedLookupKeys = new HashSet<string>();
             reading.ReadingsFurigana = new List<string>();
 
             for (var i = 0; i < reading.Readings.Count; i++)
@@ -371,18 +373,18 @@ public static class JmDictHelper
                                                     new DefaultOptions() { ConvertLongVowelMark = false });
                 var lookupKeyWithoutLongVowelMark = WanaKana.ToHiragana(r.Replace("ゎ", "わ").Replace("ヮ", "わ"));
 
-                if (!lookups.Any(l => l.WordId == reading.WordId && l.LookupKey == lookupKey))
+                if (addedLookupKeys.Add(lookupKey))
                 {
                     lookups.Add(new JmDictLookup { WordId = reading.WordId, LookupKey = lookupKey });
                 }
 
                 if (lookupKeyWithoutLongVowelMark != lookupKey &&
-                    !lookups.Any(l => l.WordId == reading.WordId && l.LookupKey == lookupKeyWithoutLongVowelMark))
+                    addedLookupKeys.Add(lookupKeyWithoutLongVowelMark))
                 {
                     lookups.Add(new JmDictLookup { WordId = reading.WordId, LookupKey = lookupKeyWithoutLongVowelMark });
                 }
 
-                if (WanaKana.IsKatakana(r) && !lookups.Any(l => l.WordId == reading.WordId && l.LookupKey == r))
+                if (WanaKana.IsKatakana(r) && addedLookupKeys.Add(r))
                     lookups.Add(new JmDictLookup { WordId = reading.WordId, LookupKey = r });
 
                 // For single kanjis only words, the furigana deck will probably be wrong, so we need an alternative
@@ -429,98 +431,59 @@ public static class JmDictHelper
         }
 
         // custom priorities
-        wordInfos.First(w => w.WordId == 1332650).Priorities?.Add("jiten");
-        wordInfos.First(w => w.WordId == 2848543).Priorities?.Add("jiten");
-        wordInfos.First(w => w.WordId == 1160790).Priorities?.Add("jiten");
-        wordInfos.First(w => w.WordId == 1203260).Priorities?.Add("jiten");
-        wordInfos.First(w => w.WordId == 1397260).Priorities?.Add("jiten");
-        wordInfos.First(w => w.WordId == 1499720).Priorities?.Add("jiten");
-        wordInfos.First(w => w.WordId == 1315130).Priorities?.Add("jiten");
-        wordInfos.First(w => w.WordId == 1315130).Priorities?.Add("jiten");
-        wordInfos.First(w => w.WordId == 1191730).Priorities?.Add("jiten");
-        wordInfos.First(w => w.WordId == 2844190).Priorities?.Add("jiten");
-        wordInfos.First(w => w.WordId == 2207630).Priorities?.Add("jiten");
-        wordInfos.First(w => w.WordId == 1442490).Priorities?.Add("jiten");
-        wordInfos.First(w => w.WordId == 1423310).Priorities?.Add("jiten");
-        wordInfos.First(w => w.WordId == 1502390).Priorities?.Add("jiten");
-        wordInfos.First(w => w.WordId == 1343100).Priorities?.Add("jiten");
-        wordInfos.First(w => w.WordId == 1610040).Priorities?.Add("jiten");
-        wordInfos.First(w => w.WordId == 2059630).Priorities?.Add("jiten");
-        wordInfos.First(w => w.WordId == 1495580).Priorities?.Add("jiten");
-        wordInfos.First(w => w.WordId == 1288850).Priorities?.Add("jiten");
-        wordInfos.First(w => w.WordId == 1392580).Priorities?.Add("jiten");
-        wordInfos.First(w => w.WordId == 1511350).Priorities?.Add("jiten");
-        wordInfos.First(w => w.WordId == 1648450).Priorities?.Add("jiten");
-        wordInfos.First(w => w.WordId == 1534790).Priorities?.Add("jiten");
-        wordInfos.First(w => w.WordId == 2105530).Priorities?.Add("jiten");
-        wordInfos.First(w => w.WordId == 1223615).Priorities?.Add("jiten");
-        wordInfos.First(w => w.WordId == 1421850).Priorities?.Add("jiten");
-        wordInfos.First(w => w.WordId == 1020650).Priorities?.Add("jiten");
-        wordInfos.First(w => w.WordId == 1310640).Priorities?.Add("jiten");
-        wordInfos.First(w => w.WordId == 1495770).Priorities?.Add("jiten");
-        wordInfos.First(w => w.WordId == 1375610).Priorities?.Add("jiten");
-        wordInfos.First(w => w.WordId == 1605840).Priorities?.Add("jiten");
-        wordInfos.First(w => w.WordId == 1334590).Priorities?.Add("jiten");
-        wordInfos.First(w => w.WordId == 1609980).Priorities?.Add("jiten");
-        wordInfos.First(w => w.WordId == 1579260).Priorities?.Add("jiten");
-        wordInfos.First(w => w.WordId == 1351580).Priorities?.Add("jiten");
-        wordInfos.First(w => w.WordId == 2820490).Priorities?.Add("jiten");
-        wordInfos.First(w => w.WordId == 1983760).Priorities?.Add("jiten");
-        wordInfos.First(w => w.WordId == 1207510).Priorities?.Add("jiten");
-        wordInfos.First(w => w.WordId == 1577980).Priorities?.Add("jiten");
-        wordInfos.First(w => w.WordId == 1266890).Priorities?.Add("jiten");
-        wordInfos.First(w => w.WordId == 1163940).Priorities?.Add("jiten");
-        wordInfos.First(w => w.WordId == 1625330).Priorities?.Add("jiten");
-        wordInfos.First(w => w.WordId == 1416220).Priorities?.Add("jiten");
-        wordInfos.First(w => w.WordId == 1356690).Priorities?.Add("jiten");
-        wordInfos.First(w => w.WordId == 2020520).Priorities?.Add("jiten");
-        wordInfos.First(w => w.WordId == 2084840).Priorities?.Add("jiten");
-        wordInfos.First(w => w.WordId == 1578630).Priorities?.Add("jiten");
-        wordInfos.First(w => w.WordId == 2603500).Priorities?.Add("jiten");
-        wordInfos.First(w => w.WordId == 1522150).Priorities?.Add("jiten");
-        wordInfos.First(w => w.WordId == 1591970).Priorities?.Add("jiten");
-        wordInfos.First(w => w.WordId == 1920245).Priorities?.Add("jiten");
-        wordInfos.First(w => w.WordId == 1177490).Priorities?.Add("jiten");
-        wordInfos.First(w => w.WordId == 1582430).Priorities?.Add("jiten");
-        wordInfos.First(w => w.WordId == 1310670).Priorities?.Add("jiten");
-        wordInfos.First(w => w.WordId == 1577120).Priorities?.Add("jiten");
-        wordInfos.First(w => w.WordId == 1352570).Priorities?.Add("jiten");
-        wordInfos.First(w => w.WordId == 1604800).Priorities?.Add("jiten");
-        wordInfos.First(w => w.WordId == 1581310).Priorities?.Add("jiten");
-        wordInfos.First(w => w.WordId == 2720360).Priorities?.Add("jiten");
-        wordInfos.First(w => w.WordId == 1318950).Priorities?.Add("jiten");
-        wordInfos.First(w => w.WordId == 2541230).Priorities?.Add("jiten");
-        wordInfos.First(w => w.WordId == 1288500).Priorities?.Add("jiten");
-        wordInfos.First(w => w.WordId == 1121740).Priorities?.Add("jiten");
-        wordInfos.First(w => w.WordId == 1074630).Priorities?.Add("jiten");
-        wordInfos.First(w => w.WordId == 1111330).Priorities?.Add("jiten");
-        wordInfos.First(w => w.WordId == 1116190).Priorities?.Add("jiten");
-        wordInfos.First(w => w.WordId == 2815290).Priorities?.Add("jiten");
-        wordInfos.First(w => w.WordId == 1157170).Priorities?.Add("jiten");
-        wordInfos.First(w => w.WordId == 2855934).Priorities?.Add("jiten");
-        wordInfos.First(w => w.WordId == 1245290).Priorities?.Add("jiten");
-        wordInfos.First(w => w.WordId == 1075810).Priorities?.Add("jiten");
-        wordInfos.First(w => w.WordId == 1020910).Priorities?.Add("jiten");
-        wordInfos.First(w => w.WordId == 1430230).Priorities?.Add("jiten");
-        wordInfos.First(w => w.WordId == 1349380).Priorities?.Add("jiten");
-        wordInfos.First(w => w.WordId == 1347580).Priorities?.Add("jiten");
-        wordInfos.First(w => w.WordId == 1311110).Priorities?.Add("jiten");
-        wordInfos.First(w => w.WordId == 1154770).Priorities?.Add("jiten");
-        wordInfos.First(w => w.WordId == 1282790).Priorities?.Add("jiten");
-        wordInfos.First(w => w.WordId == 1478060).Priorities?.Add("jiten");
-        wordInfos.First(w => w.WordId == 2068450).Priorities?.Add("jiten");
-        wordInfos.First(w => w.WordId == 1169250).Priorities?.Add("jiten");
-        wordInfos.First(w => w.WordId == 1598460).Priorities?.Add("jiten");
-        wordInfos.First(w => w.WordId == 1144510).Priorities?.Add("jiten");
-        wordInfos.First(w => w.WordId == 1282970).Priorities?.Add("jiten");
-        wordInfos.First(w => w.WordId == 1982860).Priorities?.Add("jiten");
-        wordInfos.First(w => w.WordId == 1609715).Priorities?.Add("jiten");
-        wordInfos.First(w => w.WordId == 1550190).Priorities?.Add("jiten");
-        wordInfos.First(w => w.WordId == 2029110).Definitions.Add(new JmDictDefinition()
-                                                                  {
-                                                                      PartsOfSpeech = ["prt"], EnglishMeanings = ["indicates na-adjective"]
-                                                                  });
-        wordInfos.First(w => w.WordId == 1524610).PartsOfSpeech.Add("n");
+        var wordInfosById = new Dictionary<int, JmDictWord>();
+        int duplicateWordIdCount = 0;
+        foreach (var wordInfo in wordInfos)
+        {
+            if (!wordInfosById.TryAdd(wordInfo.WordId, wordInfo))
+                duplicateWordIdCount++;
+        }
+
+        if (duplicateWordIdCount > 0)
+            Console.WriteLine($"Warning: encountered {duplicateWordIdCount} duplicate WordIds while importing JMDict.");
+
+        int[] jitenPriorityIds =
+        [
+            1332650, 2848543, 1160790, 1203260, 1397260, 1499720, 1315130, 1550190,
+            1191730, 2844190, 2207630, 1442490, 1423310, 1502390, 1343100, 1610040,
+            2059630, 1495580, 1288850, 1392580, 1511350, 1648450, 1534790, 2105530,
+            1223615, 1421850, 1020650, 1310640, 1495770, 1375610, 1605840, 1334590,
+            1609980, 1579260, 1351580, 2820490, 1983760, 1207510, 1577980, 1266890,
+            1163940, 1625330, 1416220, 1356690, 2020520, 2084840, 1578630, 2603500,
+            1522150, 1591970, 1920245, 1177490, 1582430, 1310670, 1577120, 1352570,
+            1604800, 1581310, 2720360, 1318950, 2541230, 1288500, 1121740, 1074630,
+            1111330, 1116190, 2815290, 1157170, 2855934, 1245290, 1075810, 1314600,
+            1020910, 1430230, 1349380, 1347580, 1311110, 1154770, 1282790, 1478060,
+            2068450, 1169250, 1598460, 1144510, 1282970, 1982860, 1609715
+        ];
+
+        foreach (var id in jitenPriorityIds)
+        {
+            if (!wordInfosById.TryGetValue(id, out var wordInfo))
+            {
+                Console.WriteLine($"Warning: custom priority WordId {id} not found in import set.");
+                continue;
+            }
+
+            wordInfo.Priorities ??= new List<string>();
+            if (!wordInfo.Priorities.Contains("jiten"))
+                wordInfo.Priorities.Add("jiten");
+        }
+
+        if (wordInfosById.TryGetValue(2029110, out var indicatesNaAdj))
+            indicatesNaAdj.Definitions.Add(new JmDictDefinition { PartsOfSpeech = ["prt"], EnglishMeanings = ["indicates na-adjective"] });
+        else
+            Console.WriteLine("Warning: custom definition WordId 2029110 not found in import set.");
+
+        if (wordInfosById.TryGetValue(1524610, out var asNoun))
+        {
+            if (!asNoun.PartsOfSpeech.Contains("n"))
+                asNoun.PartsOfSpeech.Add("n");
+        }
+        else
+        {
+            Console.WriteLine("Warning: custom POS WordId 1524610 not found in import set.");
+        }
 
         context.JMDictWords.AddRange(wordInfos);
 
@@ -661,6 +624,7 @@ public static class JmDictHelper
         {
             // Create lookups for searching
             List<JmDictLookup> lookups = new();
+            var addedLookupKeys = new HashSet<string>();
             nameWord.ReadingsFurigana = new List<string>();
 
             for (var i = 0; i < nameWord.Readings.Count; i++)
@@ -670,18 +634,18 @@ public static class JmDictHelper
                                                     new DefaultOptions() { ConvertLongVowelMark = false });
                 var lookupKeyWithoutLongVowelMark = WanaKana.ToHiragana(r.Replace("ゎ", "わ").Replace("ヮ", "わ"));
 
-                if (!lookups.Any(l => l.WordId == nameWord.WordId && l.LookupKey == lookupKey))
+                if (addedLookupKeys.Add(lookupKey))
                 {
                     lookups.Add(new JmDictLookup { WordId = nameWord.WordId, LookupKey = lookupKey });
                 }
 
                 if (lookupKeyWithoutLongVowelMark != lookupKey &&
-                    !lookups.Any(l => l.WordId == nameWord.WordId && l.LookupKey == lookupKeyWithoutLongVowelMark))
+                    addedLookupKeys.Add(lookupKeyWithoutLongVowelMark))
                 {
                     lookups.Add(new JmDictLookup { WordId = nameWord.WordId, LookupKey = lookupKeyWithoutLongVowelMark });
                 }
 
-                if (WanaKana.IsKatakana(r) && !lookups.Any(l => l.WordId == nameWord.WordId && l.LookupKey == r))
+                if (WanaKana.IsKatakana(r) && addedLookupKeys.Add(r))
                     lookups.Add(new JmDictLookup { WordId = nameWord.WordId, LookupKey = r });
 
                 // Populate furigana readings
@@ -708,13 +672,30 @@ public static class JmDictHelper
             nameWord.Priorities.Add("name");
         }
 
-        nameWords.First(w => w.WordId == 5060001).Priorities?.Add("jiten");
-        nameWords.First(w => w.WordId == 5141615).PartsOfSpeech.Add("n");
-        nameWords.First(w => w.WordId == 5141615).Definitions.Add(new JmDictDefinition()
+        var nameWordsById = nameWords.ToDictionary(w => w.WordId);
+
+        if (nameWordsById.TryGetValue(5060001, out var customPriority))
         {
-            PartsOfSpeech = ["n"],
-            EnglishMeanings = ["street in front of station"]
-        });
+            customPriority.Priorities ??= new List<string>();
+            if (!customPriority.Priorities.Contains("jiten"))
+                customPriority.Priorities.Add("jiten");
+        }
+        else
+        {
+            Console.WriteLine("Warning: custom priority WordId 5060001 not found in JMNedict import set.");
+        }
+
+        if (nameWordsById.TryGetValue(5141615, out var stationStreet))
+        {
+            if (!stationStreet.PartsOfSpeech.Contains("n"))
+                stationStreet.PartsOfSpeech.Add("n");
+
+            stationStreet.Definitions.Add(new JmDictDefinition { PartsOfSpeech = ["n"], EnglishMeanings = ["street in front of station"] });
+        }
+        else
+        {
+            Console.WriteLine("Warning: custom definition WordId 5141615 not found in JMNedict import set.");
+        }
 
         // Validate entries before database insertion
         int beforeValidation = nameWords.Count;
@@ -787,6 +768,7 @@ public static class JmDictHelper
             if (matches.Length > 0 && !_entities.ContainsKey(matches.Groups[1].Value))
             {
                 _entities.Add(matches.Groups[1].Value, matches.Groups[2].Value);
+                _entitiesReverse.TryAdd(matches.Groups[2].Value, matches.Groups[1].Value);
             }
         }
 
@@ -1069,6 +1051,7 @@ public static class JmDictHelper
             {
                 // Create lookups for searching
                 List<JmDictLookup> lookups = new();
+                var addedLookupKeys = new HashSet<string>();
                 nameWord.ReadingsFurigana = new List<string>();
 
                 for (var i = 0; i < nameWord.Readings.Count; i++)
@@ -1078,18 +1061,18 @@ public static class JmDictHelper
                                                         new DefaultOptions() { ConvertLongVowelMark = false });
                     var lookupKeyWithoutLongVowelMark = WanaKana.ToHiragana(r.Replace("ゎ", "わ").Replace("ヮ", "わ"));
 
-                    if (!lookups.Any(l => l.WordId == nameWord.WordId && l.LookupKey == lookupKey))
+                    if (addedLookupKeys.Add(lookupKey))
                     {
                         lookups.Add(new JmDictLookup { WordId = nameWord.WordId, LookupKey = lookupKey });
                     }
 
                     if (lookupKeyWithoutLongVowelMark != lookupKey &&
-                        !lookups.Any(l => l.WordId == nameWord.WordId && l.LookupKey == lookupKeyWithoutLongVowelMark))
+                        addedLookupKeys.Add(lookupKeyWithoutLongVowelMark))
                     {
                         lookups.Add(new JmDictLookup { WordId = nameWord.WordId, LookupKey = lookupKeyWithoutLongVowelMark });
                     }
 
-                    if (WanaKana.IsKatakana(r) && !lookups.Any(l => l.WordId == nameWord.WordId && l.LookupKey == r))
+                    if (WanaKana.IsKatakana(r) && addedLookupKeys.Add(r))
                         lookups.Add(new JmDictLookup { WordId = nameWord.WordId, LookupKey = r });
 
                     // Populate furigana readings
@@ -1162,6 +1145,7 @@ public static class JmDictHelper
 
                     // Generate new lookups
                     List<JmDictLookup> lookups = new();
+                    var addedKeys = new HashSet<string>();
                     for (var i = 0; i < word.Readings.Count; i++)
                     {
                         string r = word.Readings[i];
@@ -1169,18 +1153,18 @@ public static class JmDictHelper
                                                             new DefaultOptions() { ConvertLongVowelMark = false });
                         var lookupKeyWithoutLongVowelMark = WanaKana.ToHiragana(r.Replace("ゎ", "わ").Replace("ヮ", "わ"));
 
-                        if (!lookups.Any(l => l.WordId == word.WordId && l.LookupKey == lookupKey))
+                        if (addedKeys.Add(lookupKey))
                         {
                             lookups.Add(new JmDictLookup { WordId = word.WordId, LookupKey = lookupKey });
                         }
 
                         if (lookupKeyWithoutLongVowelMark != lookupKey &&
-                            !lookups.Any(l => l.WordId == word.WordId && l.LookupKey == lookupKeyWithoutLongVowelMark))
+                            addedKeys.Add(lookupKeyWithoutLongVowelMark))
                         {
                             lookups.Add(new JmDictLookup { WordId = word.WordId, LookupKey = lookupKeyWithoutLongVowelMark });
                         }
 
-                        if (WanaKana.IsKatakana(r) && !lookups.Any(l => l.WordId == word.WordId && l.LookupKey == r))
+                        if (WanaKana.IsKatakana(r) && addedKeys.Add(r))
                             lookups.Add(new JmDictLookup { WordId = word.WordId, LookupKey = r });
                     }
 
@@ -1432,6 +1416,7 @@ public static class JmDictHelper
             if (matches.Length > 0 && !_entities.ContainsKey(matches.Groups[1].Value))
             {
                 _entities.Add(matches.Groups[1].Value, matches.Groups[2].Value);
+                _entitiesReverse.TryAdd(matches.Groups[2].Value, matches.Groups[1].Value);
             }
         }
 
@@ -1786,8 +1771,7 @@ public static class JmDictHelper
 
     private static string ElToPos(string el)
     {
-        var match = _entities.FirstOrDefault(e => e.Value == el);
-        return match.Key ?? el; // Return the entity itself if not found in dictionary
+        return _entitiesReverse.GetValueOrDefault(el, el);
     }
 
     private static List<JmDictWord> GetCustomWords()

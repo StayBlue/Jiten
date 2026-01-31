@@ -126,6 +126,11 @@ public class Program
             await diagnosticCommands.RunParserTests(options);
         }
 
+        if (options.DeconjugateTest != null)
+        {
+            await diagnosticCommands.DeconjugateTest(options);
+        }
+
         if (!string.IsNullOrEmpty(options.SearchWord))
         {
             await diagnosticCommands.SearchWord(options.SearchWord);

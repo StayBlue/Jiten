@@ -1,7 +1,6 @@
 using Jiten.Core.Data;
 using Jiten.Core.Data.Authentication;
 using Jiten.Core.Data.FSRS;
-using Jiten.Core.Data.User;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
@@ -21,6 +20,7 @@ public class UserDbContext : IdentityDbContext<User>
     }
 
     public DbSet<UserCoverage> UserCoverages { get; set; }
+    public DbSet<UserCoverageChunk> UserCoverageChunks { get; set; }
     public DbSet<UserKnownWord> UserKnownWords { get; set; }
     public DbSet<RefreshToken> RefreshTokens { get; set; }
     public DbSet<UserMetadata> UserMetadatas { get; set; }
@@ -33,6 +33,8 @@ public class UserDbContext : IdentityDbContext<User>
     public DbSet<UserAccomplishment> UserAccomplishments { get; set; }
     public DbSet<UserProfile> UserProfiles { get; set; }
     public DbSet<UserKanjiGrid> UserKanjiGrids { get; set; }
+
+    public DbSet<UserWordSetState> UserWordSetStates { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -106,6 +108,16 @@ public class UserDbContext : IdentityDbContext<User>
             entity.HasIndex(uc => uc.UserId).HasDatabaseName("IX_UserCoverage_UserId");
         });
 
+        modelBuilder.Entity<UserCoverageChunk>(entity =>
+        {
+            entity.HasKey(uc => new { uc.UserId, uc.Metric, uc.ChunkIndex }).HasName("PK_UserCoverageChunks");
+            entity.Property(uc => uc.UserId).HasConversion(guidToString).HasColumnType("uuid").IsRequired();
+            entity.Property(uc => uc.Metric).HasColumnType("smallint").IsRequired();
+            entity.Property(uc => uc.Values).HasColumnType("smallint[]").IsRequired();
+            entity.Property(uc => uc.ComputedAt).IsRequired();
+            entity.HasIndex(uc => uc.UserId).HasDatabaseName("IX_UserCoverageChunks_UserId");
+        });
+
         modelBuilder.Entity<UserKnownWord>(entity =>
         {
             entity.HasKey(uk => new { uk.UserId, uk.WordId, uk.ReadingIndex });
@@ -120,6 +132,8 @@ public class UserDbContext : IdentityDbContext<User>
         {
             entity.HasKey(um => um.UserId);
             entity.Property(um => um.CoverageRefreshedAt).IsRequired(false);
+            entity.Property(um => um.CoverageDirty).IsRequired();
+            entity.Property(um => um.CoverageDirtyAt).IsRequired(false);
             entity.Property(um => um.UserId).HasConversion(guidToString).HasColumnType("uuid").IsRequired();
 
             entity.HasOne<User>()
@@ -230,6 +244,17 @@ public class UserDbContext : IdentityDbContext<User>
                   .WithOne()
                   .HasForeignKey<UserKanjiGrid>(ukg => ukg.UserId)
                   .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<UserWordSetState>(entity =>
+        {
+            entity.HasKey(uwss => new { uwss.UserId, uwss.SetId });
+            entity.Property(uwss => uwss.UserId)
+                  .HasConversion(guidToString)
+                  .HasColumnType("uuid")
+                  .IsRequired();
+            entity.Property(uwss => uwss.CreatedAt).IsRequired();
+            entity.HasIndex(uwss => uwss.UserId).HasDatabaseName("IX_UserWordSetState_UserId");
         });
 
         base.OnModelCreating(modelBuilder);

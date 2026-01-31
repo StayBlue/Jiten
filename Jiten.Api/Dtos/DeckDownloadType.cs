@@ -6,5 +6,6 @@ public enum DeckDownloadType
     TopGlobalFrequency = 2,
     TopDeckFrequency = 3,
     TopChronological = 4,
-    TargetCoverage = 5
+    TargetCoverage = 5,
+    OccurrenceCount = 6
 }

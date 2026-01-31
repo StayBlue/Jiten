@@ -76,8 +76,8 @@ services:
 
   web:
     build:
-      context: .
-      dockerfile: Jiten.Web/Dockerfile
+      context: ./Jiten.Web
+      dockerfile: Dockerfile
       args:
         - NUXT_PUBLIC_SCRIPTS_UMAMI_ANALYTICS_WEBSITE_ID=${UMAMI_ANALYTICS_WEBSITE_ID:-}
         - NUXT_PUBLIC_SCRIPTS_UMAMI_ANALYTICS_HOST_URL=${UMAMI_ANALYTICS_HOST_URL:-https://umami.jiten.moe}

@@ -1,5 +1,5 @@
 using Jiten.Core.Data.JMDict;
-using Jiten.Core.Data.User;
+using Jiten.Core.Data;
 
 namespace Jiten.Api.Dtos;
 

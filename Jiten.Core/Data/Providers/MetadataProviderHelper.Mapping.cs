@@ -30,10 +30,15 @@ public static partial class MetadataProviderHelper
         // Add new genres if found
         if (metadata.Genres.Any())
         {
+            var genreMappingsDict = new Dictionary<string, ExternalGenreMapping>(StringComparer.OrdinalIgnoreCase);
+            foreach (var mapping in genreMappings)
+            {
+                genreMappingsDict.TryAdd(mapping.ExternalGenreName, mapping);
+            }
+
             foreach (var externalGenreName in metadata.Genres)
             {
-                var mapping =
-                    genreMappings.FirstOrDefault(m => m.ExternalGenreName.Equals(externalGenreName, StringComparison.OrdinalIgnoreCase));
+                genreMappingsDict.TryGetValue(externalGenreName, out var mapping);
 
                 if (mapping != null && deck.DeckGenres.All(dg => dg.Genre != mapping.JitenGenre))
                 {
@@ -55,9 +60,15 @@ public static partial class MetadataProviderHelper
             // Phase 1: Group external tags by internal TagId and find max percentage
             var tagCandidates = new Dictionary<int, byte>();
 
+            var tagMappingsDict = new Dictionary<string, ExternalTagMapping>(StringComparer.OrdinalIgnoreCase);
+            foreach (var mapping in tagMappings)
+            {
+                tagMappingsDict.TryAdd(mapping.ExternalTagName, mapping);
+            }
+
             foreach (var tag in metadata.Tags)
             {
-                var mapping = tagMappings.FirstOrDefault(m => m.ExternalTagName.Equals(tag.Name, StringComparison.OrdinalIgnoreCase));
+                tagMappingsDict.TryGetValue(tag.Name, out var mapping);
 
                 if (mapping == null) continue;
 

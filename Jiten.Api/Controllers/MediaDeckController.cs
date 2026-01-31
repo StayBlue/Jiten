@@ -11,11 +11,11 @@ using Jiten.Core;
 using Jiten.Core.Data;
 using Jiten.Core.Data.FSRS;
 using Jiten.Core.Data.JMDict;
-using Jiten.Core.Data.User;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using WanaKanaShaapu;
+using Microsoft.AspNetCore.Authorization;
 using Swashbuckle.AspNetCore.Annotations;
 
 namespace Jiten.Api.Controllers;
@@ -34,8 +34,11 @@ public class MediaDeckController(
     UserDbContext userContext,
     ICurrentUserService currentUserService,
     IConfiguration configuration,
-    ILogger<MediaDeckController> logger) : ControllerBase
+    ILogger<MediaDeckController> logger,
+    IHttpClientFactory httpClientFactory) : ControllerBase
 {
+    private record DeckIdWithCount(int DeckId, int TotalCount);
+
     private class DeckWithOccurrences
     {
         public Deck Deck { get; set; } = null!;
@@ -153,20 +156,21 @@ public class MediaDeckController(
                                       FROM all_matches
                                       GROUP BY "DeckId"
                                   )
-                                  SELECT r."DeckId"
+                                  SELECT r."DeckId", COUNT(*) OVER() AS "TotalCount"
                                   FROM ranked r
                                   JOIN jiten."Decks" d ON r."DeckId" = d."DeckId"
                                   WHERE d."ParentDeckId" IS NULL
                                   ORDER BY r.best_match ASC, r.length_ratio DESC, r.best_type ASC, r.best_score DESC
+                                  LIMIT {{limit}}
                                   """;
 
-        var allMatchingDeckIds = await context.Database.SqlQuery<int>(sql).ToListAsync();
-        var totalCount = allMatchingDeckIds.Count;
+        var results = await context.Database.SqlQuery<DeckIdWithCount>(sql).ToListAsync();
 
-        if (totalCount == 0)
+        if (results.Count == 0)
             return Ok(new MediaSuggestionsResponse());
 
-        var orderedDeckIds = allMatchingDeckIds.Take(limit).ToList();
+        var totalCount = results[0].TotalCount;
+        var orderedDeckIds = results.Select(r => r.DeckId).ToList();
 
         var decks = await context.Decks
             .AsNoTracking()
@@ -550,18 +554,19 @@ public class MediaDeckController(
 
         Dictionary<int, float> coverageDict = new();
         Dictionary<int, float> uniqueCoverageDict = new();
+        Dictionary<int, float> youngCoverageDict = new();
+        Dictionary<int, float> youngUniqueCoverageDict = new();
 
         if (currentUserService.IsAuthenticated)
         {
             var allDeckIds = await query.Select(d => d.DeckId).ToListAsync();
             var userId = currentUserService.UserId!;
-            var coverageList = await userContext.UserCoverages
-                                                .AsNoTracking()
-                                                .Where(uc => uc.UserId == userId && allDeckIds.Contains(uc.DeckId))
-                                                .Select(uc => new { uc.DeckId, uc.Coverage, uc.UniqueCoverage })
-                                                .ToListAsync();
-            coverageDict = coverageList.ToDictionary(x => x.DeckId, x => (float)x.Coverage);
-            uniqueCoverageDict = coverageList.ToDictionary(x => x.DeckId, x => (float)x.UniqueCoverage);
+
+            var coverages = await UserCoverageChunkHelper.GetCoverage(userContext, userId, allDeckIds);
+            coverageDict = coverages.MatureCoverage;
+            uniqueCoverageDict = coverages.MatureUniqueCoverage;
+            youngCoverageDict = coverages.YoungCoverage;
+            youngUniqueCoverageDict = coverages.YoungUniqueCoverage;
 
             // Apply coverage filters
             if (coverageMin != null || coverageMax != null)
@@ -590,14 +595,14 @@ public class MediaDeckController(
             {
                 bool sortByUnique = sortBy == "uCoverage";
                 return await HandleCoverageSorting(query, projectedQuery, sortOrder, offset ?? 0, pageSize, coverageDict,
-                                                   uniqueCoverageDict, sortByUnique, allUserPrefs);
+                                                   uniqueCoverageDict, youngCoverageDict, youngUniqueCoverageDict, sortByUnique, allUserPrefs);
             }
         }
 
         if (wordId != 0)
         {
             return await HandleWordBasedQuery(projectedQuery!, wordId, readingIndex, sortBy, sortOrder, offset ?? 0, pageSize, coverageDict,
-                                              uniqueCoverageDict, allUserPrefs, orderedDeckIds);
+                                              uniqueCoverageDict, youngCoverageDict, youngUniqueCoverageDict, allUserPrefs, orderedDeckIds);
         }
 
         // Handle regular queries
@@ -647,6 +652,8 @@ public class MediaDeckController(
             {
                 if (coverageDict.TryGetValue(dto.DeckId, out var c)) dto.Coverage = c;
                 if (uniqueCoverageDict.TryGetValue(dto.DeckId, out var uc)) dto.UniqueCoverage = uc;
+                if (youngCoverageDict.TryGetValue(dto.DeckId, out var yc)) dto.YoungCoverage = yc;
+                if (youngUniqueCoverageDict.TryGetValue(dto.DeckId, out var yuc)) dto.YoungUniqueCoverage = yuc;
                 if (allUserPrefs.TryGetValue(dto.DeckId, out var pref))
                 {
                     dto.Status = pref.Status;
@@ -667,6 +674,8 @@ public class MediaDeckController(
         int pageSize,
         Dictionary<int, float> coverageDict,
         Dictionary<int, float> uniqueCoverageDict,
+        Dictionary<int, float> youngCoverageDict,
+        Dictionary<int, float> youngUniqueCoverageDict,
         bool sortByUnique,
         Dictionary<int, UserDeckPreference> preferencesDict)
     {
@@ -730,8 +739,6 @@ public class MediaDeckController(
             {
                 if (currentUserService.IsAuthenticated)
                 {
-                    if (coverageDict.TryGetValue(dto.DeckId, out var c)) dto.Coverage = c;
-                    if (uniqueCoverageDict.TryGetValue(dto.DeckId, out var uc)) dto.UniqueCoverage = uc;
                     if (preferencesDict.TryGetValue(dto.DeckId, out var pref))
                     {
                         dto.Status = pref.Status;
@@ -742,8 +749,9 @@ public class MediaDeckController(
 
                 if (coverageDict.TryGetValue(dto.DeckId, out var cov)) dto.Coverage = cov;
                 if (uniqueCoverageDict.TryGetValue(dto.DeckId, out var uCov)) dto.UniqueCoverage = uCov;
+                if (youngCoverageDict.TryGetValue(dto.DeckId, out var yCov)) dto.YoungCoverage = yCov;
+                if (youngUniqueCoverageDict.TryGetValue(dto.DeckId, out var yuCov)) dto.YoungUniqueCoverage = yuCov;
             }
-
 
             return new PaginatedResponse<List<DeckDto>>(dtos, totalCount, pageSize, offset);
         }
@@ -765,8 +773,6 @@ public class MediaDeckController(
             {
                 if (currentUserService.IsAuthenticated)
                 {
-                    if (coverageDict.TryGetValue(dto.DeckId, out var c)) dto.Coverage = c;
-                    if (uniqueCoverageDict.TryGetValue(dto.DeckId, out var uc)) dto.UniqueCoverage = uc;
                     if (preferencesDict.TryGetValue(dto.DeckId, out var pref))
                     {
                         dto.Status = pref.Status;
@@ -777,6 +783,8 @@ public class MediaDeckController(
 
                 if (coverageDict.TryGetValue(dto.DeckId, out var cov)) dto.Coverage = cov;
                 if (uniqueCoverageDict.TryGetValue(dto.DeckId, out var uCov)) dto.UniqueCoverage = uCov;
+                if (youngCoverageDict.TryGetValue(dto.DeckId, out var yCov)) dto.YoungCoverage = yCov;
+                if (youngUniqueCoverageDict.TryGetValue(dto.DeckId, out var yuCov)) dto.YoungUniqueCoverage = yuCov;
             }
 
             return new PaginatedResponse<List<DeckDto>>(dtos, totalCount, pageSize, offset);
@@ -884,6 +892,7 @@ public class MediaDeckController(
     private async Task<PaginatedResponse<List<DeckDto>>> HandleWordBasedQuery(
         IQueryable<DeckWithOccurrences> projectedQuery, int wordId, int readingIndex, string sortBy, SortOrder sortOrder, int offset,
         int pageSize, Dictionary<int, float> coverageDict, Dictionary<int, float> uniqueCoverageDict,
+        Dictionary<int, float> youngCoverageDict, Dictionary<int, float> youngUniqueCoverageDict,
         Dictionary<int, UserDeckPreference> preferencesDict, List<int>? orderedDeckIds)
     {
         // Apply sorting to the projected query
@@ -1005,6 +1014,8 @@ public class MediaDeckController(
             {
                 if (coverageDict.TryGetValue(dto.DeckId, out var c)) dto.Coverage = c;
                 if (uniqueCoverageDict.TryGetValue(dto.DeckId, out var uc)) dto.UniqueCoverage = uc;
+                if (youngCoverageDict.TryGetValue(dto.DeckId, out var yc)) dto.YoungCoverage = yc;
+                if (youngUniqueCoverageDict.TryGetValue(dto.DeckId, out var yuc)) dto.YoungUniqueCoverage = yuc;
                 if (preferencesDict.TryGetValue(dto.DeckId, out var pref))
                 {
                     dto.Status = pref.Status;
@@ -1036,12 +1047,12 @@ public class MediaDeckController(
     {
         int pageSize = 100;
 
-        var deck = context.Decks.AsNoTracking().FirstOrDefault(d => d.DeckId == id);
+        var deck = await context.Decks.AsNoTracking().FirstOrDefaultAsync(d => d.DeckId == id);
 
         if (deck == null)
             return new PaginatedResponse<DeckVocabularyListDto?>(null, 0, pageSize, offset ?? 0);
 
-        var parentDeck = context.Decks.AsNoTracking().FirstOrDefault(d => d.DeckId == deck.ParentDeckId);
+        var parentDeck = await context.Decks.AsNoTracking().FirstOrDefaultAsync(d => d.DeckId == deck.ParentDeckId);
         var parentDeckDto = parentDeck != null ? new DeckDto(parentDeck) : null;
 
         var query = context.DeckWords.AsNoTracking().Where(dw => dw.DeckId == id);
@@ -1055,29 +1066,21 @@ public class MediaDeckController(
 
             var knownStates = await currentUserService.GetKnownWordsState(deckWordKeys);
 
-            var distinctWordIds = deckWordKeys.Select(k => k.WordId).Distinct().ToList();
-            var fsrsStates = await userContext.FsrsCards
-                                              .AsNoTracking()
-                                              .Where(uk => uk.UserId == userId && distinctWordIds.Contains(uk.WordId))
-                                              .Select(uk => new { uk.WordId, uk.ReadingIndex, uk.State })
-                                              .ToDictionaryAsync(uk => (uk.WordId, uk.ReadingIndex), uk => uk.State);
-
             query = allDeckWords.AsQueryable();
 
             query = query.AsEnumerable().Where(dw =>
             {
                 var key = (dw.WordId, dw.ReadingIndex);
                 var knownState = knownStates.GetValueOrDefault(key, [KnownState.New]);
-                var fsrsState = fsrsStates.GetValueOrDefault(key);
 
                 return displayFilter switch
                 {
-                    "known" => !knownState.Contains(KnownState.New) && fsrsStates.ContainsKey(key),
+                    "known" => !knownState.Contains(KnownState.New),
                     "young" => knownState.Contains(KnownState.Young),
                     "mature" => knownState.Contains(KnownState.Mature),
                     "mastered" => knownState.Contains(KnownState.Mastered),
                     "blacklisted" => knownState.Contains(KnownState.Blacklisted),
-                    "unknown" => !fsrsStates.ContainsKey(key),
+                    "unknown" => knownState.Contains(KnownState.New),
                     _ => true
                 };
             }).AsQueryable();
@@ -1109,17 +1112,26 @@ public class MediaDeckController(
                                  .ToList();
 
         var wordIds = deckWordsList.Select(dw => dw.WordId).ToList();
+        var uniqueWordIds = wordIds.Distinct().ToList();
 
-        var jmdictWords = context.JMDictWords.AsNoTracking()
-                                 .Where(w => wordIds.Contains(w.WordId))
-                                 .Include(w => w.Definitions)
+        var jmdictWordsDict = context.JMDictWords.AsNoTracking()
+                                    .Where(w => uniqueWordIds.Contains(w.WordId))
+                                    .Include(w => w.Definitions)
+                                    .ToDictionary(w => w.WordId);
+
+        var wordIdOrder = new Dictionary<int, int>(capacity: wordIds.Count);
+        for (int i = 0; i < wordIds.Count; i++)
+        {
+            wordIdOrder.TryAdd(wordIds[i], i);
+        }
+
+        var words = deckWordsList.Select(dw => new { dw, jmDictWord = jmdictWordsDict.GetValueOrDefault(dw.WordId) })
+                                 .OrderBy(dw => wordIdOrder.GetValueOrDefault(dw.dw.WordId, int.MaxValue))
                                  .ToList();
 
-        var words = deckWordsList.Select(dw => new { dw, jmDictWord = jmdictWords.FirstOrDefault(w => w.WordId == dw.WordId) })
-                                 .OrderBy(dw => wordIds.IndexOf(dw.dw.WordId))
-                                 .ToList();
-
-        var frequencies = context.JmDictWordFrequencies.AsNoTracking().Where(f => wordIds.Contains(f.WordId)).ToList();
+        var frequencies = context.JmDictWordFrequencies.AsNoTracking()
+                                .Where(f => uniqueWordIds.Contains(f.WordId))
+                                .ToDictionary(f => f.WordId);
 
         DeckVocabularyListDto dto = new() { ParentDeck = parentDeckDto, Deck = deck, Words = new() };
 
@@ -1134,30 +1146,27 @@ public class MediaDeckController(
 
             var reading = word.jmDictWord.ReadingsFurigana[word.dw.ReadingIndex];
 
+            frequencies.TryGetValue(word.dw.WordId, out var frequency);
+
             List<ReadingDto> alternativeReadings = word.jmDictWord.ReadingsFurigana
                                                        .Select((r, i) => new ReadingDto
                                                                          {
                                                                              Text = r, ReadingIndex = (byte)i,
-                                                                             ReadingType = word.jmDictWord.ReadingTypes[i], FrequencyRank =
-                                                                                 frequencies.First(f => f.WordId == word.dw.WordId)
-                                                                                            .ReadingsFrequencyRank[i],
-                                                                             FrequencyPercentage =
-                                                                                 frequencies.First(f => f.WordId == word.dw.WordId)
-                                                                                            .ReadingsFrequencyPercentage[i]
+                                                                             ReadingType = word.jmDictWord.ReadingTypes[i],
+                                                                             FrequencyRank = frequency?.ReadingsFrequencyRank[i] ?? 0,
+                                                                             FrequencyPercentage = frequency?.ReadingsFrequencyPercentage[i] ?? 0
                                                                          })
                                                        .ToList();
 
             // Remove current
             alternativeReadings.RemoveAt(word.dw.ReadingIndex);
 
-            var frequency = frequencies.First(f => f.WordId == word.dw.WordId);
-
             var mainReading = new ReadingDto()
                               {
                                   Text = reading, ReadingIndex = word.dw.ReadingIndex,
                                   ReadingType = word.jmDictWord.ReadingTypes[word.dw.ReadingIndex],
-                                  FrequencyRank = frequency.ReadingsFrequencyRank[word.dw.ReadingIndex],
-                                  FrequencyPercentage = frequency.ReadingsFrequencyPercentage[word.dw.ReadingIndex]
+                                  FrequencyRank = frequency?.ReadingsFrequencyRank[word.dw.ReadingIndex] ?? 0,
+                                  FrequencyPercentage = frequency?.ReadingsFrequencyPercentage[word.dw.ReadingIndex] ?? 0
                               };
 
             var wordDto = new WordDto
@@ -1186,11 +1195,11 @@ public class MediaDeckController(
     // [ResponseCache(Duration = 600, VaryByQueryKeys = ["id", "offset"])]
     [SwaggerOperation(Summary = "Get deck details")]
     [ProducesResponseType(typeof(PaginatedResponse<DeckDetailDto?>), StatusCodes.Status200OK)]
-    public PaginatedResponse<DeckDetailDto?> GetMediaDeckDetail(int id, int? offset = 0)
+    public async Task<PaginatedResponse<DeckDetailDto?>> GetMediaDeckDetail(int id, int? offset = 0)
     {
         int pageSize = 25;
 
-        var deck = context.Decks.AsNoTracking()
+        var deck = await context.Decks.AsNoTracking()
                           .Include(d => d.Children)
                           .Include(d => d.Links)
                           .Include(d => d.DeckGenres)
@@ -1200,16 +1209,16 @@ public class MediaDeckController(
                           .ThenInclude(r => r.TargetDeck)
                           .Include(d => d.RelationshipsAsTarget)
                           .ThenInclude(r => r.SourceDeck)
-                          .FirstOrDefault(d => d.DeckId == id);
+                          .FirstOrDefaultAsync(d => d.DeckId == id);
 
         if (deck == null)
             return new PaginatedResponse<DeckDetailDto?>(null, 0, pageSize, offset ?? 0);
 
-        var parentDeck = context.Decks.AsNoTracking().Include(d => d.DeckGenres).Include(d => d.DeckTags).ThenInclude(dt => dt.Tag)
-                                .FirstOrDefault(d => d.DeckId == deck.ParentDeckId);
+        var parentDeck = await context.Decks.AsNoTracking().Include(d => d.DeckGenres).Include(d => d.DeckTags).ThenInclude(dt => dt.Tag)
+                                .FirstOrDefaultAsync(d => d.DeckId == deck.ParentDeckId);
         var subDecks = context.Decks.AsNoTracking().Include(d => d.DeckGenres).Include(d => d.DeckTags).ThenInclude(dt => dt.Tag)
                               .Where(d => d.ParentDeckId == id);
-        int totalCount = subDecks.Count();
+        int totalCount = await subDecks.CountAsync();
 
         subDecks = subDecks
                    .OrderBy(dw => dw.DeckOrder)
@@ -1220,7 +1229,7 @@ public class MediaDeckController(
         mainDeckDto.Relationships = DeckRelationshipDto.FromDeck(deck.RelationshipsAsSource, deck.RelationshipsAsTarget);
         List<DeckDto> subdeckDtos = [];
 
-        var subDeckList = subDecks.ToList();
+        var subDeckList = await subDecks.ToListAsync();
         foreach (var subDeck in subDeckList)
             subdeckDtos.Add(new DeckDto(subDeck));
 
@@ -1229,20 +1238,22 @@ public class MediaDeckController(
             var userId = currentUserService.UserId!;
             var ids = new List<int> { mainDeckDto.DeckId };
             ids.AddRange(subdeckDtos.Select(d => d.DeckId));
-            var coverages = userContext.UserCoverages.AsNoTracking()
-                                       .Where(uc => uc.UserId == userId && ids.Contains(uc.DeckId))
-                                       .Select(uc => new { uc.DeckId, uc.Coverage, uc.UniqueCoverage })
-                                       .ToList();
-            var coverageDict = coverages.ToDictionary(x => x.DeckId, x => (float)x.Coverage);
-            var uCoverageDict = coverages.ToDictionary(x => x.DeckId, x => (float)x.UniqueCoverage);
 
-            var preferences = userContext.UserDeckPreferences.AsNoTracking()
+            var coverages = await UserCoverageChunkHelper.GetCoverage(userContext, userId, ids);
+            var coverageDict = coverages.MatureCoverage;
+            var uCoverageDict = coverages.MatureUniqueCoverage;
+            var yCoverageDict = coverages.YoungCoverage;
+            var yUCoverageDict = coverages.YoungUniqueCoverage;
+
+            var preferences = await userContext.UserDeckPreferences.AsNoTracking()
                                          .Where(p => p.UserId == userId && ids.Contains(p.DeckId))
-                                         .ToList();
+                                         .ToListAsync();
             var preferencesDict = preferences.ToDictionary(p => p.DeckId);
 
             if (coverageDict.TryGetValue(mainDeckDto.DeckId, out var mc)) mainDeckDto.Coverage = mc;
             if (uCoverageDict.TryGetValue(mainDeckDto.DeckId, out var muc)) mainDeckDto.UniqueCoverage = muc;
+            if (yCoverageDict.TryGetValue(mainDeckDto.DeckId, out var myc)) mainDeckDto.YoungCoverage = myc;
+            if (yUCoverageDict.TryGetValue(mainDeckDto.DeckId, out var myuc)) mainDeckDto.YoungUniqueCoverage = myuc;
             if (preferencesDict.TryGetValue(mainDeckDto.DeckId, out var mpref))
             {
                 mainDeckDto.Status = mpref.Status;
@@ -1254,6 +1265,8 @@ public class MediaDeckController(
             {
                 if (coverageDict.TryGetValue(subdeckDto.DeckId, out var c)) subdeckDto.Coverage = c;
                 if (uCoverageDict.TryGetValue(subdeckDto.DeckId, out var uc)) subdeckDto.UniqueCoverage = uc;
+                if (yCoverageDict.TryGetValue(subdeckDto.DeckId, out var yc)) subdeckDto.YoungCoverage = yc;
+                if (yUCoverageDict.TryGetValue(subdeckDto.DeckId, out var yuc)) subdeckDto.YoungUniqueCoverage = yuc;
                 if (preferencesDict.TryGetValue(subdeckDto.DeckId, out var pref))
                 {
                     subdeckDto.Status = pref.Status;
@@ -1295,175 +1308,23 @@ public class MediaDeckController(
             return Results.NotFound();
         }
 
-        IQueryable<DeckWord> deckWordsQuery = context.DeckWords.AsNoTracking().Where(dw => dw.DeckId == id);
-
         if (request.Format == DeckFormat.Yomitan)
         {
             var yomitanBytes = await YomitanHelper.GenerateYomitanFrequencyDeckFromDeck(contextFactory, deck);
             return Results.File(yomitanBytes, "application/zip", $"freq_{deck.OriginalTitle}.zip");
         }
 
-        List<DeckWord>? deckWordsRaw = null;
+        var (deckWordsRaw, error) = await ResolveDeckWords(
+            id, deck, request.DownloadType, request.Order,
+            request.MinFrequency, request.MaxFrequency,
+            request.ExcludeMatureMasteredBlacklisted, request.ExcludeAllTrackedWords,
+            request.TargetPercentage,
+            request.MinOccurrences, request.MaxOccurrences);
 
-        switch (request.DownloadType)
-        {
-            case DeckDownloadType.Full:
-                break;
+        if (error != null)
+            return error;
 
-            case DeckDownloadType.TopGlobalFrequency:
-                // Get the words between frequency rank minFrequency and maxFrequency
-                deckWordsQuery = deckWordsQuery.Where(dw => context.JmDictWordFrequencies
-                                                                   .Any(f => f.WordId == dw.WordId &&
-                                                                             f.ReadingsFrequencyRank[dw.ReadingIndex] >=
-                                                                             request.MinFrequency &&
-                                                                             f.ReadingsFrequencyRank[dw.ReadingIndex] <=
-                                                                             request.MaxFrequency));
-                break;
-
-            case DeckDownloadType.TopDeckFrequency:
-                deckWordsQuery = deckWordsQuery
-                                 .OrderByDescending(dw => dw.Occurrences)
-                                 .Skip(request.MinFrequency)
-                                 .Take(request.MaxFrequency - request.MinFrequency);
-                break;
-
-            case DeckDownloadType.TopChronological:
-                deckWordsQuery = deckWordsQuery
-                                 .OrderBy(dw => dw.DeckWordId)
-                                 .Skip(request.MinFrequency)
-                                 .Take(request.MaxFrequency - request.MinFrequency);
-                break;
-
-            case DeckDownloadType.TargetCoverage:
-                if (!currentUserService.IsAuthenticated)
-                    return Results.Unauthorized();
-
-                if (request.TargetPercentage is null or < 1 or > 100)
-                    return Results.BadRequest("Target percentage must be between 1 and 100");
-
-                // Get user known words
-                var knownCards = await userContext.FsrsCards
-                    .Where(kw => kw.UserId == currentUserService.UserId! &&
-                                 (kw.State == FsrsState.Blacklisted ||
-                                  kw.State == FsrsState.Mastered ||
-                                  (kw.LastReview != null &&
-                                   (kw.Due - kw.LastReview.Value).TotalDays >= 21)))
-                    .Select(kw => new { kw.WordId, kw.ReadingIndex })
-                    .ToListAsync();
-
-                var knownKeysSet = knownCards
-                    .Select(kw => ((long)kw.WordId << 32) | (uint)kw.ReadingIndex)
-                    .ToHashSet();
-
-                // Get all deck words ordered by occurrences (most frequent first)
-                var allDeckWords = await deckWordsQuery
-                    .OrderByDescending(dw => dw.Occurrences)
-                    .ToListAsync();
-
-                // Calculate current coverage from known words
-                int totalOccurrences = deck.WordCount;
-                int knownOccurrences = allDeckWords
-                    .Where(dw => knownKeysSet.Contains(((long)dw.WordId << 32) | (uint)dw.ReadingIndex))
-                    .Sum(dw => dw.Occurrences);
-
-                double targetCoverage = request.TargetPercentage.Value;
-
-                // Add unknown words (by frequency) until target coverage is reached
-                var resultWords = new List<DeckWord>();
-                int cumulativeOccurrences = knownOccurrences;
-
-                foreach (var dw in allDeckWords)
-                {
-                    var key = ((long)dw.WordId << 32) | (uint)dw.ReadingIndex;
-                    if (knownKeysSet.Contains(key))
-                        continue;
-
-                    resultWords.Add(dw);
-                    cumulativeOccurrences += dw.Occurrences;
-
-                    double newCoverage = (double)cumulativeOccurrences / totalOccurrences * 100;
-                    if (newCoverage >= targetCoverage)
-                        break;
-                }
-
-                deckWordsRaw = resultWords;
-                break;
-
-            default:
-                return Results.BadRequest();
-        }
-
-        // Apply ordering and execute query for non-TargetCoverage types
-        if (deckWordsRaw == null)
-        {
-            switch (request.Order)
-            {
-                case DeckOrder.Chronological:
-                    deckWordsQuery = deckWordsQuery.OrderBy(dw => dw.DeckWordId);
-                    break;
-
-                case DeckOrder.GlobalFrequency:
-                    deckWordsQuery = deckWordsQuery.OrderBy(dw => context.JmDictWordFrequencies
-                                                                         .Where(f => f.WordId == dw.WordId)
-                                                                         .Select(f => f.ReadingsFrequencyRank[dw.ReadingIndex])
-                                                                         .FirstOrDefault()
-                                                           );
-                    break;
-
-                case DeckOrder.DeckFrequency:
-                    deckWordsQuery = deckWordsQuery.OrderByDescending(dw => dw.Occurrences);
-                    break;
-                default:
-                    return Results.BadRequest();
-            }
-
-            deckWordsRaw = await deckWordsQuery.ToListAsync();
-        }
-
-        if (request.ExcludeMatureMasteredBlacklisted && currentUserService.IsAuthenticated)
-        {
-            var userCards = await userContext.FsrsCards
-                                             .Where(kw => kw.UserId == currentUserService.UserId!)
-                                             .Select(kw => new { kw.WordId, kw.ReadingIndex, kw.State, kw.LastReview, kw.Due })
-                                             .ToListAsync();
-
-            var matureKeys = userCards
-                             .Where(kw => kw.State == FsrsState.Mastered ||
-                                          kw.State == FsrsState.Blacklisted ||
-                                          (kw.LastReview != null && (kw.Due - kw.LastReview.Value).TotalDays >= 21))
-                             .Select(kw => ((long)kw.WordId << 32) | (uint)kw.ReadingIndex)
-                             .ToHashSet();
-
-            deckWordsRaw = deckWordsRaw
-                           .Where(dw =>
-                           {
-                               var key = ((long)dw.WordId << 32) | (uint)dw.ReadingIndex;
-                               return !matureKeys.Contains(key);
-                           })
-                           .ToList();
-        }
-
-        if (request.ExcludeAllTrackedWords && currentUserService.IsAuthenticated)
-        {
-            var trackedWordIds = await userContext.FsrsCards
-                                                  .Where(kw => kw.UserId == currentUserService.UserId!)
-                                                  .Select(kw => new { kw.WordId, kw.ReadingIndex })
-                                                  .ToListAsync();
-
-            var trackedKeys = trackedWordIds
-                              .Select(kw => ((long)kw.WordId << 32) | (uint)kw.ReadingIndex)
-                              .ToHashSet();
-
-            deckWordsRaw = deckWordsRaw
-                           .Where(dw =>
-                           {
-                               var key = ((long)dw.WordId << 32) | (uint)dw.ReadingIndex;
-                               return !trackedKeys.Contains(key);
-                           })
-                           .ToList();
-        }
-
-        var wordIds = deckWordsRaw.Select(dw => (long)dw.WordId).ToList();
+        var wordIds = deckWordsRaw!.Select(dw => (long)dw.WordId).ToList();
 
         List<(int WordId, byte ReadingIndex, int Occurrences)> deckWords = deckWordsRaw
                                                                            .Select(dw => new ValueTuple<int, byte, int>(dw.WordId,
@@ -1486,6 +1347,77 @@ public class MediaDeckController(
             DeckFormat.Txt or DeckFormat.TxtRepeated => Results.File(bytes, "text/plain", $"{deck.OriginalTitle}.txt"),
             _ => throw new ArgumentOutOfRangeException()
         };
+    }
+
+    /// <summary>
+    /// Marks the resolved vocabulary of a deck as mastered or blacklisted in the user's vocabulary tracker.
+    /// </summary>
+    /// <param name="id">Deck identifier.</param>
+    /// <param name="request">Learn options including vocabulary state.</param>
+    /// <returns>Count of applied words and the state.</returns>
+    [HttpPost("{id}/learn")]
+    [Authorize]
+    [EnableRateLimiting("download")]
+    [SwaggerOperation(Summary = "Bulk-apply vocabulary from a deck",
+                      Description = "Mark resolved vocabulary as mastered or blacklisted. No file is generated.")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IResult> LearnDeck(int id, [FromBody] DeckLearnRequest request)
+    {
+        var state = request.VocabularyState?.ToLowerInvariant();
+        if (state is not ("mastered" or "blacklisted"))
+            return Results.BadRequest("VocabularyState must be 'mastered' or 'blacklisted'.");
+
+        var deck = await context.Decks
+                                .AsNoTracking()
+                                .Include(d => d.Children)
+                                .FirstOrDefaultAsync(d => d.DeckId == id);
+
+        if (deck == null)
+            return Results.NotFound();
+
+        var (deckWordsRaw, error) = await ResolveDeckWords(
+            id, deck, request.DownloadType, request.Order,
+            request.MinFrequency, request.MaxFrequency,
+            request.ExcludeMatureMasteredBlacklisted, request.ExcludeAllTrackedWords,
+            request.TargetPercentage,
+            request.MinOccurrences, request.MaxOccurrences);
+
+        if (error != null)
+            return error;
+
+        if (request.ExcludeKana)
+        {
+            var wordIds = deckWordsRaw!.Select(dw => dw.WordId).Distinct().ToList();
+            var readings = await context.JMDictWords
+                .AsNoTracking()
+                .Where(w => wordIds.Contains(w.WordId))
+                .Select(w => new { w.WordId, w.Readings })
+                .ToDictionaryAsync(w => w.WordId);
+
+            deckWordsRaw = deckWordsRaw!.Where(dw =>
+            {
+                if (!readings.TryGetValue(dw.WordId, out var r)) return true;
+                if (dw.ReadingIndex >= r.Readings.Count) return true;
+                return !WanaKana.IsKana(r.Readings[dw.ReadingIndex]);
+            }).ToList();
+        }
+
+        int applied;
+        if (state == "mastered")
+            applied = await currentUserService.AddKnownWords(deckWordsRaw!);
+        else
+            applied = await currentUserService.BlacklistWords(deckWordsRaw!);
+
+        await CoverageDirtyHelper.MarkCoverageDirty(userContext, currentUserService.UserId!);
+        await userContext.SaveChangesAsync();
+
+        logger.LogInformation(
+            "User applied learn to deck: DeckId={DeckId}, DeckTitle={DeckTitle}, State={State}, WordCount={WordCount}",
+            id, deck.OriginalTitle, state, deckWordsRaw!.Count);
+
+        return Results.Ok(new { applied = deckWordsRaw.Count, state });
     }
 
     /// <summary>
@@ -1845,6 +1777,27 @@ public class MediaDeckController(
     }
 
     /// <summary>
+    /// Returns the number of vocabulary items in a deck filtered by occurrence count thresholds.
+    /// </summary>
+    /// <param name="id">Deck identifier.</param>
+    /// <param name="minOccurrences">Minimum occurrence count (inclusive, optional).</param>
+    /// <param name="maxOccurrences">Maximum occurrence count (inclusive, optional).</param>
+    [HttpGet("{id}/vocabulary-count-occurrences")]
+    [SwaggerOperation(Summary = "Count vocabulary by occurrence count")]
+    [ProducesResponseType(typeof(int), StatusCodes.Status200OK)]
+    public IResult GetVocabularyCountByOccurrences(int id, int? minOccurrences = null, int? maxOccurrences = null)
+    {
+        var query = context.DeckWords.AsNoTracking().Where(dw => dw.DeckId == id);
+
+        if (minOccurrences.HasValue)
+            query = query.Where(dw => dw.Occurrences >= minOccurrences.Value);
+        if (maxOccurrences.HasValue)
+            query = query.Where(dw => dw.Occurrences <= maxOccurrences.Value);
+
+        return Results.Ok(query.Count());
+    }
+
+    /// <summary>
     /// Gets decks from sliding 30-day windows based on offset for display in the update log
     /// </summary>
     /// <param name="offset">Window offset: 0 = last 30 days, 1 = days 30-60 ago, 2 = days 60-90 ago, etc.</param>
@@ -1889,35 +1842,15 @@ public class MediaDeckController(
     [ProducesResponseType(typeof(List<int>), StatusCodes.Status200OK)]
     public async Task<List<int>> GetMediaDeckIdsByLinkId(LinkType linkType, string id)
     {
-        var links = await context.Decks
-                                 .Include(d => d.Links)
-                                 .Where(d => d.Links.Any(l => l.LinkType == linkType))
-                                 .SelectMany(d => d.Links.Where(l => l.LinkType == linkType)
-                                                   .Select(l => new { DeckId = d.DeckId, Url = l.Url }))
-                                 .ToListAsync();
+        var suffix = "/" + id.ToLowerInvariant();
 
-        var result = new List<int>();
-
-        foreach (var link in links)
-        {
-            // Remove trailing slash if present
-            var url = link.Url.TrimEnd('/');
-
-            // Get the last part of the URL (after the last slash)
-            var lastSlashIndex = url.LastIndexOf('/');
-            if (lastSlashIndex == -1)
-                continue;
-
-            var urlId = url.Substring(lastSlashIndex + 1);
-
-            // If the extracted ID matches the provided ID, add the deck ID to the result
-            if (urlId.Equals(id, StringComparison.OrdinalIgnoreCase))
-            {
-                result.Add(link.DeckId);
-            }
-        }
-
-        return result;
+        return await context.Set<Link>()
+                            .Where(l => l.LinkType == linkType)
+                            .Where(l => l.Url.ToLower().EndsWith(suffix) ||
+                                        l.Url.ToLower().EndsWith(suffix + "/"))
+                            .Select(l => l.DeckId)
+                            .Distinct()
+                            .ToListAsync();
     }
 
     /// <summary>
@@ -1980,7 +1913,7 @@ public class MediaDeckController(
                              };
         var embedJson = JsonSerializer.Serialize(discordPayload);
         var webhook = configuration["DiscordWebhook"];
-        using var httpClient = new HttpClient();
+        using var httpClient = httpClientFactory.CreateClient();
         var content = new StringContent(embedJson, Encoding.UTF8, "application/json");
         var result = await httpClient.PostAsync(webhook, content);
 
@@ -2158,5 +2091,199 @@ public class MediaDeckController(
             }).ToList(),
             LastUpdated = difficulty.LastUpdated
         };
+    }
+
+    private async Task<(List<DeckWord>? Words, IResult? Error)> ResolveDeckWords(
+        int deckId, Deck deck,
+        DeckDownloadType downloadType, DeckOrder order,
+        int minFrequency, int maxFrequency,
+        bool excludeMatureMasteredBlacklisted, bool excludeAllTrackedWords,
+        float? targetPercentage,
+        int? minOccurrences = null, int? maxOccurrences = null)
+    {
+        IQueryable<DeckWord> deckWordsQuery = context.DeckWords.AsNoTracking().Where(dw => dw.DeckId == deckId);
+
+        List<DeckWord>? deckWordsRaw = null;
+
+        switch (downloadType)
+        {
+            case DeckDownloadType.Full:
+                break;
+
+            case DeckDownloadType.TopGlobalFrequency:
+                deckWordsQuery = deckWordsQuery.Where(dw => context.JmDictWordFrequencies
+                                                                   .Any(f => f.WordId == dw.WordId &&
+                                                                             f.ReadingsFrequencyRank[dw.ReadingIndex] >=
+                                                                             minFrequency &&
+                                                                             f.ReadingsFrequencyRank[dw.ReadingIndex] <=
+                                                                             maxFrequency));
+                break;
+
+            case DeckDownloadType.TopDeckFrequency:
+                deckWordsQuery = deckWordsQuery
+                                 .OrderByDescending(dw => dw.Occurrences)
+                                 .Skip(minFrequency)
+                                 .Take(maxFrequency - minFrequency);
+                break;
+
+            case DeckDownloadType.TopChronological:
+                deckWordsQuery = deckWordsQuery
+                                 .OrderBy(dw => dw.DeckWordId)
+                                 .Skip(minFrequency)
+                                 .Take(maxFrequency - minFrequency);
+                break;
+
+            case DeckDownloadType.TargetCoverage:
+                if (!currentUserService.IsAuthenticated)
+                    return (null, Results.Unauthorized());
+
+                if (targetPercentage is null or < 1 or > 100)
+                    return (null, Results.BadRequest("Target percentage must be between 1 and 100"));
+
+                var knownCards = await userContext.FsrsCards
+                    .Where(kw => kw.UserId == currentUserService.UserId! &&
+                                 (kw.State == FsrsState.Blacklisted ||
+                                  kw.State == FsrsState.Mastered ||
+                                  (kw.LastReview != null &&
+                                   (kw.Due - kw.LastReview.Value).TotalDays >= 21)))
+                    .Select(kw => new { kw.WordId, kw.ReadingIndex })
+                    .ToListAsync();
+
+                var knownKeysSet = knownCards
+                    .Select(kw => ((long)kw.WordId << 32) | (uint)kw.ReadingIndex)
+                    .ToHashSet();
+
+                var allDeckWords = await deckWordsQuery
+                    .OrderByDescending(dw => dw.Occurrences)
+                    .ToListAsync();
+
+                int totalOccurrences = deck.WordCount;
+                int knownOccurrences = allDeckWords
+                    .Where(dw => knownKeysSet.Contains(((long)dw.WordId << 32) | (uint)dw.ReadingIndex))
+                    .Sum(dw => dw.Occurrences);
+
+                double targetCoverage = targetPercentage.Value;
+
+                var resultWords = new List<DeckWord>();
+                int cumulativeOccurrences = knownOccurrences;
+
+                foreach (var dw in allDeckWords)
+                {
+                    var key = ((long)dw.WordId << 32) | (uint)dw.ReadingIndex;
+                    if (knownKeysSet.Contains(key))
+                        continue;
+
+                    resultWords.Add(dw);
+                    cumulativeOccurrences += dw.Occurrences;
+
+                    double newCoverage = (double)cumulativeOccurrences / totalOccurrences * 100;
+                    if (newCoverage >= targetCoverage)
+                        break;
+                }
+
+                if (order == DeckOrder.Chronological)
+                {
+                    deckWordsRaw = resultWords.OrderBy(dw => dw.DeckWordId).ToList();
+                }
+                else if (order == DeckOrder.GlobalFrequency)
+                {
+                    var resultWordIds = resultWords.Select(dw => dw.WordId).Distinct().ToList();
+                    var freqMap = await context.JmDictWordFrequencies
+                        .Where(f => resultWordIds.Contains(f.WordId))
+                        .ToDictionaryAsync(f => f.WordId, f => f.ReadingsFrequencyRank);
+
+                    deckWordsRaw = resultWords.OrderBy(dw =>
+                        freqMap.TryGetValue(dw.WordId, out var ranks) && dw.ReadingIndex < ranks.Count
+                            ? ranks[dw.ReadingIndex]
+                            : int.MaxValue
+                    ).ToList();
+                }
+                else
+                {
+                    deckWordsRaw = resultWords;
+                }
+                break;
+
+            case DeckDownloadType.OccurrenceCount:
+                if (minOccurrences.HasValue)
+                    deckWordsQuery = deckWordsQuery.Where(dw => dw.Occurrences >= minOccurrences.Value);
+                if (maxOccurrences.HasValue)
+                    deckWordsQuery = deckWordsQuery.Where(dw => dw.Occurrences <= maxOccurrences.Value);
+                break;
+
+            default:
+                return (null, Results.BadRequest());
+        }
+
+        if (deckWordsRaw == null)
+        {
+            switch (order)
+            {
+                case DeckOrder.Chronological:
+                    deckWordsQuery = deckWordsQuery.OrderBy(dw => dw.DeckWordId);
+                    break;
+
+                case DeckOrder.GlobalFrequency:
+                    deckWordsQuery = deckWordsQuery.OrderBy(dw => context.JmDictWordFrequencies
+                                                                         .Where(f => f.WordId == dw.WordId)
+                                                                         .Select(f => f.ReadingsFrequencyRank[dw.ReadingIndex])
+                                                                         .FirstOrDefault()
+                                                           );
+                    break;
+
+                case DeckOrder.DeckFrequency:
+                    deckWordsQuery = deckWordsQuery.OrderByDescending(dw => dw.Occurrences);
+                    break;
+                default:
+                    return (null, Results.BadRequest());
+            }
+
+            deckWordsRaw = await deckWordsQuery.ToListAsync();
+        }
+
+        if (excludeMatureMasteredBlacklisted && currentUserService.IsAuthenticated)
+        {
+            var userCards = await userContext.FsrsCards
+                                             .Where(kw => kw.UserId == currentUserService.UserId!)
+                                             .Select(kw => new { kw.WordId, kw.ReadingIndex, kw.State, kw.LastReview, kw.Due })
+                                             .ToListAsync();
+
+            var matureKeys = userCards
+                             .Where(kw => kw.State == FsrsState.Mastered ||
+                                          kw.State == FsrsState.Blacklisted ||
+                                          (kw.LastReview != null && (kw.Due - kw.LastReview.Value).TotalDays >= 21))
+                             .Select(kw => ((long)kw.WordId << 32) | (uint)kw.ReadingIndex)
+                             .ToHashSet();
+
+            deckWordsRaw = deckWordsRaw
+                           .Where(dw =>
+                           {
+                               var key = ((long)dw.WordId << 32) | (uint)dw.ReadingIndex;
+                               return !matureKeys.Contains(key);
+                           })
+                           .ToList();
+        }
+
+        if (excludeAllTrackedWords && currentUserService.IsAuthenticated)
+        {
+            var trackedWordIds = await userContext.FsrsCards
+                                                  .Where(kw => kw.UserId == currentUserService.UserId!)
+                                                  .Select(kw => new { kw.WordId, kw.ReadingIndex })
+                                                  .ToListAsync();
+
+            var trackedKeys = trackedWordIds
+                              .Select(kw => ((long)kw.WordId << 32) | (uint)kw.ReadingIndex)
+                              .ToHashSet();
+
+            deckWordsRaw = deckWordsRaw
+                           .Where(dw =>
+                           {
+                               var key = ((long)dw.WordId << 32) | (uint)dw.ReadingIndex;
+                               return !trackedKeys.Contains(key);
+                           })
+                           .ToList();
+        }
+
+        return (deckWordsRaw, null);
     }
 }

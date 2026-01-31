@@ -36,7 +36,7 @@ const JitenPreset = definePreset(Aura, {
 });
 
 export default defineNuxtConfig({
-  compatibilityDate: '2024-04-03',
+  compatibilityDate: '2025-07-14',
   devtools: { enabled: true },
   runtimeConfig: {
     public: {
@@ -55,10 +55,8 @@ export default defineNuxtConfig({
     '@primevue/nuxt-module',
     '@nuxt/icon',
     '@nuxtjs/google-fonts',
-    '@nuxt/eslint',
     '@pinia/nuxt',
     '@nuxtjs/seo',
-    'nuxt-link-checker',
     '@nuxt/scripts',
     ...(process.env.NUXT_PUBLIC_SCRIPTS_UMAMI_ANALYTICS_WEBSITE_ID ? ['nuxt-umami'] : []),
     ...(process.env.NUXT_PUBLIC_GOOGLE_SIGNIN_CLIENT_ID ? ['nuxt-vue3-google-signin'] : []),
