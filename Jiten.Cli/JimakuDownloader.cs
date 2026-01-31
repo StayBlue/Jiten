@@ -48,7 +48,12 @@ public class JimakuDownloader
 
             var files = await GetFilesAsync(n);
             if (files == null) continue;
-            files = SortFilenames(files.Select(f => f.Name).ToList()).Select(name => files.First(f => f.Name == name)).ToList();
+            var filesByName = new Dictionary<string, JimakuFile>();
+            foreach (var file in files)
+            {
+                filesByName.TryAdd(file.Name, file);
+            }
+            files = SortFilenames(files.Select(f => f.Name).ToList()).Select(name => filesByName[name]).ToList();
 
             Console.WriteLine($"Files for entry {n} - {entry.Name}:");
             for (int j = 0; j < files.Count; j++)

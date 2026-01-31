@@ -18,7 +18,6 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.IdentityModel.Tokens;
-using OpenTelemetry;
 using OpenTelemetry.Exporter;
 using OpenTelemetry.Logs;
 using OpenTelemetry.Metrics;
@@ -344,12 +343,22 @@ builder.Services.AddRateLimiter(options =>
 {
     options.AddPolicy("fixed", context =>
     {
-        var clientIp = GetClientIp(context);
+        var userId = context.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        var tier = context.User.FindFirst("rate_limit_tier")?.Value ?? "Default";
 
-        return RateLimitPartition.GetFixedWindowLimiter(clientIp,
+        var partitionKey = userId != null ? $"user:{userId}" : $"ip:{GetClientIp(context)}";
+
+        var permitLimit = tier switch
+        {
+            "Researcher" => 3000,
+            "Unlimited" => int.MaxValue,
+            _ => 300
+        };
+
+        return RateLimitPartition.GetFixedWindowLimiter(partitionKey,
                                                         _ => new FixedWindowRateLimiterOptions
                                                              {
-                                                                 PermitLimit = 300, Window = TimeSpan.FromSeconds(60),
+                                                                 PermitLimit = permitLimit, Window = TimeSpan.FromSeconds(60),
                                                                  QueueProcessingOrder = QueueProcessingOrder.OldestFirst, QueueLimit = 3,
                                                                  AutoReplenishment = true
                                                              });
@@ -357,12 +366,22 @@ builder.Services.AddRateLimiter(options =>
 
     options.AddPolicy("download", context =>
     {
-        var clientIp = GetClientIp(context);
+        var userId = context.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        var tier = context.User.FindFirst("rate_limit_tier")?.Value ?? "Default";
 
-        return RateLimitPartition.GetSlidingWindowLimiter(clientIp,
+        var partitionKey = userId != null ? $"user:{userId}" : $"ip:{GetClientIp(context)}";
+
+        var permitLimit = tier switch
+        {
+            "Researcher" => 300,
+            "Unlimited" => int.MaxValue,
+            _ => 10
+        };
+
+        return RateLimitPartition.GetSlidingWindowLimiter(partitionKey,
                                                           _ => new SlidingWindowRateLimiterOptions
                                                                {
-                                                                   PermitLimit = 10, Window = TimeSpan.FromSeconds(60),
+                                                                   PermitLimit = permitLimit, Window = TimeSpan.FromSeconds(60),
                                                                    SegmentsPerWindow = 10,
                                                                    QueueProcessingOrder = QueueProcessingOrder.OldestFirst, QueueLimit = 2,
                                                                    AutoReplenishment = true
@@ -501,7 +520,7 @@ builder.Services.AddHangfireServer((options) =>
 {
     options.ServerName = "ParseServer";
     options.Queues = ["parse", "reparse"];
-    options.WorkerCount = Environment.ProcessorCount / 4;
+    options.WorkerCount = Math.Max(1, Environment.ProcessorCount / 4);
     options.ShutdownTimeout = TimeSpan.FromMinutes(30);
     options.StopTimeout = TimeSpan.FromMinutes(30);
 });
@@ -510,7 +529,7 @@ builder.Services.AddHangfireServer((options) =>
 {
     options.ServerName = "DefaultServer";
     options.Queues = ["default"];
-    options.WorkerCount = Environment.ProcessorCount / 4;
+    options.WorkerCount = Math.Max(1, Environment.ProcessorCount / 4);
     options.ShutdownTimeout = TimeSpan.FromMinutes(30);
     options.StopTimeout = TimeSpan.FromMinutes(30);
 });
@@ -566,6 +585,8 @@ app.UseCors("AllowSpecificOrigin");
 
 app.UseResponseCaching();
 
+app.UseAuthentication();
+
 app.UseRateLimiter();
 
 app.UseStaticFiles();
@@ -589,7 +610,6 @@ else
 app.UseHangfireDashboard("/hangfire", new DashboardOptions() { Authorization = [new HangfireAuthorizationFilter(app.Configuration)] });
 
 app.MapSwagger();
-app.UseAuthentication();
 if (enableOtlpExporter)
 {
     app.UseRequestLogging();

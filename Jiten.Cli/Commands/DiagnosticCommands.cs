@@ -3,6 +3,7 @@ using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Unicode;
 using Jiten.Core.Data.JMDict;
+using Jiten.Parser;
 using Jiten.Parser.Diagnostics;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -80,6 +81,47 @@ public class DiagnosticCommands(CliContext context)
         {
             Console.WriteLine(json);
         }
+    }
+
+    public Task DeconjugateTest(CliOptions options)
+    {
+        var text = options.DeconjugateTest!;
+        var sw = Stopwatch.StartNew();
+        var forms = Deconjugator.Instance.Deconjugate(text);
+        sw.Stop();
+
+        var output = new
+        {
+            InputText = text,
+            ElapsedMs = sw.ElapsedMilliseconds,
+            FormCount = forms.Count,
+            Forms = forms.OrderBy(f => f.Text).Select(f => new
+            {
+                f.Text,
+                f.Tags,
+                f.Process,
+                SeenText = f.SeenText.OrderBy(s => s).ToList()
+            }).ToList()
+        };
+
+        var jsonOptions = new JsonSerializerOptions
+        {
+            WriteIndented = true,
+            Encoder = JavaScriptEncoder.Create(UnicodeRanges.All)
+        };
+        var json = JsonSerializer.Serialize(output, jsonOptions);
+
+        if (!string.IsNullOrEmpty(options.ParseTestOutput))
+        {
+            File.WriteAllText(options.ParseTestOutput, json);
+            Console.WriteLine($"Diagnostics written to {options.ParseTestOutput}");
+        }
+        else
+        {
+            Console.WriteLine(json);
+        }
+
+        return Task.CompletedTask;
     }
 
     public async Task RunParserTests(CliOptions options)

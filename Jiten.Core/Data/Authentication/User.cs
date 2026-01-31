@@ -8,4 +8,5 @@ public class User : IdentityUser
     public DateTime UpdatedAt { get; set; }
     public DateTime TosAcceptedAt { get; set; }
     public bool ReceivesNewsletter { get; set; }
+    public RateLimitTier RateLimitTier { get; set; } = RateLimitTier.Default;
 }

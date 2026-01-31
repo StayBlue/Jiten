@@ -130,6 +130,9 @@ public class CliOptions
     [Option(longName: "search-lookup", Required = false, HelpText = "Search the lookups table for a text and show all matching WordIds.")]
     public string? SearchLookup { get; set; }
 
+    [Option(longName: "deconjugate-test", Required = false, HelpText = "Show all deconjugation results for a word.")]
+    public string? DeconjugateTest { get; set; }
+
     [Option(longName: "flush-redis", Required = false, HelpText = "Flush the Redis cache (clears all cached parser results).")]
     public bool FlushRedis { get; set; }
 

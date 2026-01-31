@@ -37,55 +37,39 @@ public class KanjiController(JitenDbContext context) : ControllerBase
         if (kanji == null)
             return Results.NotFound();
 
-        // Get words containing this kanji with their reading indices
-        var wordKanjiPairs = await context.WordKanjis
-                                          .AsNoTracking()
-                                          .Where(wk => wk.KanjiCharacter == character)
-                                          .Select(wk => new { wk.WordId, wk.ReadingIndex })
-                                          .Distinct()
-                                          .ToListAsync();
+        // Top 20 words selected in SQL via join + PostgreSQL array indexing
+        var topWordData = await context.WordKanjis
+                                        .AsNoTracking()
+                                        .Where(wk => wk.KanjiCharacter == character)
+                                        .Select(wk => new { wk.WordId, wk.ReadingIndex })
+                                        .Distinct()
+                                        .Join(context.JmDictWordFrequencies.AsNoTracking(),
+                                              wk => wk.WordId,
+                                              f => f.WordId,
+                                              (wk, f) => new { wk.WordId, wk.ReadingIndex, Rank = (int?)f.ReadingsFrequencyRank[wk.ReadingIndex] })
+                                        .Where(x => x.Rank > 0)
+                                        .OrderBy(x => x.Rank)
+                                        .Take(20)
+                                        .ToListAsync();
 
-        var wordIds = wordKanjiPairs.Select(w => w.WordId).Distinct().ToList();
-
-        var frequencies = await context.JmDictWordFrequencies
-                                       .AsNoTracking()
-                                       .Where(f => wordIds.Contains(f.WordId))
-                                       .ToDictionaryAsync(f => f.WordId);
-
-        // Get top 20 words by frequency rank
-        var topWordKanjis = wordKanjiPairs
-                            .Where(wk => frequencies.ContainsKey(wk.WordId))
-                            .Select(wk =>
-                            {
-                                var freq = frequencies[wk.WordId];
-                                var readingRank = wk.ReadingIndex < freq.ReadingsFrequencyRank.Count
-                                    ? freq.ReadingsFrequencyRank[wk.ReadingIndex]
-                                    : int.MaxValue;
-                                return new { wk.WordId, wk.ReadingIndex, FrequencyRank = readingRank };
-                            })
-                            .Where(x => x.FrequencyRank > 0)
-                            .OrderBy(x => x.FrequencyRank)
-                            .Take(20)
-                            .ToList();
-
-        var topWordIds = topWordKanjis.Select(w => w.WordId).Distinct().ToList();
+        var topWordIds = topWordData.Select(x => x.WordId).Distinct().ToList();
         var words = await context.JMDictWords
                                  .AsNoTracking()
                                  .Include(w => w.Definitions)
                                  .Where(w => topWordIds.Contains(w.WordId))
                                  .ToDictionaryAsync(w => w.WordId);
 
-        var topWords = topWordKanjis
-                       .Where(wk => words.ContainsKey(wk.WordId))
-                       .Select(wk =>
+        var topWords = topWordData
+                       .Where(x => words.ContainsKey(x.WordId))
+                       .Select(x =>
                        {
-                           var word = words[wk.WordId];
+                           var word = words[x.WordId];
                            var mainDefinition = word.Definitions.FirstOrDefault()?.EnglishMeanings.FirstOrDefault();
                            return new WordSummaryDto
                                   {
-                                      WordId = wk.WordId, ReadingIndex = (byte)wk.ReadingIndex, Reading = word.Readings[wk.ReadingIndex],
-                                      ReadingFurigana = word.ReadingsFurigana[wk.ReadingIndex], MainDefinition = mainDefinition,
-                                      FrequencyRank = wk.FrequencyRank
+                                      WordId = x.WordId, ReadingIndex = (byte)x.ReadingIndex, Reading = word.Readings[x.ReadingIndex],
+                                      ReadingFurigana = word.ReadingsFurigana[x.ReadingIndex], MainDefinition = mainDefinition,
+                                      FrequencyRank = x.Rank!.Value
                                   };
                        })
                        .ToList();
@@ -122,61 +106,44 @@ public class KanjiController(JitenDbContext context) : ControllerBase
         var pageSize = 100;
         page = Math.Max(page, 1);
 
-        // Get all word-kanji pairs for this character
-        var wordKanjiPairs = await context.WordKanjis
-                                          .AsNoTracking()
-                                          .Where(wk => wk.KanjiCharacter == character)
-                                          .Select(wk => new { wk.WordId, wk.ReadingIndex })
-                                          .Distinct()
-                                          .ToListAsync();
+        // Rank words in SQL via join + PostgreSQL array indexing
+        var rankedQuery = context.WordKanjis
+                                  .AsNoTracking()
+                                  .Where(wk => wk.KanjiCharacter == character)
+                                  .Select(wk => new { wk.WordId, wk.ReadingIndex })
+                                  .Distinct()
+                                  .Join(context.JmDictWordFrequencies.AsNoTracking(),
+                                        wk => wk.WordId,
+                                        f => f.WordId,
+                                        (wk, f) => new { wk.WordId, wk.ReadingIndex, Rank = (int?)f.ReadingsFrequencyRank[wk.ReadingIndex] })
+                                  .Where(x => x.Rank > 0);
 
-        var wordIds = wordKanjiPairs.Select(w => w.WordId).Distinct().ToList();
+        var totalCount = await rankedQuery.CountAsync();
 
-        var frequencies = await context.JmDictWordFrequencies
-                                       .AsNoTracking()
-                                       .Where(f => wordIds.Contains(f.WordId))
-                                       .ToDictionaryAsync(f => f.WordId);
+        var pageData = await rankedQuery
+                              .OrderBy(x => x.Rank)
+                              .Skip((page - 1) * pageSize)
+                              .Take(pageSize)
+                              .ToListAsync();
 
-        // Sort by reading-specific frequency rank and paginate in memory
-        var sortedPairs = wordKanjiPairs
-                          .Where(wk => frequencies.ContainsKey(wk.WordId))
-                          .Select(wk =>
-                          {
-                              var freq = frequencies[wk.WordId];
-                              var readingRank = wk.ReadingIndex < freq.ReadingsFrequencyRank.Count
-                                  ? freq.ReadingsFrequencyRank[wk.ReadingIndex]
-                                  : int.MaxValue;
-                              return new { wk.WordId, wk.ReadingIndex, FrequencyRank = readingRank };
-                          })
-                          .Where(x => x.FrequencyRank > 0)
-                          .OrderBy(x => x.FrequencyRank)
-                          .ToList();
-
-        var totalCount = sortedPairs.Count;
-
-        var wordKanjis = sortedPairs
-                         .Skip((page - 1) * pageSize)
-                         .Take(pageSize)
-                         .ToList();
-
-        var pageWordIds = wordKanjis.Select(w => w.WordId).Distinct().ToList();
+        var pageWordIds = pageData.Select(x => x.WordId).Distinct().ToList();
         var words = await context.JMDictWords
                                  .AsNoTracking()
                                  .Include(w => w.Definitions)
                                  .Where(w => pageWordIds.Contains(w.WordId))
                                  .ToDictionaryAsync(w => w.WordId);
 
-        var items = wordKanjis
-                    .Where(wk => words.ContainsKey(wk.WordId))
-                    .Select(wk =>
+        var items = pageData
+                    .Where(x => words.ContainsKey(x.WordId))
+                    .Select(x =>
                     {
-                        var word = words[wk.WordId];
+                        var word = words[x.WordId];
                         var mainDefinition = word.Definitions.FirstOrDefault()?.EnglishMeanings.FirstOrDefault();
                         return new WordSummaryDto
                                {
-                                   WordId = wk.WordId, ReadingIndex = (byte)wk.ReadingIndex, Reading = word.Readings[wk.ReadingIndex],
-                                   ReadingFurigana = word.ReadingsFurigana[wk.ReadingIndex], MainDefinition = mainDefinition,
-                                   FrequencyRank = wk.FrequencyRank
+                                   WordId = x.WordId, ReadingIndex = (byte)x.ReadingIndex, Reading = word.Readings[x.ReadingIndex],
+                                   ReadingFurigana = word.ReadingsFurigana[x.ReadingIndex], MainDefinition = mainDefinition,
+                                   FrequencyRank = x.Rank!.Value
                                };
                     })
                     .ToList();

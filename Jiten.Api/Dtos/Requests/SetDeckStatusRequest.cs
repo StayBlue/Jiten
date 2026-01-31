@@ -1,4 +1,4 @@
-using Jiten.Core.Data.User;
+using Jiten.Core.Data;
 
 namespace Jiten.Api.Dtos.Requests;
 

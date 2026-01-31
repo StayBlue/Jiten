@@ -209,7 +209,7 @@ public partial class AdminController(
     [HttpGet("deck/{id}")]
     public async Task<IActionResult> GetDeck(int id)
     {
-        var deck = dbContext.Decks.AsNoTracking()
+        var deck = await dbContext.Decks.AsNoTracking()
                             .Include(d => d.Children)
                             .Include(d => d.Links)
                             .Include(d => d.Titles)
@@ -220,7 +220,7 @@ public partial class AdminController(
                             .ThenInclude(r => r.TargetDeck)
                             .Include(d => d.RelationshipsAsTarget)
                             .ThenInclude(r => r.SourceDeck)
-                            .FirstOrDefault(d => d.DeckId == id);
+                            .FirstOrDefaultAsync(d => d.DeckId == id);
 
         if (deck == null)
             return NotFound(new { Message = $"No deck found with ID {id}." });
@@ -308,11 +308,12 @@ public partial class AdminController(
             dbContext.RemoveRange(linksToRemove);
 
             // Update existing links and add new ones
+            var existingLinksById = deck.Links.ToDictionary(l => l.LinkId);
             foreach (var link in model.Links)
             {
                 if (link.LinkId > 0 && existingLinkIds.Contains(link.LinkId))
                 {
-                    var existingLink = deck.Links.First(l => l.LinkId == link.LinkId);
+                    var existingLink = existingLinksById[link.LinkId];
                     existingLink.Url = link.Url;
                     existingLink.LinkType = link.LinkType;
                 }
@@ -411,12 +412,13 @@ public partial class AdminController(
             var subdecksToRemove = deck.Children.Where(d => !newSubdeckIds.Contains(d.DeckId));
             dbContext.RemoveRange(subdecksToRemove);
 
-            // Update existing subdecks and add new ones 
+            // Update existing subdecks and add new ones
+            var existingSubdecksById = deck.Children.ToDictionary(d => d.DeckId);
             foreach (var subdeck in model.Subdecks)
             {
                 if (subdeck.DeckId > 0 && existingSubdeckIds.Contains(subdeck.DeckId))
                 {
-                    var existingSubdeck = deck.Children.First(d => d.DeckId == subdeck.DeckId);
+                    var existingSubdeck = existingSubdecksById[subdeck.DeckId];
                     existingSubdeck.OriginalTitle = subdeck.OriginalTitle.Trim();
                     existingSubdeck.DeckOrder = subdeck.DeckOrder;
                     existingSubdeck.DifficultyOverride = subdeck.DifficultyOverride;
@@ -714,6 +716,29 @@ public partial class AdminController(
 
         logger.LogInformation("Admin queued difficulty reaggregation for {Count} parent decks", parentDecks.Count);
         return Ok(new { Message = $"Queued difficulty reaggregation for {parentDecks.Count} parent decks", Count = parentDecks.Count });
+    }
+
+    /// <summary>
+    /// Reaggregate a single parent deck's difficulty from its children
+    /// </summary>
+    [HttpPost("reaggregate-parent-difficulty/{deckId}")]
+    public async Task<IActionResult> ReaggregateParentDifficulty(int deckId)
+    {
+        var deck = await dbContext.Decks
+            .Include(d => d.Children)
+            .FirstOrDefaultAsync(d => d.DeckId == deckId);
+
+        if (deck == null)
+            return NotFound(new { Message = "Deck not found" });
+
+        if (!deck.Children.Any())
+            return BadRequest(new { Message = "Deck has no children to aggregate from" });
+
+        backgroundJobs.Enqueue<DifficultyComputationJob>(
+            job => job.ReaggregateParentDifficulty(deckId));
+
+        logger.LogInformation("Admin queued difficulty reaggregation for deck {DeckId}", deckId);
+        return Ok(new { Message = "Queued difficulty reaggregation", DeckId = deckId });
     }
 
     [HttpGet("issues")]

@@ -36,7 +36,8 @@ public class TokenService
                          // Add amr (Authentication Method Reference) claim for 2FA
                          // "mfa" indicates multi-factor authentication was performed
                          // This is useful for clients or other services to know the strength of the authentication
-                         new("amr", "pwd")
+                         new("amr", "pwd"),
+                         new("rate_limit_tier", user.RateLimitTier.ToString())
                      };
 
         foreach (var role in userRoles)

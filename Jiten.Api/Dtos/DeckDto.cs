@@ -1,5 +1,4 @@
 using Jiten.Core.Data;
-using Jiten.Core.Data.User;
 
 namespace Jiten.Api.Dtos;
 
@@ -34,6 +33,8 @@ public class DeckDto
     public bool HideDialoguePercentage { get; set; }
     public float Coverage { get; set; }
     public float UniqueCoverage { get; set; }
+    public float YoungCoverage { get; set; }
+    public float YoungUniqueCoverage { get; set; }
     public byte ExternalRating { get; set; }
     public ExampleSentenceDto? ExampleSentence { get; set; }
     public List<Genre> Genres { get; set; } = new();

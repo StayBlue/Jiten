@@ -1097,6 +1097,38 @@
   {
     "type": "stdrule",
     "dec_end": [""],
+    "con_end": ["くれる"],
+    "dec_tag": ["stem-te"],
+    "con_tag": ["v1"],
+    "detail": "do for me"
+  },
+  {
+    "type": "stdrule",
+    "dec_end": [""],
+    "con_end": ["もらう"],
+    "dec_tag": ["stem-te"],
+    "con_tag": ["v5u"],
+    "detail": "have someone do"
+  },
+  {
+    "type": "stdrule",
+    "dec_end": [""],
+    "con_end": ["やる"],
+    "dec_tag": ["stem-te"],
+    "con_tag": ["v5r"],
+    "detail": "do for someone (casual)"
+  },
+  {
+    "type": "stdrule",
+    "dec_end": [""],
+    "con_end": ["さしあげる"],
+    "dec_tag": ["stem-te"],
+    "con_tag": ["v1"],
+    "detail": "do for someone (humble)"
+  },
+  {
+    "type": "stdrule",
+    "dec_end": [""],
     "con_end": ["いる"],
     "dec_tag": ["stem-te"],
     "con_tag": ["v1"],

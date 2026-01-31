@@ -18,4 +18,5 @@ public class FsrsCardWithWordDto
     // Word data
     public string WordText { get; set; } = string.Empty;
     public JmDictReadingType ReadingType { get; set; }
+    public int FrequencyRank { get; set; }
 }

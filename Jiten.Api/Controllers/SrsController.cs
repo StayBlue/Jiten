@@ -1,9 +1,11 @@
 using System.Globalization;
 using Jiten.Api.Dtos;
 using Jiten.Api.Dtos.Requests;
+using Jiten.Api.Helpers;
 using Jiten.Api.Jobs;
 using Jiten.Api.Services;
 using Jiten.Core;
+using Jiten.Core.Data;
 using Jiten.Core.Data.FSRS;
 using Jiten.Core.Data.JMDict;
 using Jiten.Core.Data.User;
@@ -77,6 +79,9 @@ public class SrsController(
 
         // Sync kana reading if this is a kanji reading card
         await SyncKanaReadingCard(request.WordId, request.ReadingIndex, cardAndLog.UpdatedCard, DateTime.UtcNow);
+
+        await CoverageDirtyHelper.MarkCoverageDirty(userContext, currentUserService.UserId!);
+        await userContext.SaveChangesAsync();
 
         logger.LogInformation("User reviewed SRS card: WordId={WordId}, ReadingIndex={ReadingIndex}, Rating={Rating}, NewState={NewState}",
                               request.WordId, request.ReadingIndex, request.Rating, cardAndLog.UpdatedCard.State);
@@ -297,7 +302,31 @@ public class SrsController(
 
             case "blacklist-remove":
                 if (card != null && card.State == FsrsState.Blacklisted)
+                {
                     RestoreCardState(card);
+                }
+                else if (card == null)
+                {
+                    // Check if blacklisted via WordSet (two queries — separate DbContexts)
+                    var blacklistedSetIds = await userContext.UserWordSetStates
+                        .Where(uwss => uwss.UserId == userId && uwss.State == WordSetStateType.Blacklisted)
+                        .Select(uwss => uwss.SetId)
+                        .ToListAsync();
+
+                    var isSetBlacklisted = blacklistedSetIds.Count > 0 &&
+                        await context.WordSetMembers
+                            .AnyAsync(wsm => blacklistedSetIds.Contains(wsm.SetId) &&
+                                             wsm.WordId == request.WordId &&
+                                             wsm.ReadingIndex == request.ReadingIndex);
+
+                    if (isSetBlacklisted)
+                    {
+                        // Create FsrsCard to override set blacklist
+                        card = new FsrsCard(userId!, request.WordId, request.ReadingIndex,
+                                            state: FsrsState.Learning);
+                        await userContext.FsrsCards.AddAsync(card);
+                    }
+                }
                 break;
 
             case "forget-add":
@@ -312,6 +341,7 @@ public class SrsController(
                 return Results.BadRequest($"Invalid state: {request.State}");
         }
 
+        await CoverageDirtyHelper.MarkCoverageDirty(userContext, userId!);
         await userContext.SaveChangesAsync();
 
         // Sync kana reading for vocabulary state changes
@@ -404,17 +434,11 @@ public class SrsController(
                 break;
 
             case "blacklist-remove":
-                // Update kana card to Review state if it exists
-                var kanaCardToUpdate = await userContext.FsrsCards
-                                                        .FirstOrDefaultAsync(c => c.UserId == userId &&
-                                                                                  c.WordId == wordId &&
-                                                                                  c.ReadingIndex == (byte)kanaIndex);
-                if (kanaCardToUpdate != null)
+                if (sourceCard != null)
                 {
-                    kanaCardToUpdate.State = FsrsState.Review;
-                    await userContext.SaveChangesAsync();
-                    logger.LogInformation("Updated synced kana reading to Review: WordId={WordId}, KanaIndex={KanaIndex}",
-                                          wordId, kanaIndex);
+                    // Sync kana reading - this handles both updating existing kana cards
+                    // and creating new ones when overriding a set blacklist
+                    await SyncKanaReadingCard(wordId, readingIndex, sourceCard, DateTime.UtcNow);
                 }
 
                 break;

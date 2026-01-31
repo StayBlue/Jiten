@@ -1,4 +1,4 @@
-namespace Jiten.Core.Data.User;
+namespace Jiten.Core.Data;
 
 public class UserProfile
 {

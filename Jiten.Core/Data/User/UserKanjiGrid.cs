@@ -1,7 +1,7 @@
 using System.ComponentModel.DataAnnotations.Schema;
 using System.Text.Json;
 
-namespace Jiten.Core.Data.User;
+namespace Jiten.Core.Data;
 
 public class UserKanjiGrid
 {

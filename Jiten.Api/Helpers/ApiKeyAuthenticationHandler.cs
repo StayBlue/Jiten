@@ -174,7 +174,8 @@ public class ApiKeyAuthenticationHandler(
                      {
                          new(ClaimTypes.NameIdentifier, user.Id), new(ClaimTypes.Name, user.UserName ?? string.Empty),
                          new(ClaimTypes.Email, user.Email ?? string.Empty), new("amr", "api_key"), new("auth_scheme", "ApiKey"),
-                         new("api_key_id", apiKey.Id.ToString())
+                         new("api_key_id", apiKey.Id.ToString()),
+                         new("rate_limit_tier", user.RateLimitTier.ToString())
                      };
 
         var roles = await userManager.GetRolesAsync(user);

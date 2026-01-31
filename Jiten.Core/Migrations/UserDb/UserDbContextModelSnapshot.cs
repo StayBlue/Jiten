@@ -148,6 +148,9 @@ namespace Jiten.Core.Migrations.UserDb
                     b.Property<bool>("PhoneNumberConfirmed")
                         .HasColumnType("boolean");
 
+                    b.Property<int>("RateLimitTier")
+                        .HasColumnType("integer");
+
                     b.Property<bool>("ReceivesNewsletter")
                         .HasColumnType("boolean");
 
@@ -252,7 +255,7 @@ namespace Jiten.Core.Migrations.UserDb
                     b.ToTable("FsrsReviewLogs", "user");
                 });
 
-            modelBuilder.Entity("Jiten.Core.Data.User.UserAccomplishment", b =>
+            modelBuilder.Entity("Jiten.Core.Data.UserAccomplishment", b =>
                 {
                     b.Property<int>("AccomplishmentId")
                         .ValueGeneratedOnAdd()
@@ -299,7 +302,7 @@ namespace Jiten.Core.Migrations.UserDb
                     b.ToTable("UserAccomplishments", "user");
                 });
 
-            modelBuilder.Entity("Jiten.Core.Data.User.UserCoverage", b =>
+            modelBuilder.Entity("Jiten.Core.Data.UserCoverage", b =>
                 {
                     b.Property<Guid>("UserId")
                         .HasColumnType("uuid");
@@ -322,7 +325,34 @@ namespace Jiten.Core.Migrations.UserDb
                     b.ToTable("UserCoverages", "user");
                 });
 
-            modelBuilder.Entity("Jiten.Core.Data.User.UserDeckPreference", b =>
+            modelBuilder.Entity("Jiten.Core.Data.UserCoverageChunk", b =>
+                {
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<short>("Metric")
+                        .HasColumnType("smallint");
+
+                    b.Property<int>("ChunkIndex")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("ComputedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.PrimitiveCollection<short[]>("Values")
+                        .IsRequired()
+                        .HasColumnType("smallint[]");
+
+                    b.HasKey("UserId", "Metric", "ChunkIndex")
+                        .HasName("PK_UserCoverageChunks");
+
+                    b.HasIndex("UserId")
+                        .HasDatabaseName("IX_UserCoverageChunks_UserId");
+
+                    b.ToTable("UserCoverageChunks", "user");
+                });
+
+            modelBuilder.Entity("Jiten.Core.Data.UserDeckPreference", b =>
                 {
                     b.Property<Guid>("UserId")
                         .HasColumnType("uuid");
@@ -373,7 +403,7 @@ namespace Jiten.Core.Migrations.UserDb
                     b.ToTable("UserFsrsSettings", "user");
                 });
 
-            modelBuilder.Entity("Jiten.Core.Data.User.UserKanjiGrid", b =>
+            modelBuilder.Entity("Jiten.Core.Data.UserKanjiGrid", b =>
                 {
                     b.Property<Guid>("UserId")
                         .HasColumnType("uuid");
@@ -390,7 +420,7 @@ namespace Jiten.Core.Migrations.UserDb
                     b.ToTable("UserKanjiGrids", "user");
                 });
 
-            modelBuilder.Entity("Jiten.Core.Data.User.UserKnownWord", b =>
+            modelBuilder.Entity("Jiten.Core.Data.UserKnownWord", b =>
                 {
                     b.Property<Guid>("UserId")
                         .HasColumnType("uuid");
@@ -415,10 +445,16 @@ namespace Jiten.Core.Migrations.UserDb
                     b.ToTable("UserKnownWords", "user");
                 });
 
-            modelBuilder.Entity("Jiten.Core.Data.User.UserMetadata", b =>
+            modelBuilder.Entity("Jiten.Core.Data.UserMetadata", b =>
                 {
                     b.Property<Guid>("UserId")
                         .HasColumnType("uuid");
+
+                    b.Property<bool>("CoverageDirty")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime?>("CoverageDirtyAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<DateTime?>("CoverageRefreshedAt")
                         .HasColumnType("timestamp with time zone");
@@ -428,7 +464,7 @@ namespace Jiten.Core.Migrations.UserDb
                     b.ToTable("UserMetadatas", "user");
                 });
 
-            modelBuilder.Entity("Jiten.Core.Data.User.UserProfile", b =>
+            modelBuilder.Entity("Jiten.Core.Data.UserProfile", b =>
                 {
                     b.Property<Guid>("UserId")
                         .HasColumnType("uuid");
@@ -441,6 +477,28 @@ namespace Jiten.Core.Migrations.UserDb
                     b.HasKey("UserId");
 
                     b.ToTable("UserProfiles", "user");
+                });
+
+            modelBuilder.Entity("Jiten.Core.Data.UserWordSetState", b =>
+                {
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("SetId")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<short>("State")
+                        .HasColumnType("smallint");
+
+                    b.HasKey("UserId", "SetId");
+
+                    b.HasIndex("UserId")
+                        .HasDatabaseName("IX_UserWordSetState_UserId");
+
+                    b.ToTable("UserWordSetStates", "user");
                 });
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRole", b =>
@@ -606,7 +664,7 @@ namespace Jiten.Core.Migrations.UserDb
                     b.Navigation("Card");
                 });
 
-            modelBuilder.Entity("Jiten.Core.Data.User.UserAccomplishment", b =>
+            modelBuilder.Entity("Jiten.Core.Data.UserAccomplishment", b =>
                 {
                     b.HasOne("Jiten.Core.Data.Authentication.User", null)
                         .WithMany()
@@ -615,7 +673,7 @@ namespace Jiten.Core.Migrations.UserDb
                         .IsRequired();
                 });
 
-            modelBuilder.Entity("Jiten.Core.Data.User.UserDeckPreference", b =>
+            modelBuilder.Entity("Jiten.Core.Data.UserDeckPreference", b =>
                 {
                     b.HasOne("Jiten.Core.Data.Authentication.User", null)
                         .WithMany()
@@ -633,29 +691,29 @@ namespace Jiten.Core.Migrations.UserDb
                         .IsRequired();
                 });
 
-            modelBuilder.Entity("Jiten.Core.Data.User.UserKanjiGrid", b =>
+            modelBuilder.Entity("Jiten.Core.Data.UserKanjiGrid", b =>
                 {
                     b.HasOne("Jiten.Core.Data.Authentication.User", null)
                         .WithOne()
-                        .HasForeignKey("Jiten.Core.Data.User.UserKanjiGrid", "UserId")
+                        .HasForeignKey("Jiten.Core.Data.UserKanjiGrid", "UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });
 
-            modelBuilder.Entity("Jiten.Core.Data.User.UserMetadata", b =>
+            modelBuilder.Entity("Jiten.Core.Data.UserMetadata", b =>
                 {
                     b.HasOne("Jiten.Core.Data.Authentication.User", null)
                         .WithOne()
-                        .HasForeignKey("Jiten.Core.Data.User.UserMetadata", "UserId")
+                        .HasForeignKey("Jiten.Core.Data.UserMetadata", "UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });
 
-            modelBuilder.Entity("Jiten.Core.Data.User.UserProfile", b =>
+            modelBuilder.Entity("Jiten.Core.Data.UserProfile", b =>
                 {
                     b.HasOne("Jiten.Core.Data.Authentication.User", null)
                         .WithOne()
-                        .HasForeignKey("Jiten.Core.Data.User.UserProfile", "UserId")
+                        .HasForeignKey("Jiten.Core.Data.UserProfile", "UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });
