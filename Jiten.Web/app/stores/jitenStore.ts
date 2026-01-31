@@ -32,6 +32,7 @@ export const useJitenStore = defineStore('jiten', () => {
   const hideGenres = createCookieState<boolean>('hide-genres', false);
   const hideTags = createCookieState<boolean>('hide-tags', false);
   const hideRelations = createCookieState<boolean>('hide-relations', false);
+  const hideDescriptions = createCookieState<boolean>('hide-descriptions', false);
   const difficultyDisplayStyle = createCookieState<DifficultyDisplayStyle>('difficulty-display-style', 0);
 
   const difficultyValueDisplayStyleCookie = useCookie<DifficultyValueDisplayStyle>('jiten-difficulty-value-display-style', {
@@ -96,6 +97,7 @@ export const useJitenStore = defineStore('jiten', () => {
     hideGenres,
     hideTags,
     hideRelations,
+    hideDescriptions,
     difficultyDisplayStyle,
     difficultyValueDisplayStyle
   };

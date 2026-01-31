@@ -263,7 +263,7 @@
                     </div>
                     <div v-if="deck.difficulty != -1" class="flex justify-between flex-wrap stat-row">
                       <Tooltip
-                        :content="'This is a work in progress.\nIf you find scores that are way higher or lower than they should be, please report them so the algorithm can be refined further.'"
+                        :content="'This is a work in progress.\nIf you find scores that are way higher or lower than they should be, please report them so the algorithm can be refined further.\nDifficulties are only comparable within their own type (novels or shows).'"
                       >
                         <span class="text-gray-600 dark:text-gray-300 truncate pr-2 font-medium">
                           Difficulty
@@ -330,7 +330,7 @@
                 </div>
 
                 <div class="mt-2">
-                  <div v-if="deck.description" class="description-container" :class="{ expanded: isDescriptionExpanded }">
+                  <div v-if="deck.description && !store.hideDescriptions" class="description-container" :class="{ expanded: isDescriptionExpanded }">
                     <p class="whitespace-pre-line mb-0 text-sm">{{ deck.description }}</p>
                     <a v-if="deck.description.length > 50" href="#" class="text-primary-500 hover:text-primary-700 text-sm" @click.prevent="toggleDescription">
                       {{ isDescriptionExpanded ? 'View less' : 'View more' }}

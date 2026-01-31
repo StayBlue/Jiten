@@ -15,6 +15,7 @@
     hideGenres,
     hideTags,
     hideRelations,
+    hideDescriptions,
     displayAdminFunctions,
     readingSpeed,
     difficultyDisplayStyle,
@@ -250,6 +251,11 @@
       <div class="flex items-center gap-2 py-1">
         <Checkbox v-model="hideRelations" input-id="hideRelations" name="hideRelations" :binary="true" />
         <label for="hideRelations" class="text-sm cursor-pointer">Hide relations</label>
+      </div>
+
+      <div class="flex items-center gap-2 py-1">
+        <Checkbox v-model="hideDescriptions" input-id="hideDescriptions" name="hideDescriptions" :binary="true" />
+        <label for="hideDescriptions" class="text-sm cursor-pointer">Hide descriptions</label>
       </div>
 
       <div v-if="auth.isAuthenticated && auth.isAdmin" class="flex items-center gap-2 py-1">
