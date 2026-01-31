@@ -1,4 +1,4 @@
-<script async setup lang="ts">
+<script setup lang="ts">
   import Button from 'primevue/button';
   import { KnownState, type Word } from '~/types';
   import { useAuthStore } from '~/stores/authStore';
@@ -10,19 +10,25 @@
     word: Word;
   }>();
 
+  const knownStates = ref([...props.word.knownStates]);
+
+  watch(() => props.word.knownStates, (newStates) => {
+    knownStates.value = [...newStates];
+  });
+
   const toggleWordKnown = async () => {
-    if (props.word.knownStates.includes(KnownState.Mature) || props.word.knownStates.includes(KnownState.Young) || props.word.knownStates.includes(KnownState.Mastered)) {
+    if (knownStates.value.includes(KnownState.Mature) || knownStates.value.includes(KnownState.Young) || knownStates.value.includes(KnownState.Mastered)) {
       await $api<boolean>(`user/vocabulary/remove/${props.word.wordId}/${props.word.mainReading.readingIndex}`, {
         method: 'POST',
       });
 
-      props.word.knownStates = [KnownState.New];
+      knownStates.value = [KnownState.New];
     } else {
       await $api<boolean>(`user/vocabulary/add/${props.word.wordId}/${props.word.mainReading.readingIndex}`, {
         method: 'POST',
       });
 
-      props.word.knownStates = [KnownState.Mastered];
+      knownStates.value = [KnownState.Mastered];
     }
   };
 </script>
@@ -31,22 +37,22 @@
   <ClientOnly>
     <span class="inline-flex items-center gap-1">
       <template v-if="auth.isAuthenticated">
-        <template v-if="word.knownStates.includes(KnownState.Mature)">
+        <template v-if="knownStates.includes(KnownState.Mature)">
           <span class="text-green-600 dark:text-green-300">Mature</span>
           <Button icon="pi pi-minus" size="small" text severity="danger" @click="toggleWordKnown" />
           <span aria-hidden="true">|</span>
         </template>
-        <template v-if="word.knownStates.includes(KnownState.Mastered)">
+        <template v-else-if="knownStates.includes(KnownState.Mastered)">
           <span class="text-green-600 dark:text-green-300">Mastered</span>
           <Button icon="pi pi-minus" size="small" text severity="danger" @click="toggleWordKnown" />
           <span aria-hidden="true">|</span>
         </template>
-        <template v-else-if="word.knownStates.includes(KnownState.Young)">
+        <template v-else-if="knownStates.includes(KnownState.Young)">
           <span class="text-yellow-600 dark:text-yellow-300">Young</span>
           <Button icon="pi pi-minus" size="small" text severity="danger" @click="toggleWordKnown" />
           <span aria-hidden="true">|</span>
         </template>
-        <template v-else-if="word.knownStates.includes(KnownState.Blacklisted)">
+        <template v-else-if="knownStates.includes(KnownState.Blacklisted)">
           <span class="text-gray-600 dark:text-gray-300">Blacklisted</span>
           <span aria-hidden="true">|</span>
         </template>
