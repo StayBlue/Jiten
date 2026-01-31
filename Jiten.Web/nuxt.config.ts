@@ -37,7 +37,7 @@ const JitenPreset = definePreset(Aura, {
 
 export default defineNuxtConfig({
   compatibilityDate: '2025-07-14',
-  devtools: { enabled: false },
+  devtools: { enabled: true },
   runtimeConfig: {
     public: {
       baseURL: 'https://localhost:7299/api/',

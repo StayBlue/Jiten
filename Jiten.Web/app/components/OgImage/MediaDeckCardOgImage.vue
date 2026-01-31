@@ -99,12 +99,12 @@
           }"
         >
           <span class="text-gray-700">Difficulty:</span>
-          <span v-if="deck.difficulty == 0" class="font-mono text-green-700 dark:text-green-300"> ★☆☆☆☆☆ </span>
-          <span v-else-if="deck.difficulty == 1" class="font-mono text-green-500"> ★★☆☆☆☆ </span>
-          <span v-else-if="deck.difficulty == 2" class="font-mono text-yellow-600"> ★★★☆☆☆ </span>
-          <span v-else-if="deck.difficulty == 3" class="font-mono text-amber-600"> ★★★★☆☆ </span>
-          <span v-else-if="deck.difficulty == 4" class="font-mono text-orange-600"> ★★★★★☆ </span>
-          <span v-else-if="deck.difficulty == 5" class="font-mono text-red-600"> ★★★★★★ </span>
+          <span v-if="deck.difficulty == 0" class="font-mono text-green-700 dark:text-green-300"> ★☆☆☆☆ </span>
+          <span v-else-if="deck.difficulty == 1" class="font-mono text-green-500"> ★★☆☆☆ </span>
+          <span v-else-if="deck.difficulty == 2" class="font-mono text-cyan-500"> ★★★☆☆ </span>
+          <span v-else-if="deck.difficulty == 3" class="font-mono text-amber-600"> ★★★★☆ </span>
+          <span v-else-if="deck.difficulty == 4" class="font-mono text-orange-600"> ★★★★★ </span>
+          <span v-else-if="deck.difficulty == 5" class="font-mono text-red-600"> ★★★★★ </span>
         </div>
       </div>
     </div>

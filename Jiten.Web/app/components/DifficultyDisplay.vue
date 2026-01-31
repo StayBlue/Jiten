@@ -17,7 +17,7 @@
   const colorClasses = [
     'text-green-700 dark:text-green-300',
     'text-green-500 dark:text-green-200',
-    'text-yellow-600 dark:text-yellow-300',
+    'text-cyan-500 dark:text-cyan-300',
     'text-amber-600 dark:text-amber-300',
     'text-red-600 dark:text-red-300',
     'text-red-600 dark:text-red-300',

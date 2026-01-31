@@ -49,7 +49,7 @@ const getMediaTypePrefix = (mediaType?: MediaType): string => {
 const difficultyColours = [
   'rgba(21, 128, 61, 0.8)',   // green-700 - Beginner
   'rgba(34, 197, 94, 0.8)',   // green-500 - Easy
-  'rgba(202, 138, 4, 0.8)',   // yellow-600 - Moderate
+  'rgba(6, 182, 212, 0.8)',   // cyan-500 - Moderate
   'rgba(217, 119, 6, 0.8)',   // amber-600 - Hard
   'rgba(220, 38, 38, 0.8)',   // red-600 - Expert
   'rgba(220, 38, 38, 0.8)',   // red-600 - Insane
@@ -111,7 +111,7 @@ const chartData = computed<ChartData<'bar'>>(() => {
         type: 'line' as const,
         label: 'Overall Average',
         data: averageData,
-        borderColor: 'rgba(59, 130, 246, 1)',
+        borderColor: 'rgba(6, 182, 212, 1)',
         borderWidth: 2,
         borderDash: [6, 4],
         pointRadius: 0,
