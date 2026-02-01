@@ -31,8 +31,8 @@ namespace Jiten.Parser
         private static readonly Dictionary<string, (bool validExpression, int? wordId)> CompoundExpressionCache = new();
         private static readonly LinkedList<string> CompoundCacheOrder = new(); // Tracks insertion order for LRU eviction
         private static readonly Lock CompoundCacheLock = new();
-        private const int MaxCompoundCacheSize = 200_000;
-        private const int EvictionBatchSize = 50_000; // Remove oldest 25% when limit hit
+        private const int MAX_COMPOUND_CACHE_SIZE = 200_000;
+        private const int EVICTION_BATCH_SIZE = 50_000; // Remove oldest 25% when limit hit
 
         // Compiled regexes for token cleaning (avoid recompilation on every token)
         private static readonly Regex TokenCleanRegex = new(
@@ -43,7 +43,8 @@ namespace Jiten.Parser
         // Excluded (WordId, ReadingIndex) pairs to filter from final parsing results
         private static readonly HashSet<(int WordId, byte ReadingIndex)> ExcludedMisparses = new()
             {
-                (1291070, 1), (1587980, 1), (1443970, 5), (2029660, 0), (1177490, 5), (2029000, 1), (1244950,1), (1243940,1)
+                (1291070, 1), (1587980, 1), (1443970, 5), (2029660, 0), (1177490, 5), (2029000, 1), (1244950,1), (1243940,1), (2747970,1),
+                (2029680,0), (1193570,6), (1796500,2), (1811220,1)
             };
 
         private static async Task InitDictionaries()
@@ -122,6 +123,7 @@ namespace Jiten.Parser
             CleanSentenceTokens(sentences);
             CombineNounCompounds(sentences);
             await CombineCompounds(sentences);
+            RepairLongVowelMisparses(sentences);
             RepairLongVowelTokens(sentences);
         }
 
@@ -916,13 +918,20 @@ namespace Jiten.Parser
 
                 // Prefer matches where the deconjugated form exactly matches the original text (no deconjugation needed)
                 // This prevents そんな from being matched as deconjugated 損 + な
+                // But skip this when Sudachi's DictionaryForm differs from the text, meaning the token is
+                // genuinely conjugated (e.g., おいた with DictionaryForm=おく should match 置く, not おいた "mischief")
                 var originalTextHiragana = WanaKana.ToHiragana(wordData.wordInfo.Text);
-                foreach (var match in matches)
+                var dictFormDiffersFromText = !string.IsNullOrEmpty(wordData.wordInfo.DictionaryForm) &&
+                    WanaKana.ToHiragana(wordData.wordInfo.DictionaryForm) != originalTextHiragana;
+                if (!dictFormDiffersFromText)
                 {
-                    if (match.form.Text == originalTextHiragana)
+                    foreach (var match in matches)
                     {
-                        bestMatch = match;
-                        break;
+                        if (match.form.Text == originalTextHiragana)
+                        {
+                            bestMatch = match;
+                            break;
+                        }
                     }
                 }
 
@@ -1481,6 +1490,153 @@ namespace Jiten.Parser
         }
 
         /// <summary>
+        /// Repairs Sudachi over-segmentation caused by trailing ー on non-standalone tokens.
+        /// When Sudachi sees e.g. あなたー, it may split into あ + な + たー.
+        /// This method scans for tokens ending with ー (that aren't standalone ー or purely katakana),
+        /// tries merging backwards with a bounded window, and validates against JMDict lookups.
+        /// If lookup matches WITH ー (e.g. すげー is its own entry), surface keeps ー.
+        /// If lookup only matches WITHOUT ー (e.g. あなた for あなたー), surface strips ー.
+        /// </summary>
+        private static void RepairLongVowelMisparses(List<SentenceInfo> sentences)
+        {
+            foreach (var sentence in sentences)
+            {
+                for (int i = sentence.Words.Count - 1; i >= 0; i--)
+                {
+                    var word = sentence.Words[i].word;
+
+                    // Only target tokens that end with ー but aren't a standalone ー symbol
+                    if (!word.Text.EndsWith("ー") || word.Text == "ー")
+                        continue;
+
+                    // Skip purely katakana tokens (コーヒー, パーティー, etc.) — Sudachi handles these well
+                    var withoutBar = word.Text.Replace("ー", "");
+                    if (withoutBar.Length > 0 && WanaKana.IsKatakana(withoutBar))
+                        continue;
+
+                    // Try merging backwards: longest match first (max 5 preceding tokens + current = 6 tokens)
+                    int maxBackward = Math.Min(5, i);
+                    bool merged = false;
+
+                    for (int k = maxBackward; k >= 1; k--)
+                    {
+                        var candidateParts = sentence.Words
+                            .Skip(i - k).Take(k + 1)
+                            .Select(w => w.word.Text);
+                        var candidateSurface = string.Concat(candidateParts);
+                        candidateSurface = Regex.Replace(candidateSurface, "ー{2,}", "ー");
+
+                        // Try candidateSurface WITH ー — skip KanaNormalizer for merged tokens
+                        // since normalizing ー to a vowel on artificial merges causes false positives
+                        if (TryLongVowelLookup(candidateSurface, useKanaNormalizer: false))
+                        {
+                            MergeLongVowelTokens(sentence, i - k, i, candidateSurface);
+                            i = i - k;
+                            merged = true;
+                            break;
+                        }
+
+                        // Try barless key — strip ー from surface since the word doesn't contain it
+                        var candidateKey = candidateSurface.TrimEnd('ー');
+                        if (candidateKey.Length > 0 && TryLongVowelLookup(candidateKey))
+                        {
+                            MergeLongVowelTokens(sentence, i - k, i, candidateKey);
+                            i = i - k;
+                            merged = true;
+                            break;
+                        }
+
+                        // Try deconjugation of barless key
+                        if (candidateKey.Length > 0 && TryDeconjugatedLongVowelLookup(candidateKey))
+                        {
+                            MergeLongVowelTokens(sentence, i - k, i, candidateKey);
+                            i = i - k;
+                            merged = true;
+                            break;
+                        }
+                    }
+
+                    // No backward merge worked — check the current token itself:
+                    // if WITH ー is a valid word (すげー, やべー), leave it;
+                    // if only the barless form is valid, strip ー from the surface
+                    if (merged) 
+                        continue;
+                    
+                    var singleSurface = word.Text;
+                    if (TryLongVowelLookup(singleSurface)) 
+                        continue;
+                    
+                    var singleKey = singleSurface.TrimEnd('ー');
+                    if (singleKey.Length > 0 && (TryLongVowelLookup(singleKey) || TryDeconjugatedLongVowelLookup(singleKey)))
+                    {
+                        word.Text = singleKey;
+                    }
+                }
+            }
+        }
+
+        private static bool TryLongVowelLookup(string text, bool useKanaNormalizer = true)
+        {
+            if (_lookups.TryGetValue(text, out var ids) && ids.Count > 0)
+                return true;
+
+            string hira;
+            try
+            {
+                hira = WanaKana.ToHiragana(text, new DefaultOptions { ConvertLongVowelMark = false });
+            }
+            catch
+            {
+                return false;
+            }
+
+            if (hira != text && _lookups.TryGetValue(hira, out ids) && ids.Count > 0)
+                return true;
+
+            if (!useKanaNormalizer)
+                return false;
+
+            var normalized = KanaNormalizer.Normalize(hira);
+            return normalized != hira && _lookups.TryGetValue(normalized, out ids) && ids.Count > 0;
+        }
+
+        private static bool TryDeconjugatedLongVowelLookup(string candidateKey)
+        {
+            string hira;
+            try
+            {
+                hira = KanaNormalizer.Normalize(
+                    WanaKana.ToHiragana(candidateKey, new DefaultOptions { ConvertLongVowelMark = false }));
+            }
+            catch
+            {
+                return false;
+            }
+
+            foreach (var form in Deconjugator.Instance.Deconjugate(hira))
+                if (TryLongVowelLookup(form.Text))
+                    return true;
+
+            return false;
+        }
+
+        private static void MergeLongVowelTokens(SentenceInfo sentence, int startIdx, int endIdx, string surface)
+        {
+            var firstToken = sentence.Words[startIdx];
+            firstToken.word.Text = surface;
+
+            int combinedLength = 0;
+            for (int j = startIdx; j <= endIdx; j++)
+                combinedLength += sentence.Words[j].length;
+
+            sentence.Words[startIdx] = (firstToken.word, firstToken.position, combinedLength);
+
+            int removeCount = endIdx - startIdx;
+            if (removeCount > 0)
+                sentence.Words.RemoveRange(startIdx + 1, removeCount);
+        }
+
+        /// <summary>
         /// Repairs tokens that were broken by trailing ー.
         /// When Sudachi sees e.g. 久しぶりー, it may split incorrectly.
         /// This method detects standalone ー tokens and tries to combine
@@ -1724,10 +1880,10 @@ namespace Jiten.Parser
 
         private static void CleanCompoundCache()
         {
-            if (CompoundExpressionCache.Count >= MaxCompoundCacheSize)
+            if (CompoundExpressionCache.Count >= MAX_COMPOUND_CACHE_SIZE)
             {
                 // Evict oldest entries (first added) instead of clearing all
-                int toRemove = Math.Min(EvictionBatchSize, CompoundCacheOrder.Count);
+                int toRemove = Math.Min(EVICTION_BATCH_SIZE, CompoundCacheOrder.Count);
                 for (int i = 0; i < toRemove; i++)
                 {
                     var oldest = CompoundCacheOrder.First;

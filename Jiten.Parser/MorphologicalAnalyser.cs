@@ -47,6 +47,7 @@ public class MorphologicalAnalyser
         "やる",
         "さしあげる", "差し上げる",
         "くださる", "下さる",
+        "おく", "置く",
     ];
 
     // Mapping from auxiliary verb dictionary form to its stem for splitting compound tokens
@@ -284,7 +285,6 @@ public class MorphologicalAnalyser
             wordInfos = TrackStage(diagnostics, "CombineAuxiliary", wordInfos, CombineAuxiliary);
             wordInfos = TrackStage(diagnostics, "CombineVerbDependant", wordInfos, CombineVerbDependant);
             wordInfos = TrackStage(diagnostics, "CombineParticles", wordInfos, CombineParticles);
-            wordInfos = TrackStage(diagnostics, "CombineHiraganaElongation", wordInfos, CombineHiraganaElongation);
             wordInfos = TrackStage(diagnostics, "CombineFinal", wordInfos, CombineFinal);
             wordInfos = TrackStage(diagnostics, "RepairTankaToTaNKa", wordInfos, RepairTankaToTaNKa);
             wordInfos = TrackStage(diagnostics, "FilterMisparse", wordInfos, FilterMisparse);
@@ -330,9 +330,14 @@ public class MorphologicalAnalyser
                 wordInfos[i + 1] is { PartOfSpeech: PartOfSpeech.Particle, Text: "から" or "を" or "が" or "に" or "で" or "へ" or "の" or "は" or "も" })
                 word.PartOfSpeech = PartOfSpeech.Noun;
 
-            if (word.Text is "だー" or "だあ")
+            if (word.Text == "だあ")
             {
                 word.Text = "だ";
+                word.DictionaryForm = "です";
+                word.PartOfSpeech = PartOfSpeech.Auxiliary;
+            }
+            else if (word.Text == "だー")
+            {
                 word.DictionaryForm = "です";
                 word.PartOfSpeech = PartOfSpeech.Auxiliary;
             }
@@ -340,15 +345,16 @@ public class MorphologicalAnalyser
             // Don't filter if next token is ー (will be handled by RepairLongVowelTokens in Parser)
             bool nextIsLongVowel = i + 1 < wordInfos.Count && wordInfos[i + 1].Text == "ー";
 
-            // For MisparsesRemove: don't filter single-kana tokens followed by ー (e.g., る + ー could be verb ending)
+            // For MisparsesRemove: don't filter single-kana tokens followed by ー (e.g., る + ー could be verb ending),
+            // and don't filter tokens ending in ー — RepairLongVowelMisparses in Parser handles them dictionary-driven
             bool shouldFilterMisparse = MisparsesRemove.Contains(word.Text) &&
-                                        !(nextIsLongVowel && word.Text.Length == 1 && WanaKana.IsKana(word.Text));
+                                        !(nextIsLongVowel && word.Text.Length == 1 && WanaKana.IsKana(word.Text)) &&
+                                        !word.Text.EndsWith("ー");
 
             if (shouldFilterMisparse ||
                 word.PartOfSpeech == PartOfSpeech.Noun && !nextIsLongVowel && (
                     (word.Text.Length == 1 && WanaKana.IsKana(word.Text)) ||
-                    word.Text.Length == 2 && WanaKana.IsKana(word.Text[0].ToString()) && word.Text[1] == 'ー' && word.Text != "バー"
-                    || word.Text is "エナ" or "えな"
+                    word.Text is "エナ" or "えな"
                 ))
             {
                 wordInfos.RemoveAt(i);
@@ -1108,12 +1114,8 @@ public class MorphologicalAnalyser
         text = Regex.Replace(text, "！", " ！\n");
         text = Regex.Replace(text, "？", " ？\n");
 
-        // Strip trailing ー from kanji words to prevent Sudachi misparses
-        // e.g., 休憩ー → 休憩, 敵襲ーー → 敵襲, 吉森ーー → 吉森
-        text = Regex.Replace(text, @"([\u4E00-\u9FAF])ー+", "$1");
-        // Strip trailing ー from hiragana when preceded by kanji (e.g., お疲れー → お疲れ)
-        // This preserves standalone particles like わー, ねー which aren't preceded by kanji
-        text = Regex.Replace(text, @"(?<=[\u4E00-\u9FAF])([\u3040-\u309F])ー+", "$1");
+        // Normalise multiple long-vowel marks to a single one (preserves elongation but not emphasis degree)
+        text = Regex.Replace(text, "ー{2,}", "ー");
 
         // Split up words that are parsed together in sudachi when they don't exist in jmdict
         text = Regex.Replace(text, "垣間見", $"垣間{_stopToken}見");

@@ -575,8 +575,8 @@ public class MorphologicalAnalyserTests
         yield return ["いきたああ", new[] { "いきた", "ああ" }];  // いきた (nominal adj) + ああ → いきた (verb past) + ああ
         // Vowel elongation tests - verb + ー (long vowel mark)
         // Pattern 5: Verb + separate ー token (handled by RepairLongVowelTokens in Parser)
-        yield return ["ぶつかるー", new[] { "ぶつかる" }];  // ぶつ + か + る + ー → ぶつかる (ー stripped)
-        yield return ["わかるー", new[] { "わかる" }];  // わか + る + ー → わかる (ー stripped)
+        yield return ["ぶつかるー", new[] { "ぶつかる" }];  // ぶつ + か + る + ー → ぶつかる (ー stripped, word doesn't contain it)
+        yield return ["わかるー", new[] { "わかる" }];  // わか + る + ー → わかる (ー stripped, word doesn't contain it)
         // Emphatic っ tests - sokuon at clause boundaries causing misparses
         // っ is filtered as SupplementarySymbol, so it won't appear in output
         yield return ["止まらないっ", new[] { "止まらない" }];  // Sudachi misparsed as 止まら + な + いっ (行く)
@@ -593,6 +593,33 @@ public class MorphologicalAnalyserTests
         yield return ["少女の手によって", new[] { "少女", "の", "手", "によって" }];
         // 手を抜く compound expression - Sudachi classifies 手 as suffix, but should match exp entry
         yield return ["手を抜いているんですか", new[] { "手を抜いている", "んです", "か" }];
+        yield return ["水魔法", new[] { "水", "魔法" }];
+        // ておく (te-form + おく subsidiary verb) should combine, not match おいた (mischief)
+        yield return ["それはまだ秘密にしておいたほうが", new[] { "それ", "は", "まだ", "秘密", "に", "しておいた", "ほう", "が" }];
+        yield return ["姉さんの所にちゃんと届けておいたから", new[] { "姉さん", "の", "所", "に", "ちゃんと", "届けておいた", "から" }];
+        yield return ["いっぱいおいたしてるもの", new[] { "いっぱい", "おいたしてる", "もの" }];
+        yield return ["全てをやる", new[] { "全て", "を", "やる" }];
+        yield return ["続きがある", new[] { "続き", "が", "ある" }];
+        // Long vowel mark (ー) repair tests
+        // Broken cases: hiragana + ー that Sudachi over-segments must be repaired; ー stripped when word doesn't contain it
+        yield return ["あなたー", new[] { "あなた" }];
+        yield return ["おまえー", new[] { "おまえ" }];
+        yield return ["わたしー", new[] { "わたし" }];
+        yield return ["ばかー", new[] { "ばか" }];
+        yield return ["うそー", new[] { "うそ" }];
+        yield return ["すごいー", new[] { "すごい" }];
+        // Multi-word sentence: あなたー must not merge with following words (no たーそこ tokens)
+        yield return ["あなたーそこにいるの", new[] { "あなた", "そこ", "に", "いる", "の" }];
+        // Must not regress: these are valid JMDict entries with ー — ー is part of the word
+        yield return ["すげー", new[] { "すげー" }];
+        yield return ["やべー", new[] { "やべー" }];
+        yield return ["うるせー", new[] { "うるせー" }];
+        yield return ["かわいー", new[] { "かわいー" }];
+        yield return ["コーヒー", new[] { "コーヒー" }];
+        // Bar run normalisation: multiple ー collapse to single ー, then word matched without ー
+        yield return ["あなたーー", new[] { "あなた" }];
+        // Kanji + ー: ー stripped since 休憩 doesn't contain it
+        yield return ["休憩ー", new[] { "休憩" }];
     }
 
     [Theory]
