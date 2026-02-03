@@ -2,6 +2,11 @@
   import { type UserMetadata } from '~/types';
   import { useToast } from 'primevue/usetoast';
 
+  interface CoverageRefreshResponse {
+    status: 'queued' | 'already_in_progress';
+    retryAfterSeconds?: number;
+  }
+
   const { $api } = useNuxtApp();
   const toast = useToast();
 
@@ -15,12 +20,28 @@
   const isRefreshing = ref(false);
 
   const refreshCoverage = async () => {
+    if (isRefreshing.value) return;
+    isRefreshing.value = true;
+
     try {
-      if (isRefreshing.value) return;
-      isRefreshing.value = true;
       const result = await $api<UserMetadata>('user/metadata');
-      await $api('user/coverage/refresh', { method: 'POST' });
       const currentRefreshDate = result.coverageRefreshedAt;
+
+      let response: CoverageRefreshResponse | undefined;
+      try {
+        response = await $api<CoverageRefreshResponse>('user/coverage/refresh', { method: 'POST' });
+      } catch (refreshError) {
+        console.error('Coverage refresh API error:', refreshError);
+        isRefreshing.value = false;
+        showErrorToast(toast, 'Error refreshing coverage', 'There was an error refreshing your coverage, please try again.');
+        return;
+      }
+
+      if (response?.status === 'already_in_progress') {
+        showWarnToast(toast, 'Refresh in progress', `Please wait ${response.retryAfterSeconds ?? 90} seconds before trying again.`);
+        isRefreshing.value = false;
+        return;
+      }
 
       const startTime = Date.now();
       const interval = setInterval(async () => {
@@ -41,7 +62,8 @@
           isRefreshing.value = false;
         }
       }, 6500);
-    } catch {
+    } catch (error) {
+      console.error('Coverage refresh error:', error);
       isRefreshing.value = false;
       showErrorToast(toast, 'Error refreshing coverage', 'There was an error refreshing your coverage, please try again.');
     }

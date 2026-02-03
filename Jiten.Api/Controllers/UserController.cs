@@ -771,11 +771,36 @@ public class UserController(
         var userId = userService.UserId;
         if (string.IsNullOrEmpty(userId)) return Results.Unauthorized();
 
+        var cooldownSeconds = 90;
+        var lockKey = $"jiten:coverage-refresh:{userId}";
+
+        try
+        {
+            var redisDb = redis.GetDatabase();
+            var lockAcquired = await redisDb.StringSetAsync(
+                lockKey,
+                DateTime.UtcNow.ToString("O"),
+                TimeSpan.FromSeconds(cooldownSeconds),
+                When.NotExists);
+
+            if (!lockAcquired)
+            {
+                var ttl = await redisDb.KeyTimeToLiveAsync(lockKey);
+                var retryAfter = ttl.HasValue ? (int)Math.Ceiling(ttl.Value.TotalSeconds) : cooldownSeconds;
+                logger.LogInformation("Coverage refresh already in progress for user {UserId}, retry after {RetryAfter}s", userId, retryAfter);
+                return Results.Json(new { status = "already_in_progress", retryAfterSeconds = retryAfter });
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Redis unavailable for coverage refresh lock, proceeding without deduplication");
+        }
+
         await CoverageDirtyHelper.MarkCoverageDirty(userContext, userId);
         await userContext.SaveChangesAsync();
         backgroundJobs.Enqueue<ComputationJob>(job => job.ComputeUserCoverage(userId));
 
-        return Results.Ok();
+        return Results.Json(new { status = "queued" });
     }
 
     /// <summary>
