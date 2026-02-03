@@ -1803,6 +1803,17 @@ public static class JmDictHelper
                                 ]
                             });
 
+        customWordInfos.Add(new JmDictWord
+                            {
+                                WordId = 8000003, Readings = ["こうする"], ReadingsFurigana = ["こうする"],
+                                ReadingTypes = [JmDictReadingType.KanaReading],
+                                Priorities = ["jiten"],
+                                Definitions =
+                                [
+                                    new JmDictDefinition { EnglishMeanings = ["to do like this; to do in this way"], PartsOfSpeech = ["exp", "vs-i"] }
+                                ]
+                            });
+
         return customWordInfos;
     }
 

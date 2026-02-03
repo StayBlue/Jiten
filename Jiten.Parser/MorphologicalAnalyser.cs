@@ -329,6 +329,9 @@ public class MorphologicalAnalyser
                 i + 1 < wordInfos.Count &&
                 wordInfos[i + 1] is { PartOfSpeech: PartOfSpeech.Particle, Text: "から" or "を" or "が" or "に" or "で" or "へ" or "の" or "は" or "も" })
                 word.PartOfSpeech = PartOfSpeech.Noun;
+            
+            if (word is { Text: "山", PartOfSpeech: PartOfSpeech.Suffix })
+                word.PartOfSpeech = PartOfSpeech.Noun;
 
             if (word.Text == "だあ")
             {

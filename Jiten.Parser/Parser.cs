@@ -44,7 +44,7 @@ namespace Jiten.Parser
         private static readonly HashSet<(int WordId, byte ReadingIndex)> ExcludedMisparses = new()
             {
                 (1291070, 1), (1587980, 1), (1443970, 5), (2029660, 0), (1177490, 5), (2029000, 1), (1244950,1), (1243940,1), (2747970,1),
-                (2029680,0), (1193570,6), (1796500,2), (1811220,1)
+                (2029680,0), (1193570,6), (1796500,2), (1811220,1), (2654270,0)
             };
 
         private static async Task InitDictionaries()
@@ -121,10 +121,149 @@ namespace Jiten.Parser
         private static async Task PreprocessSentences(List<SentenceInfo> sentences)
         {
             CleanSentenceTokens(sentences);
+            SplitSuruInflectionsForNounCompounding(sentences);
             CombineNounCompounds(sentences);
             await CombineCompounds(sentences);
             RepairLongVowelMisparses(sentences);
             RepairLongVowelTokens(sentences);
+        }
+
+        /// <summary>
+        /// Sudachi + CombineInflections can merge a suru-noun with its inflection (e.g., 交換 + して → 交換して),
+        /// which can prevent later noun compounding (e.g., 物々 + 交換して instead of 物々交換 + して).
+        /// This pass selectively splits tokens like Xして into X + して ONLY when doing so enables a valid noun compound
+        /// with preceding noun tokens (validated against the JMDict lookups table).
+        /// </summary>
+        private static void SplitSuruInflectionsForNounCompounding(List<SentenceInfo> sentences)
+        {
+            static string? GetSuruSplitSuffixPrefix(string surface)
+            {
+                // Keep this intentionally small to avoid creating standalone auxiliary chains.
+                // We only need the core suru te-form/past forms for noun-compound recovery.
+                // Note: we match as a PREFIX so this also works when the te-form is followed by auxiliaries
+                // (e.g., 交換しておかない).
+                if (surface.StartsWith("して", StringComparison.Ordinal)) return "して";
+                if (surface.StartsWith("した", StringComparison.Ordinal)) return "した";
+                if (surface.StartsWith("し", StringComparison.Ordinal)) return "し";
+                return null;
+            }
+
+            static bool HasLookup(string key, Dictionary<string, List<int>> lookups)
+            {
+                if (lookups.TryGetValue(key, out var ids) && ids.Count > 0)
+                    return true;
+
+                var hiraganaKey = WanaKana.ToHiragana(key, new DefaultOptions { ConvertLongVowelMark = false });
+                return hiraganaKey != key &&
+                       lookups.TryGetValue(hiraganaKey, out ids) &&
+                       ids.Count > 0;
+            }
+
+            foreach (var sentence in sentences)
+            {
+                if (sentence.Words.Count < 2)
+                    continue;
+
+                for (int i = 1; i < sentence.Words.Count; i++)
+                {
+                    var (word, position, length) = sentence.Words[i];
+
+                    if (string.IsNullOrEmpty(word.DictionaryForm))
+                        continue;
+
+                    string baseNoun;
+                    if (word.DictionaryForm.EndsWith("する", StringComparison.Ordinal) && word.DictionaryForm.Length > 2)
+                    {
+                        // e.g., 交換する / 勉強する
+                        baseNoun = word.DictionaryForm[..^2];
+                    }
+                    else if (word.HasPartOfSpeechSection(PartOfSpeechSection.PossibleSuru))
+                    {
+                        // Some upstream combiners (e.g., CombineVerbDependantsSuru) keep DictionaryForm as the noun stem
+                        // even when Text includes the suru inflection chain (e.g., 交換してる with DictionaryForm=交換).
+                        baseNoun = word.DictionaryForm;
+                    }
+                    else
+                    {
+                        continue;
+                    }
+
+                    if (string.IsNullOrEmpty(baseNoun))
+                        continue;
+
+                    if (!word.Text.StartsWith(baseNoun, StringComparison.Ordinal))
+                        continue;
+
+                    var suffixSurface = word.Text[baseNoun.Length..];
+                    var allowedSuffix = GetSuruSplitSuffixPrefix(suffixSurface);
+                    if (allowedSuffix == null)
+                        continue;
+
+                    // Find whether splitting enables a valid noun compound with preceding nouns
+                    // Try longest window first: up to 3 preceding noun tokens + baseNoun = 4-token compound.
+                    int bestStart = -1;
+                    for (int windowSize = Math.Min(4, i + 1); windowSize >= 2; windowSize--)
+                    {
+                        int nounCount = windowSize - 1;
+                        int start = i - nounCount;
+                        if (start < 0) continue;
+
+                        bool allNouns = true;
+                        for (int j = start; j < i; j++)
+                        {
+                            if (!PosMapper.IsNounForCompounding(sentence.Words[j].word.PartOfSpeech))
+                            {
+                                allNouns = false;
+                                break;
+                            }
+                        }
+
+                        if (!allNouns) continue;
+
+                        var prefix = string.Concat(sentence.Words.Skip(start).Take(nounCount).Select(w => w.word.Text));
+                        var combined = prefix + baseNoun;
+                        if (HasLookup(combined, _lookups))
+                        {
+                            bestStart = start;
+                            break;
+                        }
+                    }
+
+                    if (bestStart == -1)
+                        continue;
+
+                    // Split into base noun + suru inflection (+ optional tail).
+                    // We intentionally avoid trying to preserve Sudachi readings here:
+                    // merged tokens often carry only the accumulator reading, and suffixes may not be at the end.
+                    var nounWord = new WordInfo(word)
+                                   {
+                                       Text = baseNoun,
+                                       PartOfSpeech = PartOfSpeech.Noun,
+                                       DictionaryForm = baseNoun,
+                                       // Keep NormalizedForm from Sudachi (often important for matching); fall back to base noun.
+                                       NormalizedForm = string.IsNullOrEmpty(word.NormalizedForm) ? baseNoun : word.NormalizedForm,
+                                       Reading = WanaKana.ToHiragana(baseNoun, new DefaultOptions { ConvertLongVowelMark = false })
+                                   };
+
+                    var suruWord = new WordInfo
+                                   {
+                                       // Keep the full surface (e.g., しておかない / してる) as a single token.
+                                       // This preserves auxiliary chains as one unit while enabling noun compounding.
+                                       Text = suffixSurface,
+                                       PartOfSpeech = PartOfSpeech.Verb,
+                                       DictionaryForm = "する",
+                                       NormalizedForm = "する",
+                                       Reading = WanaKana.ToHiragana(suffixSurface, new DefaultOptions { ConvertLongVowelMark = false })
+                                   };
+
+                    int baseLen = nounWord.Text.Length;
+                    int suffixLen = suruWord.Text.Length;
+
+                    sentence.Words[i] = (nounWord, position, baseLen);
+                    sentence.Words.Insert(i + 1, (suruWord, position + baseLen, suffixLen));
+                    i++; // Skip inserted suffix
+                }
+            }
         }
 
         private static List<WordInfo> ExtractWordInfos(List<SentenceInfo> sentences)

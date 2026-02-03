@@ -620,6 +620,7 @@ public class MorphologicalAnalyserTests
         yield return ["あなたーー", new[] { "あなた" }];
         // Kanji + ー: ー stripped since 休憩 doesn't contain it
         yield return ["休憩ー", new[] { "休憩" }];
+        yield return ["この辺りで物々交換しておかないとな", new[] { "この","辺り","で","物々交換","しておかない","と","な" }];
     }
 
     [Theory]
