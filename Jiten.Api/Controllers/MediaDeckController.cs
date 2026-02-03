@@ -2140,25 +2140,23 @@ public class MediaDeckController(
                 if (targetPercentage is null or < 1 or > 100)
                     return (null, Results.BadRequest("Target percentage must be between 1 and 100"));
 
-                var knownCards = await userContext.FsrsCards
-                    .Where(kw => kw.UserId == currentUserService.UserId! &&
-                                 (kw.State == FsrsState.Blacklisted ||
-                                  kw.State == FsrsState.Mastered ||
-                                  (kw.LastReview != null &&
-                                   (kw.Due - kw.LastReview.Value).TotalDays >= 21)))
-                    .Select(kw => new { kw.WordId, kw.ReadingIndex })
-                    .ToListAsync();
-
-                var knownKeysSet = knownCards
-                    .Select(kw => ((long)kw.WordId << 32) | (uint)kw.ReadingIndex)
-                    .ToHashSet();
-
-                var allDeckWords = await deckWordsQuery
+                var allDeckWordsForCoverage = await deckWordsQuery
                     .OrderByDescending(dw => dw.Occurrences)
                     .ToListAsync();
 
+                var coverageWordKeys = allDeckWordsForCoverage
+                    .Select(dw => (dw.WordId, dw.ReadingIndex))
+                    .ToList();
+
+                var coverageStates = await currentUserService.GetKnownWordsState(coverageWordKeys);
+
+                var knownKeysSet = coverageStates
+                    .Where(kvp => kvp.Value.Any(s => s is KnownState.Mastered or KnownState.Blacklisted or KnownState.Mature))
+                    .Select(kvp => ((long)kvp.Key.WordId << 32) | (uint)kvp.Key.ReadingIndex)
+                    .ToHashSet();
+
                 int totalOccurrences = deck.WordCount;
-                int knownOccurrences = allDeckWords
+                int knownOccurrences = allDeckWordsForCoverage
                     .Where(dw => knownKeysSet.Contains(((long)dw.WordId << 32) | (uint)dw.ReadingIndex))
                     .Sum(dw => dw.Occurrences);
 
@@ -2167,7 +2165,7 @@ public class MediaDeckController(
                 var resultWords = new List<DeckWord>();
                 int cumulativeOccurrences = knownOccurrences;
 
-                foreach (var dw in allDeckWords)
+                foreach (var dw in allDeckWordsForCoverage)
                 {
                     var key = ((long)dw.WordId << 32) | (uint)dw.ReadingIndex;
                     if (knownKeysSet.Contains(key))
@@ -2241,47 +2239,27 @@ public class MediaDeckController(
             deckWordsRaw = await deckWordsQuery.ToListAsync();
         }
 
-        if (excludeMatureMasteredBlacklisted && currentUserService.IsAuthenticated)
+        if ((excludeMatureMasteredBlacklisted || excludeAllTrackedWords) && currentUserService.IsAuthenticated)
         {
-            var userCards = await userContext.FsrsCards
-                                             .Where(kw => kw.UserId == currentUserService.UserId!)
-                                             .Select(kw => new { kw.WordId, kw.ReadingIndex, kw.State, kw.LastReview, kw.Due })
-                                             .ToListAsync();
-
-            var matureKeys = userCards
-                             .Where(kw => kw.State == FsrsState.Mastered ||
-                                          kw.State == FsrsState.Blacklisted ||
-                                          (kw.LastReview != null && (kw.Due - kw.LastReview.Value).TotalDays >= 21))
-                             .Select(kw => ((long)kw.WordId << 32) | (uint)kw.ReadingIndex)
-                             .ToHashSet();
+            var wordKeys = deckWordsRaw.Select(dw => (dw.WordId, dw.ReadingIndex)).ToList();
+            var knownStates = await currentUserService.GetKnownWordsState(wordKeys);
 
             deckWordsRaw = deckWordsRaw
-                           .Where(dw =>
-                           {
-                               var key = ((long)dw.WordId << 32) | (uint)dw.ReadingIndex;
-                               return !matureKeys.Contains(key);
-                           })
-                           .ToList();
-        }
+                .Where(dw =>
+                {
+                    if (!knownStates.TryGetValue((dw.WordId, dw.ReadingIndex), out var states))
+                        return true;
 
-        if (excludeAllTrackedWords && currentUserService.IsAuthenticated)
-        {
-            var trackedWordIds = await userContext.FsrsCards
-                                                  .Where(kw => kw.UserId == currentUserService.UserId!)
-                                                  .Select(kw => new { kw.WordId, kw.ReadingIndex })
-                                                  .ToListAsync();
+                    if (excludeAllTrackedWords && states.Any(s => s != KnownState.New))
+                        return false;
 
-            var trackedKeys = trackedWordIds
-                              .Select(kw => ((long)kw.WordId << 32) | (uint)kw.ReadingIndex)
-                              .ToHashSet();
+                    if (excludeMatureMasteredBlacklisted &&
+                        states.Any(s => s is KnownState.Mastered or KnownState.Blacklisted or KnownState.Mature))
+                        return false;
 
-            deckWordsRaw = deckWordsRaw
-                           .Where(dw =>
-                           {
-                               var key = ((long)dw.WordId << 32) | (uint)dw.ReadingIndex;
-                               return !trackedKeys.Contains(key);
-                           })
-                           .ToList();
+                    return true;
+                })
+                .ToList();
         }
 
         return (deckWordsRaw, null);
