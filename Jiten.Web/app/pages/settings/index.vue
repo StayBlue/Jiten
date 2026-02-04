@@ -2,6 +2,7 @@
   import SettingsCoverage from '~/components/SettingsCoverage.vue';
   import SettingsApiKey from '~/components/SettingsApiKey.vue';
   import SettingsWordSets from '~/components/SettingsWordSets.vue';
+  import SettingsFsrsParameters from '~/components/SettingsFsrsParameters.vue';
 
   definePageMeta({
     middleware: ['auth'],
@@ -37,6 +38,8 @@
     </Card>
 
     <SettingsWordSets class="mb-4" />
+
+    <SettingsFsrsParameters class="mb-4" />
 
     <SettingsApiKey />
   </div>

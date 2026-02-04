@@ -1,9 +1,11 @@
 <script setup lang="ts">
   import { useToast } from 'primevue/usetoast';
+  import { useConfirm } from 'primevue/useconfirm';
   import { type FsrsParametersResponse, type SrsRecomputeBatchResponse } from '~/types';
 
   const { $api } = useNuxtApp();
   const toast = useToast();
+  const confirm = useConfirm();
 
   const expectedCount = 21;
   const defaultDesiredRetention = 0.9;
@@ -124,6 +126,25 @@
     }
   };
 
+  const confirmResetParameters = () => {
+    confirm.require({
+      message: 'This will reset your FSRS parameters and desired retention to the defaults. You will need to reschedule your cards for the changes to take effect.',
+      header: 'Reset to default',
+      icon: 'pi pi-exclamation-triangle',
+      rejectProps: {
+        label: 'Cancel',
+        severity: 'secondary',
+        outlined: true,
+      },
+      acceptProps: {
+        label: 'Reset',
+      },
+      accept: async () => {
+        await resetParameters();
+      },
+    });
+  };
+
   const resetParameters = async () => {
     try {
       isResetting.value = true;
@@ -220,7 +241,12 @@
       </div>
 
       <h4 class="text-md font-semibold mb-1">FSRS Parameters</h4>
-      <p class="text-sm text-gray-600 dark:text-gray-300 mb-3">Enter 21 comma-separated numbers to customize FSRS scheduling.</p>
+      <p class="text-sm text-gray-600 dark:text-gray-300 mb-1">Enter 21 comma-separated numbers to customise FSRS scheduling.</p>
+      <p class="text-sm text-gray-600 dark:text-gray-300 mb-3">
+        You can retrieve your optimised parameters from Anki: go to
+        <span class="font-semibold">Deck Options → FSRS → Optimise</span>, then copy and paste the parameters here.
+        At least 1,000 reviews are recommended before optimising.
+      </p>
       <Textarea v-model="parametersCsv" class="w-full" rows="3" placeholder="0.2172, 1.1771, 3.2602, ..." @update:modelValue="hasUserEdited = true" />
       <div class="mt-2 text-sm text-surface-600">
         Values: <b>{{ valueCount }}</b> / {{ expectedCount }}
@@ -238,7 +264,7 @@
           outlined
           :loading="isResetting"
           :disabled="isLoading || isRecomputing || isSaving"
-          @click="resetParameters"
+          @click="confirmResetParameters"
         />
       </div>
       <p class="mt-3 text-sm text-amber-600 dark:text-amber-400">

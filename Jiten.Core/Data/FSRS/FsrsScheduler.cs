@@ -43,7 +43,7 @@ public class FsrsScheduler
     /// <param name="maximumInterval">Max interval in days (default: 36500)</param>
     /// <param name="enableFuzzing">Enable interval randomization (default: true)</param>
     public FsrsScheduler(
-        double desiredRetention = 0.9,
+        double desiredRetention = FsrsConstants.DefaultDesiredRetention,
         double[]? parameters = null,
         TimeSpan[]? learningSteps = null,
         TimeSpan[]? relearningSteps = null,
@@ -118,7 +118,7 @@ public class FsrsScheduler
     {
         var stability = card.Stability ?? 1.0d;
         var difficulty = card.Difficulty ?? 1.0d;
-        if (card is { State: FsrsState.Learning, Stability: null, Difficulty: null })
+        if (card is { State: FsrsState.Learning or FsrsState.New, Stability: null, Difficulty: null })
         {
             card.Stability = FsrsHelper.CalculateInitialStability(rating, Parameters);
             card.Difficulty = FsrsHelper.CalculateInitialDifficulty(rating, Parameters);
@@ -149,7 +149,7 @@ public class FsrsScheduler
             FsrsState.Relearning => CalculateRelearningInterval(card, rating),
             FsrsState.Blacklisted => TimeSpan.MaxValue,
             FsrsState.Mastered => TimeSpan.Zero, 
-            FsrsState.New => CalculateRelearningInterval(card, rating),
+            FsrsState.New => CalculateLearningInterval(card, rating),
             _ => throw new ArgumentException($"Unknown card state: {card.State}")
         };
     }

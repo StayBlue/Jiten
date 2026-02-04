@@ -1,4 +1,5 @@
 using Jiten.Core.Data.FSRS;
+using Jiten.Core.Data.User;
 
 namespace Jiten.Parser.Tests;
 
@@ -247,7 +248,7 @@ public class FsrsTests
     {
         var maximumInterval = 100;
         var scheduler = new FsrsScheduler(maximumInterval: maximumInterval, enableFuzzing: false);
-        var card = new FsrsCard();
+        var card = new FsrsCard("", 0, 0);
 
         var ratings = new[] { FsrsRating.Easy, FsrsRating.Good, FsrsRating.Easy, FsrsRating.Good };
 
@@ -1115,7 +1116,7 @@ public class FsrsTests
 
     public static FsrsCard CreateNewCard()
     {
-        return new FsrsCard();
+        return new FsrsCard("", 0, 0);
     }
 
     public static DateTime GetTestDateTime()
@@ -1127,5 +1128,138 @@ public class FsrsTests
     {
         var actual = (card.Due - card.LastReview!.Value).Days;
         Assert.Equal(expected, actual);
+    }
+
+    [Fact]
+    public void DefaultDesiredRetention_ShouldBe09()
+    {
+        Assert.Equal(0.9, FsrsConstants.DefaultDesiredRetention);
+    }
+
+    [Fact]
+    public void UserFsrsSettings_SetParameters_ShouldSerialiseToJson()
+    {
+        var settings = new UserFsrsSettings();
+        settings.Parameters = new[] { 1.0, 2.0, 3.0 };
+
+        Assert.Contains("1", settings.ParametersJson);
+        Assert.Contains("2", settings.ParametersJson);
+        Assert.Contains("3", settings.ParametersJson);
+    }
+
+    [Fact]
+    public void UserFsrsSettings_GetParameters_ShouldDeserialiseFromJson()
+    {
+        var settings = new UserFsrsSettings { ParametersJson = "[0.5, 1.5, 2.5]" };
+
+        var parameters = settings.GetParametersOnce();
+
+        Assert.Equal(3, parameters.Length);
+        Assert.Equal(0.5, parameters[0]);
+        Assert.Equal(1.5, parameters[1]);
+        Assert.Equal(2.5, parameters[2]);
+    }
+
+    [Fact]
+    public void UserFsrsSettings_GetParameters_ShouldCacheResult()
+    {
+        var settings = new UserFsrsSettings { ParametersJson = "[1.0, 2.0]" };
+
+        var first = settings.GetParametersOnce();
+        var second = settings.GetParametersOnce();
+
+        Assert.Same(first, second);
+    }
+
+    [Fact]
+    public void UserFsrsSettings_InvalidJson_ShouldReturnEmptyArray()
+    {
+        var settings = new UserFsrsSettings { ParametersJson = "not json" };
+
+        var parameters = settings.GetParametersOnce();
+
+        Assert.Empty(parameters);
+    }
+
+    [Fact]
+    public void UserFsrsSettings_DefaultParametersJson_ShouldReturnEmptyArray()
+    {
+        var settings = new UserFsrsSettings();
+
+        var parameters = settings.GetParametersOnce();
+
+        Assert.Empty(parameters);
+    }
+
+    [Fact]
+    public void UserFsrsSettings_SetParameters_ShouldUpdateCache()
+    {
+        var settings = new UserFsrsSettings();
+        settings.Parameters = new[] { 1.0, 2.0 };
+
+        var first = settings.GetParametersOnce();
+        Assert.Equal(2, first.Length);
+
+        settings.Parameters = new[] { 3.0, 4.0, 5.0 };
+
+        var second = settings.GetParametersOnce();
+        Assert.Equal(3, second.Length);
+        Assert.Equal(3.0, second[0]);
+    }
+
+    [Fact]
+    public void UserFsrsSettings_RoundTrip_ShouldPreserveDefaultParameters()
+    {
+        var settings = new UserFsrsSettings();
+        settings.Parameters = FsrsConstants.DefaultParameters;
+
+        var roundTripped = settings.GetParametersOnce();
+
+        Assert.Equal(FsrsConstants.DefaultParameters.Length, roundTripped.Length);
+        for (var i = 0; i < FsrsConstants.DefaultParameters.Length; i++)
+        {
+            Assert.Equal(FsrsConstants.DefaultParameters[i], roundTripped[i], 6);
+        }
+    }
+
+    [Fact]
+    public void Scheduler_CustomRetention_ShouldProduceDifferentIntervals()
+    {
+        var schedulerHigh = new FsrsScheduler(desiredRetention: 0.95, enableFuzzing: false);
+        var schedulerLow = new FsrsScheduler(desiredRetention: 0.80, enableFuzzing: false);
+        var reviewDateTime = GetTestDateTime();
+
+        var cardHigh = CreateNewCard();
+        var cardLow = CreateNewCard();
+
+        (cardHigh, _) = schedulerHigh.ReviewCard(cardHigh, FsrsRating.Good, reviewDateTime);
+        (cardHigh, _) = schedulerHigh.ReviewCard(cardHigh, FsrsRating.Good, cardHigh.Due);
+
+        (cardLow, _) = schedulerLow.ReviewCard(cardLow, FsrsRating.Good, reviewDateTime);
+        (cardLow, _) = schedulerLow.ReviewCard(cardLow, FsrsRating.Good, cardLow.Due);
+
+        var intervalHigh = (cardHigh.Due - cardHigh.LastReview!.Value).Days;
+        var intervalLow = (cardLow.Due - cardLow.LastReview!.Value).Days;
+
+        Assert.True(intervalLow > intervalHigh, "Lower retention should produce longer intervals");
+    }
+
+    [Fact]
+    public void Scheduler_CustomParameters_ShouldProduceDifferentStability()
+    {
+        var customParameters = (double[])FsrsConstants.DefaultParameters.Clone();
+        customParameters[2] = 5.0;
+
+        var defaultScheduler = CreateSchedulerWithoutFuzzing();
+        var customScheduler = new FsrsScheduler(parameters: customParameters, enableFuzzing: false);
+        var reviewDateTime = GetTestDateTime();
+
+        var defaultCard = CreateNewCard();
+        var customCard = CreateNewCard();
+
+        (defaultCard, _) = defaultScheduler.ReviewCard(defaultCard, FsrsRating.Good, reviewDateTime);
+        (customCard, _) = customScheduler.ReviewCard(customCard, FsrsRating.Good, reviewDateTime);
+
+        Assert.NotEqual(defaultCard.Stability, customCard.Stability);
     }
 }
