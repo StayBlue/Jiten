@@ -1,13 +1,23 @@
 <script setup lang="ts">
   import { useRoute, useRouter } from 'vue-router';
   import { stripRuby } from '~/utils/stripRuby';
+  import type { Word } from '~/types/types';
 
   const route = useRoute();
   const router = useRouter();
 
   const wordId = ref(Number(route.params.wordId) || 0);
   const readingIndex = ref(Number(route.params.readingIndex) || 0);
-  const title = ref('Word');
+
+  const url = computed(() => `vocabulary/${wordId.value}/${readingIndex.value}`);
+  const { data: wordData } = await useApiFetch<Word>(url);
+
+  const title = computed(() => {
+    if (wordData.value?.mainReading?.text) {
+      return stripRuby(wordData.value.mainReading.text);
+    }
+    return 'Word';
+  });
 
   const onReadingSelected = (newIndex: number) => {
     readingIndex.value = newIndex;
@@ -19,18 +29,9 @@
     );
   };
 
-  onMounted(() => {
-    if (route.params.wordId) {
-      wordId.value = Number(route.params.wordId);
-    }
-    if (route.params.readingIndex) {
-      readingIndex.value = Number(route.params.readingIndex);
-    }
-  });
-
   useHead(() => {
     return {
-      title: 'Word - ' + title.value,
+      title: `${title.value} - Jiten`,
       meta: [
         {
           name: 'description',
@@ -45,12 +46,6 @@
       readingIndex: String(readingIndex.value),
     });
   }
-
-  const onMainReadingTextChanged = (newText: string) => {
-    if (newText != undefined) {
-      title.value = stripRuby(newText);
-    }
-  };
 </script>
 
 <template>
@@ -58,6 +53,5 @@
     :word-id="wordId"
     :reading-index="readingIndex"
     @reading-selected="onReadingSelected"
-    @main-reading-text-changed="onMainReadingTextChanged"
   />
 </template>

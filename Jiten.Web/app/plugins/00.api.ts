@@ -29,44 +29,35 @@ export default defineNuxtPlugin((nuxtApp) => {
       // Process response if needed
     },
     async onResponseError({ request, options, response }) {
-      // Handle 401 errors with automatic token refresh
-      if (response.status === 401) {
+      if (response.status === 401 && import.meta.client) {
         const authStore = useAuthStore();
 
-        // Don't try to refresh on auth endpoints to avoid infinite loops
         const url = request.toString();
         const isAuthEndpoint = url.includes('/auth/');
 
         if (!isAuthEndpoint && !authStore.isRefreshing) {
           console.log('Received 401, attempting token refresh...');
 
-          // Try to refresh the token
           const refreshSuccess = await authStore.refreshAccessToken();
 
           if (refreshSuccess) {
             console.log('Token refreshed, retrying original request...');
 
-            // Use token from authStore instead of re-reading cookie
-            // This prevents context errors and stale reads
             if (authStore.accessToken) {
               options.headers = options.headers || {};
               options.headers.set('Authorization', `Bearer ${authStore.accessToken}`);
             }
 
-            // Retry the original request with the new token
             try {
               return await $fetch(request, options);
             } catch (retryError) {
               console.error('Retry after token refresh failed:', retryError);
-              // If retry fails, proceed with original 401 handling
             }
           }
         }
 
-        // If we reach here, token refresh failed or this is an auth endpoint
-        // Navigate to login page
         await nuxtApp.runWithContext(() => {
-          const router = useRouter(); // Now safe because we are in context
+          const router = useRouter();
           const currentRoute = router.currentRoute.value.path;
 
           if (currentRoute !== '/login') {

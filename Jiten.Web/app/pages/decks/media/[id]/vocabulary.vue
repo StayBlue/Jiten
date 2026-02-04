@@ -60,7 +60,7 @@
   const { start, end, totalItems, previousLink, nextLink } = usePagination(response);
 
   const deckId = computed(() => {
-    return response.value?.data.deck.deckId;
+    return response.value?.data?.deck?.deckId;
   });
 
   const title = computed(() => {

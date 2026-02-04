@@ -60,7 +60,7 @@
       meta: [
         {
           name: 'description',
-          content: `Anki deck, vocabulary list and statistics for ${title.value} (${response.value?.data.mainDeck.originalTitle}).`,
+          content: `Anki deck, vocabulary list and statistics for ${title.value} (${response.value?.data?.mainDeck?.originalTitle ?? ''}).`,
         },
       ],
     };
@@ -78,7 +78,7 @@
         </template>
       </Card>
     </div>
-    <div v-else-if="response">
+    <div v-else-if="response?.data?.mainDeck">
       <MediaDeckCard :deck="response.data.mainDeck" @update:deck="updateMainDeck" />
 
       <div v-if="response.data.parentDeck != null" class="pt-4">

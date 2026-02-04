@@ -229,15 +229,17 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
-  // Ensure we have a valid token before making API calls
-  async function ensureValidToken(): Promise<boolean> {
-    // Check if we have cookies but not in-memory tokens (page refresh scenario)
+  function syncTokensFromCookies() {
     if (!accessToken.value && tokenCookie.value) {
       accessToken.value = tokenCookie.value;
     }
     if (!refreshToken.value && refreshTokenCookie.value) {
       refreshToken.value = refreshTokenCookie.value;
     }
+  }
+
+  async function ensureValidToken(): Promise<boolean> {
+    syncTokensFromCookies();
 
     // If no access token at all
     if (!accessToken.value) {
@@ -431,6 +433,7 @@ export const useAuthStore = defineStore('auth', () => {
     isRefreshing,
 
     // actions
+    syncTokensFromCookies,
     setTokens,
     clearAuthData,
     login,
