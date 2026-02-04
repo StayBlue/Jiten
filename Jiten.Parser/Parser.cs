@@ -126,6 +126,42 @@ namespace Jiten.Parser
             await CombineCompounds(sentences);
             RepairLongVowelMisparses(sentences);
             RepairLongVowelTokens(sentences);
+            MarkPersonNameHonorificContexts(sentences);
+        }
+
+        private static readonly HashSet<string> PersonHonorifics = ["さん", "ちゃん", "くん", "氏", "様"];
+
+        private static void MarkPersonNameHonorificContexts(List<SentenceInfo> sentences)
+        {
+            foreach (var sentence in sentences)
+            {
+                if (sentence.Words.Count < 2)
+                    continue;
+
+                for (int i = 0; i < sentence.Words.Count - 1; i++)
+                {
+                    var current = sentence.Words[i].word;
+                    var next = sentence.Words[i + 1].word;
+
+                    if (!PersonHonorifics.Contains(next.Text))
+                        continue;
+
+                    // Only consider Sudachi tokens that look like person names (avoid place names, etc.).
+                    if (!PosMapper.IsNameLikeSudachiNoun(
+                            current.PartOfSpeech,
+                            current.PartOfSpeechSection1,
+                            current.PartOfSpeechSection2,
+                            current.PartOfSpeechSection3))
+                        continue;
+
+                    if (!current.HasPartOfSpeechSection(PartOfSpeechSection.PersonName) &&
+                        !current.HasPartOfSpeechSection(PartOfSpeechSection.FamilyName) &&
+                        !current.HasPartOfSpeechSection(PartOfSpeechSection.Name))
+                        continue;
+
+                    current.IsPersonNameContext = true;
+                }
+            }
         }
 
         /// <summary>
@@ -277,18 +313,32 @@ namespace Jiten.Parser
         private static List<(WordInfo wordInfo, int occurrences)> CountUniqueWords(List<WordInfo> wordInfos)
         {
             var uniqueWords = new List<(WordInfo wordInfo, int occurrences)>();
-            var wordCount = new Dictionary<(string, PartOfSpeech), int>();
+            var wordCount = new Dictionary<(string text, PartOfSpeech pos, bool isPersonNameContext, bool isNameLikeSudachiNoun), int>();
 
             foreach (var word in wordInfos)
             {
-                if (!wordCount.TryAdd((word.Text, word.PartOfSpeech), 1))
-                    wordCount[(word.Text, word.PartOfSpeech)]++;
+                var isNameLikeSudachiNoun = PosMapper.IsNameLikeSudachiNoun(word.PartOfSpeech, word.PartOfSpeechSection1,
+                    word.PartOfSpeechSection2, word.PartOfSpeechSection3);
+                var key = (word.Text, word.PartOfSpeech, word.IsPersonNameContext, isNameLikeSudachiNoun);
+
+                if (!wordCount.TryAdd(key, 1))
+                {
+                    wordCount[key]++;
+                }
                 else
+                {
                     uniqueWords.Add((word, 1));
+                }
             }
 
             for (int i = 0; i < uniqueWords.Count; i++)
-                uniqueWords[i] = (uniqueWords[i].wordInfo, wordCount[(uniqueWords[i].wordInfo.Text, uniqueWords[i].wordInfo.PartOfSpeech)]);
+            {
+                var wi = uniqueWords[i].wordInfo;
+                var isNameLikeSudachiNoun = PosMapper.IsNameLikeSudachiNoun(wi.PartOfSpeech, wi.PartOfSpeechSection1,
+                    wi.PartOfSpeechSection2, wi.PartOfSpeechSection3);
+                var key = (wi.Text, wi.PartOfSpeech, wi.IsPersonNameContext, isNameLikeSudachiNoun);
+                uniqueWords[i] = (uniqueWords[i].wordInfo, wordCount[key]);
+            }
 
             return uniqueWords;
         }
@@ -522,11 +572,19 @@ namespace Jiten.Parser
                     return null;
                 }
 
+                var isNameLikeSudachiNoun = PosMapper.IsNameLikeSudachiNoun(
+                    wordData.wordInfo.PartOfSpeech,
+                    wordData.wordInfo.PartOfSpeechSection1,
+                    wordData.wordInfo.PartOfSpeechSection2,
+                    wordData.wordInfo.PartOfSpeechSection3);
+
                 var cacheKey = new DeckWordCacheKey(
-                                                    wordData.wordInfo.Text,
-                                                    wordData.wordInfo.PartOfSpeech,
-                                                    wordData.wordInfo.DictionaryForm
-                                                   );
+                                                     wordData.wordInfo.Text,
+                                                     wordData.wordInfo.PartOfSpeech,
+                                                     wordData.wordInfo.DictionaryForm,
+                                                     wordData.wordInfo.IsPersonNameContext,
+                                                     isNameLikeSudachiNoun
+                                                    );
 
                 if (UseCache)
                 {
@@ -627,7 +685,22 @@ namespace Jiten.Parser
                                 if (!verbResult.success || verbResult.word == null)
                                 {
                                     wordData.wordInfo.PartOfSpeech = PartOfSpeech.NaAdjective;
-                                    verbResult = await DeconjugateVerbOrAdjective(wordData, deconjugator);
+                                    // Prefer direct lookup for na-adjective stems that Sudachi may label as nouns/names (e.g., 朧気).
+                                    var naDirect = await DeconjugateWord(wordData);
+                                    if (naDirect.success && naDirect.word != null)
+                                        verbResult = (true, naDirect.word);
+                                    else
+                                        verbResult = await DeconjugateVerbOrAdjective(wordData, deconjugator);
+                                }
+
+                                if (!verbResult.success || verbResult.word == null)
+                                {
+                                    // Interjections are frequently misclassified by Sudachi as proper-name nouns (e.g., おお…).
+                                    // Try direct lookup as an interjection before giving up.
+                                    wordData.wordInfo.PartOfSpeech = PartOfSpeech.Interjection;
+                                    var interjectionDirect = await DeconjugateWord(wordData);
+                                    if (interjectionDirect.success && interjectionDirect.word != null)
+                                        verbResult = (true, interjectionDirect.word);
                                 }
 
                                 wordData.wordInfo.PartOfSpeech = oldPos;
@@ -818,35 +891,82 @@ namespace Jiten.Parser
                     return (false, null);
                 }
 
-                List<JmDictWord> matches = new();
-                JmDictWord? bestMatch = null;
+                bool isNameLikeSudachiNoun = PosMapper.IsNameLikeSudachiNoun(
+                    wordData.wordInfo.PartOfSpeech,
+                    wordData.wordInfo.PartOfSpeechSection1,
+                    wordData.wordInfo.PartOfSpeechSection2,
+                    wordData.wordInfo.PartOfSpeechSection3);
+
+                bool hasAnyNonNameCandidate = false;
+                var compatibleNonNameMatches = new List<JmDictWord>();
+                var nameCandidates = new List<JmDictWord>();
 
                 foreach (var id in candidates)
                 {
                     if (!wordCache.TryGetValue(id, out var word)) continue;
 
+                    var posList = word.PartsOfSpeech.ToPartOfSpeech();
+                    bool hasNonNamePos = posList.Any(p => p is not (PartOfSpeech.Name or PartOfSpeech.Unknown));
+                    if (hasNonNamePos)
+                        hasAnyNonNameCandidate = true;
+
+                    // Treat pure-name entries (JMnedict name entries) separately from normal words.
+                    // Some words may include both Name + non-name tags; those should be treated as non-name to avoid regressions.
+                    bool isPureNameEntry = !hasNonNamePos && posList.Contains(PartOfSpeech.Name);
+
                     // Is stripped part to handle interjection like よー and こーら
-                    if (!PosMapper.IsJmDictCompatibleWithSudachi(word.PartsOfSpeech, wordData.wordInfo.PartOfSpeech,
-                            allowInterjectionFallback: isStripped)) continue;
+                    bool compatible = PosMapper.IsJmDictCompatibleWithSudachi(
+                        word.PartsOfSpeech,
+                        wordData.wordInfo.PartOfSpeech,
+                        allowInterjectionFallback: isStripped);
 
-                    matches.Add(word);
+                    if (compatible && hasNonNamePos)
+                    {
+                        compatibleNonNameMatches.Add(word);
+                        continue;
+                    }
+
+                    // Names should be strongly deprioritized unless we have strong evidence.
+                    // We allow them to be considered when:
+                    // - the token is in a person-name honorific context (Xさん/Xくん/etc), OR
+                    // - Sudachi itself classified the token as a proper/name-like noun.
+                    if (isPureNameEntry && (wordData.wordInfo.IsPersonNameContext || isNameLikeSudachiNoun))
+                    {
+                        nameCandidates.Add(word);
+                    }
                 }
 
-                if (matches.Count == 0)
+                // Selection:
+                // - If honorific context is present, prefer name entries (if any).
+                // - Otherwise, prefer any POS-compatible non-name word.
+                // - Only accept a name as a last resort when there are no non-name candidates at all.
+                JmDictWord? bestMatch = null;
+
+                if (wordData.wordInfo.IsPersonNameContext && nameCandidates.Count > 0)
                 {
-                    if (candidates.Count > 0 && wordCache.TryGetValue(candidates[0], out var fallbackWord))
-                        bestMatch = fallbackWord;
-                    else
-                        return (true, null);
+                    bestMatch = nameCandidates.OrderByDescending(m => m.GetPriorityScore(WanaKana.IsKana(wordData.wordInfo.Text)) +
+                                                                     (m.Readings.All(r => r != wordData.wordInfo.Text) ? -50 : 0))
+                                              .First();
                 }
-                else if (matches.Count > 1)
-                    bestMatch = matches.OrderByDescending(m => m.GetPriorityScore(WanaKana.IsKana(wordData.wordInfo.Text)) +
-                                                               (m.Readings.All(r => r != wordData.wordInfo.Text)
-                                                                   ? -50
-                                                                   : 0) // Deprioritize words where the long voxel mark has been stripped
-                                                         ).First();
+                else if (compatibleNonNameMatches.Count > 0)
+                {
+                    bestMatch = compatibleNonNameMatches
+                        .OrderByDescending(m => m.GetPriorityScore(WanaKana.IsKana(wordData.wordInfo.Text)) +
+                                               (m.Readings.All(r => r != wordData.wordInfo.Text) ? -50 : 0))
+                        .First();
+                }
+                else if (!hasAnyNonNameCandidate && nameCandidates.Count > 0)
+                {
+                    bestMatch = nameCandidates.OrderByDescending(m => m.GetPriorityScore(WanaKana.IsKana(wordData.wordInfo.Text)) +
+                                                                     (m.Readings.All(r => r != wordData.wordInfo.Text) ? -50 : 0))
+                                              .First();
+                }
                 else
-                    bestMatch = matches[0];
+                {
+                    // No good match. Do NOT fall back to arbitrary first candidate (often a name) —
+                    // let the caller try other POS rescues instead.
+                    return (false, null);
+                }
 
                 var normalizedReadings =
                     bestMatch.Readings.ToList();
@@ -962,6 +1082,21 @@ namespace Jiten.Parser
                         allCandidateIds = allCandidateIds.Concat(dictFormLookupIds).Distinct().ToList();
                     }
                 }
+
+                // Also try NormalizedForm (e.g., 多き has DictionaryForm=多し but NormalizedForm=多い)
+                if (dictFormLookupIds is not { Count: > 0 } && !string.IsNullOrEmpty(wordData.wordInfo.NormalizedForm))
+                {
+                    var normalizedHiragana = WanaKana.ToHiragana(wordData.wordInfo.NormalizedForm,
+                        new DefaultOptions() { ConvertLongVowelMark = false });
+                    if (_lookups.TryGetValue(normalizedHiragana, out dictFormLookupIds) ||
+                        _lookups.TryGetValue(wordData.wordInfo.NormalizedForm, out dictFormLookupIds))
+                    {
+                        if (dictFormLookupIds is { Count: > 0 })
+                        {
+                            allCandidateIds = allCandidateIds.Concat(dictFormLookupIds).Distinct().ToList();
+                        }
+                    }
+                }
             }
 
             if (!allCandidateIds.Any())
@@ -995,7 +1130,8 @@ namespace Jiten.Parser
                 {
                     if (!wordCache.TryGetValue(id, out var word)) continue;
 
-                    if (!PosMapper.IsJmDictCompatibleWithSudachi(word.PartsOfSpeech, wordData.wordInfo.PartOfSpeech)) continue;
+                    if (!PosMapper.IsJmDictCompatibleWithSudachi(word.PartsOfSpeech, wordData.wordInfo.PartOfSpeech))
+                        continue;
 
                     // Validate that deconjugation POS tags match the word's POS.
                     // This prevents nouns from being incorrectly matched via verb deconjugation rules.
@@ -1033,6 +1169,40 @@ namespace Jiten.Parser
                                         var form = new DeconjugationForm(dictFormHiragana, wordData.wordInfo.Text,
                                                                          new List<string>(), new HashSet<string>(), new List<string>());
                                         matches.Add((dictWord, form));
+                                    }
+                                }
+                            }
+                            catch
+                            {
+                                /* Cache lookup failed */
+                            }
+                        }
+                    }
+                }
+
+                // Also try NormalizedForm (e.g., 多き has DictionaryForm=多し but NormalizedForm=多い)
+                if (matches.Count == 0 && !string.IsNullOrEmpty(wordData.wordInfo.NormalizedForm) &&
+                    wordData.wordInfo.NormalizedForm != wordData.wordInfo.DictionaryForm)
+                {
+                    var normalizedHiragana = WanaKana.ToHiragana(wordData.wordInfo.NormalizedForm,
+                        new DefaultOptions() { ConvertLongVowelMark = false });
+                    List<int>? normalizedLookup = null;
+                    if (_lookups.TryGetValue(normalizedHiragana, out normalizedLookup) ||
+                        _lookups.TryGetValue(wordData.wordInfo.NormalizedForm, out normalizedLookup))
+                    {
+                        if (normalizedLookup is { Count: > 0 })
+                        {
+                            try
+                            {
+                                var normalizedWordCache = await JmDictCache.GetWordsAsync(normalizedLookup);
+                                foreach (var normalizedWord in normalizedWordCache.Values)
+                                {
+                                    List<PartOfSpeech> pos = normalizedWord.PartsOfSpeech.ToPartOfSpeech();
+                                    if (pos.Contains(wordData.wordInfo.PartOfSpeech))
+                                    {
+                                        var form = new DeconjugationForm(normalizedHiragana, wordData.wordInfo.Text,
+                                            new List<string>(), new HashSet<string>(), new List<string>());
+                                        matches.Add((normalizedWord, form));
                                     }
                                 }
                             }
@@ -1268,7 +1438,10 @@ namespace Jiten.Parser
                 {
                     try
                     {
-                        var cacheKey = new DeckWordCacheKey(text, wordInfo.PartOfSpeech, wordInfo.DictionaryForm);
+                        var isNameLikeSudachiNoun = PosMapper.IsNameLikeSudachiNoun(wordInfo.PartOfSpeech, wordInfo.PartOfSpeechSection1,
+                            wordInfo.PartOfSpeechSection2, wordInfo.PartOfSpeechSection3);
+                        var cacheKey = new DeckWordCacheKey(text, wordInfo.PartOfSpeech, wordInfo.DictionaryForm, wordInfo.IsPersonNameContext,
+                                                            isNameLikeSudachiNoun);
                         var cached = await DeckWordCache.GetAsync(cacheKey);
                         if (cached is { WordId: -1 })
                             continue;
@@ -1487,7 +1660,10 @@ namespace Jiten.Parser
                 {
                     try
                     {
-                        var cacheKey = new DeckWordCacheKey(wordInfo.Text, wordInfo.PartOfSpeech, wordInfo.DictionaryForm);
+                        var isNameLikeSudachiNoun = PosMapper.IsNameLikeSudachiNoun(wordInfo.PartOfSpeech, wordInfo.PartOfSpeechSection1,
+                            wordInfo.PartOfSpeechSection2, wordInfo.PartOfSpeechSection3);
+                        var cacheKey = new DeckWordCacheKey(wordInfo.Text, wordInfo.PartOfSpeech, wordInfo.DictionaryForm,
+                                                            wordInfo.IsPersonNameContext, isNameLikeSudachiNoun);
                         await DeckWordCache.SetAsync(cacheKey,
                                                      new DeckWord { WordId = -1, OriginalText = wordInfo.Text },
                                                      CommandFlags.FireAndForget);
@@ -1966,18 +2142,43 @@ namespace Jiten.Parser
                         var combinedText = string.Concat(
                                                          sentence.Words.Skip(i).Take(bestMatch).Select(w => w.word.Text));
                         var combinedReading = string.Concat(
-                                                            sentence.Words.Skip(i).Take(bestMatch).Select(w => w.word.Reading));
+                                                             sentence.Words.Skip(i).Take(bestMatch).Select(w => w.word.Reading));
                         int combinedLength = 0;
                         for (int j = 0; j < bestMatch; j++)
                         {
                             combinedLength += sentence.Words[i + j].length;
                         }
 
-                        var combinedWord = new WordInfo
+                        // Preserve Sudachi POS section information when merging.
+                        // Sudachi often tokenizes proper names into multiple parts, and we want the combined token to remain name-like.
+                        var sectionCarrier = sentence.Words[i].word;
+                        for (int j = 0; j < bestMatch; j++)
+                        {
+                            var candidate = sentence.Words[i + j].word;
+                            if (PosMapper.IsNameLikeSudachiNoun(candidate.PartOfSpeech, candidate.PartOfSpeechSection1,
+                                    candidate.PartOfSpeechSection2, candidate.PartOfSpeechSection3))
+                            {
+                                sectionCarrier = candidate;
+                                break;
+                            }
+
+                            if (candidate.PartOfSpeechSection1 != PartOfSpeechSection.None ||
+                                candidate.PartOfSpeechSection2 != PartOfSpeechSection.None ||
+                                candidate.PartOfSpeechSection3 != PartOfSpeechSection.None)
+                            {
+                                sectionCarrier = candidate;
+                                break;
+                            }
+                        }
+
+                        var combinedWord = new WordInfo(sectionCarrier)
                                            {
-                                               Text = combinedText, DictionaryForm = combinedText,
-                                               PartOfSpeech = sentence.Words[i].word.PartOfSpeech, NormalizedForm = combinedText,
-                                               Reading = WanaKana.ToHiragana(combinedReading)
+                                               Text = combinedText,
+                                               DictionaryForm = combinedText,
+                                               PartOfSpeech = sentence.Words[i].word.PartOfSpeech,
+                                               NormalizedForm = combinedText,
+                                               Reading = WanaKana.ToHiragana(combinedReading),
+                                               PreMatchedWordId = null
                                            };
 
                         result.Add((combinedWord, position, combinedLength));

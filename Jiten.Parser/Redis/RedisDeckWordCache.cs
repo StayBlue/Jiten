@@ -17,7 +17,8 @@ public class RedisDeckWordCache : IDeckWordCache
 
     private string BuildRedisKey(DeckWordCacheKey key)
     {
-        return $"deckword:{key.Text}:{key.PartOfSpeech}:{key.DictionaryForm}";
+        // Context flags are part of the key because they can affect dictionary matching (e.g., honorifics, name-likeness).
+        return $"deckword:{key.Text}:{key.PartOfSpeech}:{key.DictionaryForm}:{(key.IsPersonNameContext ? 1 : 0)}:{(key.IsNameLikeSudachiNoun ? 1 : 0)}";
     }
 
     public async Task<DeckWord?> GetAsync(DeckWordCacheKey key)

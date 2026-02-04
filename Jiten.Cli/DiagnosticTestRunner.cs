@@ -20,7 +20,7 @@ public class DiagnosticTestRunner
     }
 
     /// <summary>
-    /// Loads test cases by reflecting over InlineData attributes in the test assembly
+    /// Loads test cases by reflecting over MemberData attributes in the test assembly
     /// </summary>
     public List<(string Input, string[] Expected)> LoadTestCasesFromAssembly()
     {
@@ -74,26 +74,37 @@ public class DiagnosticTestRunner
                 return testCases;
             }
 
+            // Look for MemberDataAttribute on the test method
             var attributes = testMethod.GetCustomAttributes(true);
             foreach (var attr in attributes)
             {
                 var attrType = attr.GetType();
-                if (attrType.Name == "InlineDataAttribute")
+                if (attrType.Name == "MemberDataAttribute")
                 {
-                    // InlineDataAttribute implements IAttributeInfo.GetData() method
-                    // The data is stored in a private field, accessed via GetData() method
-                    var getDataMethod = attrType.GetMethod("GetData");
-                    if (getDataMethod != null)
+                    // Get the MemberName property to find the data source method
+                    var memberNameProp = attrType.GetProperty("MemberName");
+                    if (memberNameProp == null) continue;
+
+                    var memberName = memberNameProp.GetValue(attr) as string;
+                    if (string.IsNullOrEmpty(memberName)) continue;
+
+                    // Find the method that provides the test data
+                    var dataMethod = testClass.GetMethod(memberName, BindingFlags.Public | BindingFlags.Static);
+                    if (dataMethod == null)
                     {
-                        var dataEnumerable = getDataMethod.Invoke(attr, new object[] { testMethod }) as IEnumerable<object[]>;
-                        if (dataEnumerable != null)
+                        Console.WriteLine($"Error: MemberData source method '{memberName}' not found.");
+                        continue;
+                    }
+
+                    // Invoke the method to get test data
+                    var result = dataMethod.Invoke(null, null);
+                    if (result is IEnumerable<object[]> dataEnumerable)
+                    {
+                        foreach (var data in dataEnumerable)
                         {
-                            foreach (var data in dataEnumerable)
+                            if (data?.Length >= 2 && data[0] is string input && data[1] is string[] expected)
                             {
-                                if (data?.Length >= 2 && data[0] is string input && data[1] is string[] expected)
-                                {
-                                    testCases.Add((input, expected));
-                                }
+                                testCases.Add((input, expected));
                             }
                         }
                     }
@@ -102,7 +113,7 @@ public class DiagnosticTestRunner
 
             if (testCases.Count == 0)
             {
-                Console.WriteLine("Warning: No test cases found. Check that InlineData attributes have correct format.");
+                Console.WriteLine("Warning: No test cases found. Check that MemberData attribute and source method are correct.");
             }
             else
             {

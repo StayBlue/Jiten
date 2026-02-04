@@ -19,6 +19,26 @@ public static class ExampleSentenceExtractor
 
     public static List<ExampleSentence> ExtractSentences(List<SentenceInfo> sentences, DeckWord[] words)
     {
+        static bool IsPosCompatible(DeckWord deckWord, WordInfo token)
+        {
+            if (deckWord.PartsOfSpeech.Any(pos => pos == token.PartOfSpeech))
+                return true;
+
+            // Sudachi emits proper nouns as POS=名詞 (Noun) with name-like POS sections.
+            // Allow those to match JMnedict name entries (PartOfSpeech.Name).
+            if (PosMapper.IsNameLikeSudachiNoun(
+                    token.PartOfSpeech,
+                    token.PartOfSpeechSection1,
+                    token.PartOfSpeechSection2,
+                    token.PartOfSpeechSection3) &&
+                deckWord.PartsOfSpeech.Any(pos => pos == PartOfSpeech.Name))
+            {
+                return true;
+            }
+
+            return false;
+        }
+
         // Pre-filter sentences with insufficient character diversity
         var validSentences = new HashSet<SentenceInfo>(); 
         for (int i = 0; i < sentences.Count; i++)
@@ -121,7 +141,7 @@ public static class ExampleSentenceExtractor
                     int matchIndex = -1;
                     for (int j = 0; j < wordList.Count; j++)
                     {
-                        if (wordList[j].PartsOfSpeech.Any(pos => pos == wordInfo.PartOfSpeech))
+                        if (IsPosCompatible(wordList[j], wordInfo))
                         {
                             matchIndex = j;
                             break;

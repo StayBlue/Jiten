@@ -14,6 +14,7 @@ public class WordInfo
     public string DictionaryForm { get; set; } = string.Empty;
     public string Reading { get; set; } = string.Empty;
     public bool IsInvalid { get; set; }
+    public bool IsPersonNameContext { get; set; }
     public int? PreMatchedWordId { get; set; }
 
     public WordInfo(){}
@@ -29,6 +30,7 @@ public class WordInfo
         DictionaryForm = other.DictionaryForm;
         Reading = other.Reading;
         IsInvalid = other.IsInvalid;
+        IsPersonNameContext = other.IsPersonNameContext;
         PreMatchedWordId = other.PreMatchedWordId;
     }
 

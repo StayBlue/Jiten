@@ -417,7 +417,7 @@ public class ComputationJob(
                 END AS "YoungUniqueCoverageBp"
             FROM deck_denoms dd
             LEFT JOIN mature_hits mh ON TRUE
-            LEFT JOIN young_hits yh ON TRUE;
+            LEFT JOIN young_hits yh ON TRUE
             """;
 
         return await userContext.Database.SqlQueryRaw<DeckCoverageBasisPoints>(sql, userGuid, deckId).SingleAsync();

@@ -20,6 +20,8 @@ public class MorphologicalAnalyser
         ("さ", "せ", "て", PartOfSpeech.Verb),
         ("ほう", "が", "いい", PartOfSpeech.Expression),
         ("に", "とっ", "て", PartOfSpeech.Expression),
+        ("に", "つい", "て", PartOfSpeech.Expression),
+        ("いそう", "に", "ない", PartOfSpeech.Expression),
     ];
 
     // Auxiliary verbs (補助動詞) that attach to te-form or masu-stem but should remain separate for vocabulary learning
@@ -96,6 +98,14 @@ public class MorphologicalAnalyser
         ("なくて", "も", PartOfSpeech.Expression),
         ("なんに", "も", PartOfSpeech.Adverb),
         ("なん", "で", PartOfSpeech.Adverb),
+        ("に", "ついて", PartOfSpeech.Expression),
+        ("だ", "って", PartOfSpeech.Conjunction),
+        ("どこ", "か", PartOfSpeech.Pronoun),
+        ("急", "に", PartOfSpeech.Adverb),
+        ("と", "ても", PartOfSpeech.Adverb),
+        ("で", "も", PartOfSpeech.Conjunction),
+        ("多", "き", PartOfSpeech.IAdjective),
+        ("ぶっ", "た", PartOfSpeech.Suffix),
     ];
 
     private static readonly List<string> HonorificsSuffixes = ["さん", "ちゃん", "くん"];
@@ -279,10 +289,10 @@ public class MorphologicalAnalyser
             wordInfos = TrackStage(diagnostics, "CombineAmounts", wordInfos, CombineAmounts);
             wordInfos = TrackStage(diagnostics, "CombineTte", wordInfos, CombineTte);
             wordInfos = TrackStage(diagnostics, "CombineAuxiliaryVerbStem", wordInfos, CombineAuxiliaryVerbStem);
-            wordInfos = TrackStage(diagnostics, "CombineAdverbialParticle", wordInfos, CombineAdverbialParticle);
             wordInfos = TrackStage(diagnostics, "CombineSuffix", wordInfos, CombineSuffix);
             wordInfos = TrackStage(diagnostics, "CombineConjunctiveParticle", wordInfos, CombineConjunctiveParticle);
             wordInfos = TrackStage(diagnostics, "CombineAuxiliary", wordInfos, CombineAuxiliary);
+            wordInfos = TrackStage(diagnostics, "CombineAdverbialParticle", wordInfos, CombineAdverbialParticle);
             wordInfos = TrackStage(diagnostics, "CombineVerbDependant", wordInfos, CombineVerbDependant);
             wordInfos = TrackStage(diagnostics, "CombineParticles", wordInfos, CombineParticles);
             wordInfos = TrackStage(diagnostics, "CombineFinal", wordInfos, CombineFinal);
@@ -822,6 +832,26 @@ public class MorphologicalAnalyser
                         (f.Tags.Any(t => t == "v5b") && f.Text.EndsWith("ぶ")) ||
                         (f.Tags.Any(t => t == "v5g") && f.Text.EndsWith("ぐ"))));
 
+    /// <summary>
+    /// Checks if a verb ending in ん + だ is a valid past tense form (from む/ぬ/ぶ/ぐ verbs).
+    /// Used to prevent combining negative ん (from ない/ぬ contraction) + copula だ (e.g., 知らん + だ).
+    /// Returns false if the ん is from a slurred negative form.
+    /// </summary>
+    private static bool IsValidNdaPastTense(string verbText)
+    {
+        if (!verbText.EndsWith("ん")) return false;
+        // Check if the verb itself (without だ) is a negative contraction
+        var verbHiragana = NormalizeToHiragana(verbText);
+        var verbForms = Deconjugator.Instance.Deconjugate(verbHiragana);
+        // If any form indicates slurred/colloquial negative, don't combine with だ
+        if (verbForms.Any(f => f.Process.Any(p => p.Contains("slurred negative") || p.Contains("colloquial negative"))))
+            return false;
+        // Otherwise check if んだ is a valid past tense
+        var candidate = NormalizeToHiragana(verbText + "だ");
+        var forms = Deconjugator.Instance.Deconjugate(candidate);
+        return IsNdaVerbForm(forms);
+    }
+
     private static bool IsAnyVerbForm(HashSet<DeconjugationForm> forms) =>
         forms.Any(f => f.Tags.Count > 0 && f.Tags.Any(t => t.StartsWith("v")));
 
@@ -830,7 +860,7 @@ public class MorphologicalAnalyser
 
     private static WordInfo CreateNToken() => new()
                                               {
-                                                  Text = "ん", DictionaryForm = "ん", NormalizedForm = "ん", Reading = "ん",
+                                                  Text = "ん", DictionaryForm = "", NormalizedForm = "ん", Reading = "ん",
                                                   PartOfSpeech = PartOfSpeech.Auxiliary, PartOfSpeechSection1 = PartOfSpeechSection.None
                                               };
 
@@ -1122,7 +1152,8 @@ public class MorphologicalAnalyser
 
         // Split up words that are parsed together in sudachi when they don't exist in jmdict
         text = Regex.Replace(text, "垣間見", $"垣間{_stopToken}見");
-        text = Regex.Replace(text, "はやめ", $"は$1{_stopToken}やめ");
+        // Split はやめる → は + やめる only when NOT preceded by を (which indicates 速める "to quicken")
+        text = Regex.Replace(text, "(?<!を)はやめ", $"は{_stopToken}やめ");
         text = Regex.Replace(text, "もやる", $"も{_stopToken}やる");
         text = Regex.Replace(text, "べや", $"べ{_stopToken}や");
         text = Regex.Replace(text, "はいい", $"は{_stopToken}いい");
@@ -1154,6 +1185,13 @@ public class MorphologicalAnalyser
         // e.g., 止まらないっ！ → Sudachi sees ないっ as な + いっ (行く te-form)
         // Insert stop token before っ/ッ when followed by punctuation, whitespace, or end of string
         text = Regex.Replace(text, @"([っッ])(?=[！!？?。、,\s]|$)", $"{_stopToken}$1");
+
+        // Fix Sudachi misparsing 水魔法 as 水魔 (water demon) + 法 (law)
+        // Should be 水 (water) + 魔法 (magic)
+        text = Regex.Replace(text, "水魔法", $"水{_stopToken}魔法");
+
+        // Fix Sudachi misparsing 不適応 as 不適 + 応 instead of 不 (prefix) + 適応
+        text = Regex.Replace(text, "不適応", $"不{_stopToken}適応");
 
         // Replace line ending ellipsis with a sentence ender to be able to flatten later
         text = text.Replace("…\r", "。\r").Replace("…\n", "。\n");
@@ -1386,7 +1424,9 @@ public class MorphologicalAnalyser
 
                 // If previous token is na-adjective and NOT followed by ん, combine with na-adjective
                 // e.g., 大切 + な → 大切な, 静か + な + 部屋 → 静かな + 部屋
-                if (newList.Count > 0 && IsNaAdjectiveToken(newList[^1]) && !followedByN)
+                // BUT: Exclude AuxiliaryVerbStem (like そう in 降りそうな) - keep な separate for learning
+                if (newList.Count > 0 && IsNaAdjectiveToken(newList[^1]) && !followedByN
+                    && !newList[^1].HasPartOfSpeechSection(PartOfSpeechSection.AuxiliaryVerbStem))
                 {
                     newList[^1].Text += w1.Text;
                     i++;
@@ -2011,7 +2051,7 @@ public class MorphologicalAnalyser
                 && !currentWord.Text.StartsWith("なん")
                 && currentWord.Text != "だろ"
                 && currentWord.Text != "ハズ"
-                && (currentWord.Text != "だ" || currentWord.Text == "だ" && previousWord.Text[^1] == 'ん')
+                && (currentWord.Text != "だ" || currentWord.Text == "だ" && previousWord.Text[^1] == 'ん' && IsValidNdaPastTense(previousWord.Text))
                 && !(currentWord.Text == "じゃ" && currentWord.DictionaryForm == "だ")
                )
             {

@@ -77,13 +77,28 @@ public static class PosMapper
         // Adjectives
         "adj-i", "adj-na", "adj-ix",
         // Auxiliary
-        "aux"
+        "aux",
+        // Verb stem tags (should only match verbs, not nouns)
+        "stem-past", "stem-te-verbal", "stem-ren-less", "stem-ren-less-v"
     };
 
     /// <summary>
     /// Mapping from deconjugator tags to their compatible JMDict equivalents.
     /// Key: deconjugator tag, Value: set of compatible JMDict tags.
     /// </summary>
+    // All verb tags in JMDict for stem tag validation
+    private static readonly HashSet<string> AllVerbTags =
+    [
+        "v1", "v1-s", "v5aru", "v5b", "v5g", "v5k", "v5k-s", "v5m", "v5n",
+        "v5r", "v5r-i", "v5s", "v5t", "v5u", "v5u-s", "v5uru",
+        "vs", "vs-s", "vs-i", "vs-c", "vk", "vz", "vt", "vi",
+        "v4k", "v4g", "v4s", "v4t", "v4n", "v4b", "v4m", "v4r", "v4h",
+        "v2a-s", "v2b-k", "v2d-s", "v2g-k", "v2g-s", "v2h-k", "v2h-s",
+        "v2k-k", "v2k-s", "v2m-k", "v2m-s", "v2n-s", "v2r-k", "v2r-s",
+        "v2s-s", "v2t-k", "v2t-s", "v2w-s", "v2y-k", "v2y-s", "v2z-s",
+        "vn", "vr", "aux-v"
+    ];
+
     private static readonly Dictionary<string, HashSet<string>> DeconjToJmDictCompatibility =
         new(StringComparer.OrdinalIgnoreCase)
         {
@@ -102,6 +117,12 @@ public static class PosMapper
             ["v5r-i"] = ["v5r-i", "v5r"],
             ["v5k-s"] = ["v5k-s", "v5k"],
             ["v5u-s"] = ["v5u-s", "v5u"],
+
+            // Verb stem tags - these indicate a verb conjugation, so only match verbs
+            ["stem-past"] = AllVerbTags,
+            ["stem-te-verbal"] = AllVerbTags,
+            ["stem-ren-less"] = AllVerbTags,
+            ["stem-ren-less-v"] = AllVerbTags,
         };
 
     #endregion
@@ -152,6 +173,11 @@ public static class PosMapper
         if (jmDictTag.StartsWith('v'))
             return PartOfSpeech.Verb;
 
+        // JMnedict sometimes uses name-* tags (e.g., name-person/name-place) depending on import/source.
+        // Treat all such tags as names.
+        if (jmDictTag.StartsWith("name-", StringComparison.Ordinal))
+            return PartOfSpeech.Name;
+
         return jmDictTag switch
         {
             "n" or "n-adv" or "n-t" or "n-pr" => PartOfSpeech.Noun,
@@ -174,7 +200,7 @@ public static class PosMapper
             "ctr" => PartOfSpeech.Counter,
             // Name types
             "company" or "given" or "place" or "person" or "product" or "ship" or "surname"
-                or "unclass" or "name-fem" or "name-masc" or "station" or "group" or "char"
+                or "unclass" or "name-fem" or "name-masc" or "name-male" or "station" or "group" or "char"
                 or "creat" or "dei" or "doc" or "ev" or "fem" or "fict" or "leg" or "masc"
                 or "myth" or "obj" or "organization" or "oth" or "relig" or "serv" or "work"
                 or "unc" => PartOfSpeech.Name,
@@ -219,6 +245,65 @@ public static class PosMapper
     public static bool IsJmDictCompatibleWithSudachi(
         IEnumerable<string> jmDictPosTags,
         PartOfSpeech sudachiPos,
+        bool allowInterjectionFallback = false)
+    {
+        var convertedPosList = jmDictPosTags.Select(FromJmDict).ToList();
+
+        if (convertedPosList.Contains(sudachiPos))
+            return true;
+
+        if (allowInterjectionFallback && convertedPosList.Contains(PartOfSpeech.Interjection))
+            return true;
+
+        // Sudachi 形状詞 (NaAdjective) includes words that JMDict tags as adj-pn (PrenounAdjectival)
+        // Examples: この, その, あの, どの, こんな, そんな, あんな, どんな
+        if (sudachiPos == PartOfSpeech.NaAdjective && convertedPosList.Contains(PartOfSpeech.PrenounAdjectival))
+            return true;
+
+        return false;
+    }
+
+    /// <summary>
+    /// Checks if a Sudachi token represents a name-like noun (proper noun/person/place/etc.).
+    /// Sudachi emits these as POS=名詞 (Noun) with a more specific category in POS sections.
+    /// </summary>
+    public static bool IsNameLikeSudachiNoun(
+        PartOfSpeech sudachiPos,
+        PartOfSpeechSection section1,
+        PartOfSpeechSection section2,
+        PartOfSpeechSection section3)
+    {
+        if (sudachiPos != PartOfSpeech.Noun)
+            return false;
+
+        return IsNameLikeSudachiSection(section1) ||
+               IsNameLikeSudachiSection(section2) ||
+               IsNameLikeSudachiSection(section3);
+    }
+
+    private static bool IsNameLikeSudachiSection(PartOfSpeechSection section)
+    {
+        return section is PartOfSpeechSection.ProperNoun
+            or PartOfSpeechSection.PersonName
+            or PartOfSpeechSection.FamilyName
+            or PartOfSpeechSection.Organization
+            or PartOfSpeechSection.PlaceName
+            or PartOfSpeechSection.Region
+            or PartOfSpeechSection.Country
+            or PartOfSpeechSection.Name;
+    }
+
+    /// <summary>
+    /// Overload that also considers Sudachi POS sections.
+    /// This is important for matching JMnedict "name" entries against Sudachi proper-noun tokens,
+    /// which are emitted as POS=名詞 (Noun) with a name-like POS section.
+    /// </summary>
+    public static bool IsJmDictCompatibleWithSudachi(
+        IEnumerable<string> jmDictPosTags,
+        PartOfSpeech sudachiPos,
+        PartOfSpeechSection section1,
+        PartOfSpeechSection section2,
+        PartOfSpeechSection section3,
         bool allowInterjectionFallback = false)
     {
         var convertedPosList = jmDictPosTags.Select(FromJmDict).ToList();

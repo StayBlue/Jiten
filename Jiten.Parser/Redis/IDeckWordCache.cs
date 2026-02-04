@@ -9,4 +9,4 @@ public interface IDeckWordCache
     Task SetAsync(DeckWordCacheKey key, DeckWord word, CommandFlags flags = CommandFlags.None);
 }
 
-public record DeckWordCacheKey(string Text, PartOfSpeech PartOfSpeech, string DictionaryForm);
+public record DeckWordCacheKey(string Text, PartOfSpeech PartOfSpeech, string DictionaryForm, bool IsPersonNameContext, bool IsNameLikeSudachiNoun);
