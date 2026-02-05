@@ -26,6 +26,7 @@ namespace Jiten.Parser
 
         private static IDbContextFactory<JitenDbContext> _contextFactory;
         private static Dictionary<string, List<int>> _lookups;
+        private static HashSet<int> _nameOnlyWordIds;
 
         // Cache for compound expression lookups with bounded eviction
         private static readonly Dictionary<string, (bool validExpression, int? wordId)> CompoundExpressionCache = new();
@@ -36,15 +37,17 @@ namespace Jiten.Parser
 
         // Compiled regexes for token cleaning (avoid recompilation on every token)
         private static readonly Regex TokenCleanRegex = new(
-            @"[^a-zA-Z0-9\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF\uFF21-\uFF3A\uFF41-\uFF5A\uFF10-\uFF19\u3005．]",
-            RegexOptions.Compiled);
+                                                            @"[^a-zA-Z0-9\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF\uFF21-\uFF3A\uFF41-\uFF5A\uFF10-\uFF19\u3005．]",
+                                                            RegexOptions.Compiled);
+
         private static readonly Regex SmallTsuLongVowelRegex = new(@"ッー", RegexOptions.Compiled);
 
         // Excluded (WordId, ReadingIndex) pairs to filter from final parsing results
         private static readonly HashSet<(int WordId, byte ReadingIndex)> ExcludedMisparses = new()
             {
-                (1291070, 1), (1587980, 1), (1443970, 5), (2029660, 0), (1177490, 5), (2029000, 1), (1244950,1), (1243940,1), (2747970,1),
-                (2029680,0), (1193570,6), (1796500,2), (1811220,1), (2654270,0)
+                (1291070, 1), (1587980, 1), (1443970, 5), (2029660, 0), (1177490, 5), (2029000, 1),
+                (1244950, 1), (1243940, 1), (2747970, 1), (2029680, 0), (1193570, 6), (1796500, 2),
+                (1811220, 1), (2654270, 0)
             };
 
         private static async Task InitDictionaries()
@@ -69,6 +72,7 @@ namespace Jiten.Parser
             JmDictCache = new RedisJmDictCache(configuration, _contextFactory);
 
             _lookups = await JmDictHelper.LoadLookupTable(context);
+            _nameOnlyWordIds = await JmDictHelper.LoadNameOnlyWordIds(context);
 
             // Check if cache is already initialized
             if (!await JmDictCache.IsCacheInitializedAsync())
@@ -148,10 +152,10 @@ namespace Jiten.Parser
 
                     // Only consider Sudachi tokens that look like person names (avoid place names, etc.).
                     if (!PosMapper.IsNameLikeSudachiNoun(
-                            current.PartOfSpeech,
-                            current.PartOfSpeechSection1,
-                            current.PartOfSpeechSection2,
-                            current.PartOfSpeechSection3))
+                                                         current.PartOfSpeech,
+                                                         current.PartOfSpeechSection1,
+                                                         current.PartOfSpeechSection2,
+                                                         current.PartOfSpeechSection3))
                         continue;
 
                     if (!current.HasPartOfSpeechSection(PartOfSpeechSection.PersonName) &&
@@ -162,6 +166,50 @@ namespace Jiten.Parser
                     current.IsPersonNameContext = true;
                 }
             }
+        }
+
+        private static void PropagatePersonNameContexts(List<List<SentenceInfo>> allTexts)
+        {
+            var confirmedNames = new HashSet<string>();
+
+            foreach (var sentences in allTexts)
+                foreach (var sentence in sentences)
+                    foreach (var (word, _, _) in sentence.Words)
+                        if (word.IsPersonNameContext)
+                            confirmedNames.Add(word.Text);
+
+            if (confirmedNames.Count == 0)
+                return;
+
+            foreach (var sentences in allTexts)
+                foreach (var sentence in sentences)
+                    foreach (var (word, _, _) in sentence.Words)
+                    {
+                        if (word.IsPersonNameContext)
+                            continue;
+
+                        if (!confirmedNames.Contains(word.Text))
+                            continue;
+
+                        if (!PosMapper.IsNameLikeSudachiNoun(
+                                word.PartOfSpeech,
+                                word.PartOfSpeechSection1,
+                                word.PartOfSpeechSection2,
+                                word.PartOfSpeechSection3))
+                            continue;
+
+                        if (!word.HasPartOfSpeechSection(PartOfSpeechSection.PersonName) &&
+                            !word.HasPartOfSpeechSection(PartOfSpeechSection.FamilyName) &&
+                            !word.HasPartOfSpeechSection(PartOfSpeechSection.Name))
+                            continue;
+
+                        word.IsPersonNameContext = true;
+                    }
+        }
+
+        private static void PropagatePersonNameContexts(List<SentenceInfo> sentences)
+        {
+            PropagatePersonNameContexts(new List<List<SentenceInfo>> { sentences });
         }
 
         /// <summary>
@@ -273,9 +321,7 @@ namespace Jiten.Parser
                     // merged tokens often carry only the accumulator reading, and suffixes may not be at the end.
                     var nounWord = new WordInfo(word)
                                    {
-                                       Text = baseNoun,
-                                       PartOfSpeech = PartOfSpeech.Noun,
-                                       DictionaryForm = baseNoun,
+                                       Text = baseNoun, PartOfSpeech = PartOfSpeech.Noun, DictionaryForm = baseNoun,
                                        // Keep NormalizedForm from Sudachi (often important for matching); fall back to base noun.
                                        NormalizedForm = string.IsNullOrEmpty(word.NormalizedForm) ? baseNoun : word.NormalizedForm,
                                        Reading = WanaKana.ToHiragana(baseNoun, new DefaultOptions { ConvertLongVowelMark = false })
@@ -285,10 +331,7 @@ namespace Jiten.Parser
                                    {
                                        // Keep the full surface (e.g., しておかない / してる) as a single token.
                                        // This preserves auxiliary chains as one unit while enabling noun compounding.
-                                       Text = suffixSurface,
-                                       PartOfSpeech = PartOfSpeech.Verb,
-                                       DictionaryForm = "する",
-                                       NormalizedForm = "する",
+                                       Text = suffixSurface, PartOfSpeech = PartOfSpeech.Verb, DictionaryForm = "する", NormalizedForm = "する",
                                        Reading = WanaKana.ToHiragana(suffixSurface, new DefaultOptions { ConvertLongVowelMark = false })
                                    };
 
@@ -318,7 +361,7 @@ namespace Jiten.Parser
             foreach (var word in wordInfos)
             {
                 var isNameLikeSudachiNoun = PosMapper.IsNameLikeSudachiNoun(word.PartOfSpeech, word.PartOfSpeechSection1,
-                    word.PartOfSpeechSection2, word.PartOfSpeechSection3);
+                                                                            word.PartOfSpeechSection2, word.PartOfSpeechSection3);
                 var key = (word.Text, word.PartOfSpeech, word.IsPersonNameContext, isNameLikeSudachiNoun);
 
                 if (!wordCount.TryAdd(key, 1))
@@ -335,7 +378,7 @@ namespace Jiten.Parser
             {
                 var wi = uniqueWords[i].wordInfo;
                 var isNameLikeSudachiNoun = PosMapper.IsNameLikeSudachiNoun(wi.PartOfSpeech, wi.PartOfSpeechSection1,
-                    wi.PartOfSpeechSection2, wi.PartOfSpeechSection3);
+                                                                            wi.PartOfSpeechSection2, wi.PartOfSpeechSection3);
                 var key = (wi.Text, wi.PartOfSpeech, wi.IsPersonNameContext, isNameLikeSudachiNoun);
                 uniqueWords[i] = (uniqueWords[i].wordInfo, wordCount[key]);
             }
@@ -398,6 +441,7 @@ namespace Jiten.Parser
             var sentences = await parser.Parse(text, preserveStopToken: preserveStopToken, diagnostics: diagnostics);
 
             await PreprocessSentences(sentences);
+            PropagatePersonNameContexts(sentences);
             var wordInfos = ExtractWordInfos(sentences);
             var wordsWithOccurrences = wordInfos.Select(w => (w, 0)).ToList();
 
@@ -445,7 +489,13 @@ namespace Jiten.Parser
 
             timer.Restart();
 
-            // Process each result through deconjugation/lookup pipeline
+            // Pass 1: Preprocess all texts, then propagate person names across all texts
+            for (int textIndex = 0; textIndex < batchedSentences.Count; textIndex++)
+                await PreprocessSentences(batchedSentences[textIndex]);
+
+            PropagatePersonNameContexts(batchedSentences);
+
+            // Pass 2: Process each preprocessed result through deconjugation/lookup pipeline
             var decks = new List<Deck>();
             Deconjugator deconjugator = Deconjugator.Instance;
 
@@ -475,7 +525,6 @@ namespace Jiten.Parser
             bool predictDifficulty,
             MediaType mediatype)
         {
-            await PreprocessSentences(sentences);
             var wordInfos = ExtractWordInfos(sentences);
             var uniqueWords = CountUniqueWords(wordInfos);
 
@@ -526,7 +575,7 @@ namespace Jiten.Parser
                            SentenceCount = sentences.Count, DialoguePercentage = dialoguePercentage, DeckWords = processedWords,
                            RawText = storeRawText ? new DeckRawText(text) : null, ExampleSentences = exampleSentences
                        };
-            
+
             return deck;
         }
 
@@ -573,18 +622,18 @@ namespace Jiten.Parser
                 }
 
                 var isNameLikeSudachiNoun = PosMapper.IsNameLikeSudachiNoun(
-                    wordData.wordInfo.PartOfSpeech,
-                    wordData.wordInfo.PartOfSpeechSection1,
-                    wordData.wordInfo.PartOfSpeechSection2,
-                    wordData.wordInfo.PartOfSpeechSection3);
+                                                                            wordData.wordInfo.PartOfSpeech,
+                                                                            wordData.wordInfo.PartOfSpeechSection1,
+                                                                            wordData.wordInfo.PartOfSpeechSection2,
+                                                                            wordData.wordInfo.PartOfSpeechSection3);
 
                 var cacheKey = new DeckWordCacheKey(
-                                                     wordData.wordInfo.Text,
-                                                     wordData.wordInfo.PartOfSpeech,
-                                                     wordData.wordInfo.DictionaryForm,
-                                                     wordData.wordInfo.IsPersonNameContext,
-                                                     isNameLikeSudachiNoun
-                                                    );
+                                                    wordData.wordInfo.Text,
+                                                    wordData.wordInfo.PartOfSpeech,
+                                                    wordData.wordInfo.DictionaryForm,
+                                                    wordData.wordInfo.IsPersonNameContext,
+                                                    isNameLikeSudachiNoun
+                                                   );
 
                 if (UseCache)
                 {
@@ -645,7 +694,8 @@ namespace Jiten.Parser
                         }
 
                         if (wordData.wordInfo.PartOfSpeech is PartOfSpeech.Verb or PartOfSpeech.IAdjective or PartOfSpeech.Auxiliary
-                                or PartOfSpeech.NaAdjective or PartOfSpeech.Expression || wordData.wordInfo.PartOfSpeechSection1 is PartOfSpeechSection.Adjectival)
+                                or PartOfSpeech.NaAdjective or PartOfSpeech.Expression ||
+                            wordData.wordInfo.PartOfSpeechSection1 is PartOfSpeechSection.Adjectival)
                         {
                             // Try to deconjugate as verb or adjective
                             var verbResult = await DeconjugateVerbOrAdjective(wordData, deconjugator);
@@ -892,10 +942,10 @@ namespace Jiten.Parser
                 }
 
                 bool isNameLikeSudachiNoun = PosMapper.IsNameLikeSudachiNoun(
-                    wordData.wordInfo.PartOfSpeech,
-                    wordData.wordInfo.PartOfSpeechSection1,
-                    wordData.wordInfo.PartOfSpeechSection2,
-                    wordData.wordInfo.PartOfSpeechSection3);
+                                                                             wordData.wordInfo.PartOfSpeech,
+                                                                             wordData.wordInfo.PartOfSpeechSection1,
+                                                                             wordData.wordInfo.PartOfSpeechSection2,
+                                                                             wordData.wordInfo.PartOfSpeechSection3);
 
                 bool hasAnyNonNameCandidate = false;
                 var compatibleNonNameMatches = new List<JmDictWord>();
@@ -916,9 +966,9 @@ namespace Jiten.Parser
 
                     // Is stripped part to handle interjection like よー and こーら
                     bool compatible = PosMapper.IsJmDictCompatibleWithSudachi(
-                        word.PartsOfSpeech,
-                        wordData.wordInfo.PartOfSpeech,
-                        allowInterjectionFallback: isStripped);
+                                                                              word.PartsOfSpeech,
+                                                                              wordData.wordInfo.PartOfSpeech,
+                                                                              allowInterjectionFallback: isStripped);
 
                     if (compatible && hasNonNamePos)
                     {
@@ -945,20 +995,20 @@ namespace Jiten.Parser
                 if (wordData.wordInfo.IsPersonNameContext && nameCandidates.Count > 0)
                 {
                     bestMatch = nameCandidates.OrderByDescending(m => m.GetPriorityScore(WanaKana.IsKana(wordData.wordInfo.Text)) +
-                                                                     (m.Forms.All(f => f.Text != wordData.wordInfo.Text) ? -50 : 0))
+                                                                      (m.Forms.All(f => f.Text != wordData.wordInfo.Text) ? -50 : 0))
                                               .First();
                 }
                 else if (compatibleNonNameMatches.Count > 0)
                 {
                     bestMatch = compatibleNonNameMatches
-                        .OrderByDescending(m => m.GetPriorityScore(WanaKana.IsKana(wordData.wordInfo.Text)) +
-                                               (m.Forms.All(f => f.Text != wordData.wordInfo.Text) ? -50 : 0))
-                        .First();
+                                .OrderByDescending(m => m.GetPriorityScore(WanaKana.IsKana(wordData.wordInfo.Text)) +
+                                                        (m.Forms.All(f => f.Text != wordData.wordInfo.Text) ? -50 : 0))
+                                .First();
                 }
                 else if (!hasAnyNonNameCandidate && nameCandidates.Count > 0)
                 {
                     bestMatch = nameCandidates.OrderByDescending(m => m.GetPriorityScore(WanaKana.IsKana(wordData.wordInfo.Text)) +
-                                                                     (m.Forms.All(f => f.Text != wordData.wordInfo.Text) ? -50 : 0))
+                                                                      (m.Forms.All(f => f.Text != wordData.wordInfo.Text) ? -50 : 0))
                                               .First();
                 }
                 else
@@ -980,14 +1030,19 @@ namespace Jiten.Parser
                 if (readingIndex == 255)
                 {
                     readingIndex = (byte)(bestMatch.Forms.FirstOrDefault(f =>
-                        WanaKana.ToHiragana(f.Text, new DefaultOptions() { ConvertLongVowelMark = false }) == textInHiragana)?.ReadingIndex ?? 255);
+                                                                             WanaKana.ToHiragana(f.Text,
+                                                                                 new DefaultOptions()
+                                                                                 {
+                                                                                     ConvertLongVowelMark = false
+                                                                                 }) == textInHiragana)?.ReadingIndex ?? 255);
                 }
 
                 // not found, try with converting the long vowel mark
                 if (readingIndex == 255)
                 {
                     readingIndex = (byte)(bestMatch.Forms.FirstOrDefault(f =>
-                        WanaKana.ToHiragana(f.Text) == textInHiragana)?.ReadingIndex ?? 255);
+                                                                             WanaKana.ToHiragana(f.Text) == textInHiragana)?.ReadingIndex ??
+                                          255);
                 }
 
                 // Still not found, skip the word completely
@@ -1082,7 +1137,7 @@ namespace Jiten.Parser
                 if (dictFormLookupIds is not { Count: > 0 } && !string.IsNullOrEmpty(wordData.wordInfo.NormalizedForm))
                 {
                     var normalizedHiragana = WanaKana.ToHiragana(wordData.wordInfo.NormalizedForm,
-                        new DefaultOptions() { ConvertLongVowelMark = false });
+                                                                 new DefaultOptions() { ConvertLongVowelMark = false });
                     if (_lookups.TryGetValue(normalizedHiragana, out dictFormLookupIds) ||
                         _lookups.TryGetValue(wordData.wordInfo.NormalizedForm, out dictFormLookupIds))
                     {
@@ -1180,7 +1235,7 @@ namespace Jiten.Parser
                     wordData.wordInfo.NormalizedForm != wordData.wordInfo.DictionaryForm)
                 {
                     var normalizedHiragana = WanaKana.ToHiragana(wordData.wordInfo.NormalizedForm,
-                        new DefaultOptions() { ConvertLongVowelMark = false });
+                                                                 new DefaultOptions() { ConvertLongVowelMark = false });
                     List<int>? normalizedLookup = null;
                     if (_lookups.TryGetValue(normalizedHiragana, out normalizedLookup) ||
                         _lookups.TryGetValue(wordData.wordInfo.NormalizedForm, out normalizedLookup))
@@ -1196,7 +1251,7 @@ namespace Jiten.Parser
                                     if (pos.Contains(wordData.wordInfo.PartOfSpeech))
                                     {
                                         var form = new DeconjugationForm(normalizedHiragana, wordData.wordInfo.Text,
-                                            new List<string>(), new HashSet<string>(), new List<string>());
+                                                                         new List<string>(), new HashSet<string>(), new List<string>());
                                         matches.Add((normalizedWord, form));
                                     }
                                 }
@@ -1226,7 +1281,7 @@ namespace Jiten.Parser
                 // genuinely conjugated (e.g., おいた with DictionaryForm=おく should match 置く, not おいた "mischief")
                 var originalTextHiragana = WanaKana.ToHiragana(wordData.wordInfo.Text);
                 var dictFormDiffersFromText = !string.IsNullOrEmpty(wordData.wordInfo.DictionaryForm) &&
-                    WanaKana.ToHiragana(wordData.wordInfo.DictionaryForm) != originalTextHiragana;
+                                              WanaKana.ToHiragana(wordData.wordInfo.DictionaryForm) != originalTextHiragana;
                 if (!dictFormDiffersFromText)
                 {
                     foreach (var match in matches)
@@ -1296,7 +1351,9 @@ namespace Jiten.Parser
             {
                 // Try strict Hiragana match
                 var strictMatch = forms.FirstOrDefault(f =>
-                    WanaKana.ToHiragana(f.Text, new DefaultOptions() { ConvertLongVowelMark = false }) == targetHiragana);
+                                                           WanaKana.ToHiragana(f.Text,
+                                                                               new DefaultOptions() { ConvertLongVowelMark = false }) ==
+                                                           targetHiragana);
 
                 if (strictMatch != null) bestReadingIndex = (byte)strictMatch.ReadingIndex;
                 else
@@ -1386,20 +1443,20 @@ namespace Jiten.Parser
                 var candidateWordIds = matchesWithReading.Select(m => m.match.WordId).ToList();
                 await using var context = await _contextFactory.CreateDbContextAsync();
                 var formFrequencies = await context.WordFormFrequencies
-                    .AsNoTracking()
-                    .Where(wff => candidateWordIds.Contains(wff.WordId))
-                    .ToDictionaryAsync(wff => (wff.WordId, wff.ReadingIndex));
+                                                   .AsNoTracking()
+                                                   .Where(wff => candidateWordIds.Contains(wff.WordId))
+                                                   .ToDictionaryAsync(wff => (wff.WordId, wff.ReadingIndex));
 
                 // Order by frequency rank (lower = more frequent = better)
                 var best = matchesWithReading
-                    .OrderBy(m =>
-                    {
-                        var key = (m.match.WordId, (short)m.readingIndex);
-                        if (formFrequencies.TryGetValue(key, out var wff))
-                            return wff.FrequencyRank;
-                        return int.MaxValue;
-                    })
-                    .First();
+                           .OrderBy(m =>
+                           {
+                               var key = (m.match.WordId, (short)m.readingIndex);
+                               if (formFrequencies.TryGetValue(key, out var wff))
+                                   return wff.FrequencyRank;
+                               return int.MaxValue;
+                           })
+                           .First();
 
                 matchedWords.Add(new DeckWord { WordId = best.match.WordId, ReadingIndex = (byte)best.readingIndex, OriginalText = word });
             }
@@ -1432,8 +1489,10 @@ namespace Jiten.Parser
                     try
                     {
                         var isNameLikeSudachiNoun = PosMapper.IsNameLikeSudachiNoun(wordInfo.PartOfSpeech, wordInfo.PartOfSpeechSection1,
-                            wordInfo.PartOfSpeechSection2, wordInfo.PartOfSpeechSection3);
-                        var cacheKey = new DeckWordCacheKey(text, wordInfo.PartOfSpeech, wordInfo.DictionaryForm, wordInfo.IsPersonNameContext,
+                                                                                    wordInfo.PartOfSpeechSection2,
+                                                                                    wordInfo.PartOfSpeechSection3);
+                        var cacheKey = new DeckWordCacheKey(text, wordInfo.PartOfSpeech, wordInfo.DictionaryForm,
+                                                            wordInfo.IsPersonNameContext,
                                                             isNameLikeSudachiNoun);
                         var cached = await DeckWordCache.GetAsync(cacheKey);
                         if (cached is { WordId: -1 })
@@ -1459,7 +1518,8 @@ namespace Jiten.Parser
 
                         // Skip candidates that are pure digits
                         var candidateWithoutBar = candidate.TrimEnd('ー');
-                        if (candidateWithoutBar.Length > 0 && candidateWithoutBar.All(char.IsDigit)  || (candidateWithoutBar.Length == 1 && candidateWithoutBar.IsAsciiOrFullWidthLetter()))
+                        if (candidateWithoutBar.Length > 0 && candidateWithoutBar.All(char.IsDigit) ||
+                            (candidateWithoutBar.Length == 1 && candidateWithoutBar.IsAsciiOrFullWidthLetter()))
                             continue;
 
                         string hiragana;
@@ -1498,6 +1558,14 @@ namespace Jiten.Parser
                                                 candidates = [prefixMatch];
                                         }
 
+                                        // Deprioritise pure-name entries (JMnedict) so common nouns win
+                                        var nonNameCandidates = candidates
+                                            .Where(w => w.PartsOfSpeech.ToPartOfSpeech()
+                                                         .Any(p => p is not (PartOfSpeech.Name or PartOfSpeech.Unknown)))
+                                            .ToList();
+                                        if (nonNameCandidates.Count > 0)
+                                            candidates = nonNameCandidates;
+
                                         var bestMatch = candidates
                                                         .OrderByDescending(w => w.GetPriorityScore(WanaKana.IsKana(candidate)))
                                                         .First();
@@ -1512,7 +1580,8 @@ namespace Jiten.Parser
                                         {
                                             // Check if there's a verb whose stem matches this candidate
                                             // Try common verb endings: す→し, く→き, ぐ→ぎ, む→み, ぶ→び, ぬ→に, う→い, つ→ち, る→り
-                                            var candidateHira = WanaKana.ToHiragana(candidate, new DefaultOptions { ConvertLongVowelMark = false });
+                                            var candidateHira =
+                                                WanaKana.ToHiragana(candidate, new DefaultOptions { ConvertLongVowelMark = false });
                                             string? verbForm = null;
                                             if (candidateHira.EndsWith("し")) verbForm = candidateHira[..^1] + "す";
                                             else if (candidateHira.EndsWith("き")) verbForm = candidateHira[..^1] + "く";
@@ -1536,13 +1605,13 @@ namespace Jiten.Parser
                                                     if (verbReadingIndex != 255)
                                                     {
                                                         match = new DeckWord
-                                                        {
-                                                            WordId = verbMatch.WordId, OriginalText = candidate,
-                                                            ReadingIndex = verbReadingIndex, Occurrences = occurrences,
-                                                            Conjugations = ["(masu stem)"],
-                                                            PartsOfSpeech = verbMatch.PartsOfSpeech.ToPartOfSpeech(),
-                                                            Origin = verbMatch.Origin
-                                                        };
+                                                                {
+                                                                    WordId = verbMatch.WordId, OriginalText = candidate,
+                                                                    ReadingIndex = verbReadingIndex, Occurrences = occurrences,
+                                                                    Conjugations = ["(masu stem)"],
+                                                                    PartsOfSpeech = verbMatch.PartsOfSpeech.ToPartOfSpeech(),
+                                                                    Origin = verbMatch.Origin
+                                                                };
                                                         matchLen = windowSize;
                                                         break;
                                                     }
@@ -1593,11 +1662,22 @@ namespace Jiten.Parser
                                                 deconjCandidates = [prefixMatch];
                                         }
 
+                                        // Deprioritise pure-name entries (JMnedict) so common words win
+                                        var nonNameDeconj = deconjCandidates
+                                            .Where(w => w.PartsOfSpeech.ToPartOfSpeech()
+                                                         .Any(p => p is not (PartOfSpeech.Name or PartOfSpeech.Unknown)))
+                                            .ToList();
+                                        if (nonNameDeconj.Count > 0)
+                                            deconjCandidates = nonNameDeconj;
+
                                         // Filter candidates by POS compatibility with deconjugation tags
                                         var formPosTags = PosMapper.GetValidatableDeconjTags(form.Tags).ToList();
                                         if (formPosTags.Count > 0)
                                         {
-                                            deconjCandidates = deconjCandidates.Where(w => PosMapper.AreDeconjTagsCompatibleWithJmDict(formPosTags, w.PartsOfSpeech));
+                                            deconjCandidates =
+                                                deconjCandidates.Where(w =>
+                                                                           PosMapper.AreDeconjTagsCompatibleWithJmDict(formPosTags,
+                                                                               w.PartsOfSpeech));
                                         }
 
                                         var bestMatch = deconjCandidates
@@ -1654,7 +1734,8 @@ namespace Jiten.Parser
                     try
                     {
                         var isNameLikeSudachiNoun = PosMapper.IsNameLikeSudachiNoun(wordInfo.PartOfSpeech, wordInfo.PartOfSpeechSection1,
-                            wordInfo.PartOfSpeechSection2, wordInfo.PartOfSpeechSection3);
+                                                                                    wordInfo.PartOfSpeechSection2,
+                                                                                    wordInfo.PartOfSpeechSection3);
                         var cacheKey = new DeckWordCacheKey(wordInfo.Text, wordInfo.PartOfSpeech, wordInfo.DictionaryForm,
                                                             wordInfo.IsPersonNameContext, isNameLikeSudachiNoun);
                         await DeckWordCache.SetAsync(cacheKey,
@@ -1709,7 +1790,9 @@ namespace Jiten.Parser
             if (maxScore == -1)
             {
                 var strictMatch = forms.FirstOrDefault(f =>
-                    WanaKana.ToHiragana(f.Text, new DefaultOptions { ConvertLongVowelMark = false }) == textHiragana);
+                                                           WanaKana.ToHiragana(f.Text,
+                                                                               new DefaultOptions { ConvertLongVowelMark = false }) ==
+                                                           textHiragana);
                 if (strictMatch != null) return (byte)strictMatch.ReadingIndex;
 
                 // Try with long vowel conversion
@@ -1776,8 +1859,7 @@ namespace Jiten.Parser
                                                    {
                                                        Text = originalText, DictionaryForm = dictForm,
                                                        PartOfSpeech = PartOfSpeech.Expression, NormalizedForm = dictForm,
-                                                       Reading = WanaKana.ToHiragana(combinedReading),
-                                                       PreMatchedWordId = wordId
+                                                       Reading = WanaKana.ToHiragana(combinedReading), PreMatchedWordId = wordId
                                                    };
 
                             result.Add((combinedWordInfo, startPosition, combinedLength));
@@ -1827,8 +1909,8 @@ namespace Jiten.Parser
                     for (int k = maxBackward; k >= 1; k--)
                     {
                         var candidateParts = sentence.Words
-                            .Skip(i - k).Take(k + 1)
-                            .Select(w => w.word.Text);
+                                                     .Skip(i - k).Take(k + 1)
+                                                     .Select(w => w.word.Text);
                         var candidateSurface = string.Concat(candidateParts);
                         candidateSurface = Regex.Replace(candidateSurface, "ー{2,}", "ー");
 
@@ -1865,13 +1947,13 @@ namespace Jiten.Parser
                     // No backward merge worked — check the current token itself:
                     // if WITH ー is a valid word (すげー, やべー), leave it;
                     // if only the barless form is valid, strip ー from the surface
-                    if (merged) 
+                    if (merged)
                         continue;
-                    
+
                     var singleSurface = word.Text;
-                    if (TryLongVowelLookup(singleSurface)) 
+                    if (TryLongVowelLookup(singleSurface))
                         continue;
-                    
+
                     var singleKey = singleSurface.TrimEnd('ー');
                     if (singleKey.Length > 0 && (TryLongVowelLookup(singleKey) || TryDeconjugatedLongVowelLookup(singleKey)))
                     {
@@ -1912,7 +1994,7 @@ namespace Jiten.Parser
             try
             {
                 hira = KanaNormalizer.Normalize(
-                    WanaKana.ToHiragana(candidateKey, new DefaultOptions { ConvertLongVowelMark = false }));
+                                                WanaKana.ToHiragana(candidateKey, new DefaultOptions { ConvertLongVowelMark = false }));
             }
             catch
             {
@@ -2091,26 +2173,32 @@ namespace Jiten.Parser
                     int bestMatch = 1;
                     for (int windowSize = Math.Min(4, sentence.Words.Count - i); windowSize >= 2; windowSize--)
                     {
-                        // Check if all tokens in window are nouns
                         bool allNouns = true;
+                        bool hasNameLikeToken = false;
                         for (int j = 0; j < windowSize; j++)
                         {
-                            if (!PosMapper.IsNounForCompounding(sentence.Words[i + j].word.PartOfSpeech))
+                            var w = sentence.Words[i + j].word;
+                            if (!PosMapper.IsNounForCompounding(w.PartOfSpeech))
                             {
                                 allNouns = false;
                                 break;
                             }
+
+                            if (PosMapper.IsNameLikeSudachiNoun(w.PartOfSpeech, w.PartOfSpeechSection1,
+                                                                w.PartOfSpeechSection2, w.PartOfSpeechSection3))
+                                hasNameLikeToken = true;
                         }
 
                         if (!allNouns)
                             continue;
 
                         // Combine the text
-                        var combinedText = string.Concat(
-                                                         sentence.Words.Skip(i).Take(windowSize).Select(w => w.word.Text));
+                        var combinedText = string.Concat(sentence.Words.Skip(i).Take(windowSize).Select(w => w.word.Text));
 
-                        // Check if it exists in JMDict lookups
-                        if (_lookups.TryGetValue(combinedText, out var wordIds) && wordIds.Count > 0)
+                        // Check if it exists in JMDict lookups — skip name-only matches
+                        // when none of the constituent tokens are name-like
+                        if (_lookups.TryGetValue(combinedText, out var wordIds) && wordIds.Count > 0 &&
+                            (hasNameLikeToken || !wordIds.All(id => _nameOnlyWordIds.Contains(id))))
                         {
                             bestMatch = windowSize;
                             break;
@@ -2120,7 +2208,8 @@ namespace Jiten.Parser
                         var hiraganaText = WanaKana.ToHiragana(combinedText,
                                                                new DefaultOptions { ConvertLongVowelMark = false });
                         if (hiraganaText != combinedText &&
-                            _lookups.TryGetValue(hiraganaText, out wordIds) && wordIds.Count > 0)
+                            _lookups.TryGetValue(hiraganaText, out wordIds) && wordIds.Count > 0 &&
+                            (hasNameLikeToken || !wordIds.All(id => _nameOnlyWordIds.Contains(id))))
                         {
                             bestMatch = windowSize;
                             break;
@@ -2130,10 +2219,8 @@ namespace Jiten.Parser
                     if (bestMatch > 1)
                     {
                         // Merge tokens
-                        var combinedText = string.Concat(
-                                                         sentence.Words.Skip(i).Take(bestMatch).Select(w => w.word.Text));
-                        var combinedReading = string.Concat(
-                                                             sentence.Words.Skip(i).Take(bestMatch).Select(w => w.word.Reading));
+                        var combinedText = string.Concat(sentence.Words.Skip(i).Take(bestMatch).Select(w => w.word.Text));
+                        var combinedReading = string.Concat(sentence.Words.Skip(i).Take(bestMatch).Select(w => w.word.Reading));
                         int combinedLength = 0;
                         for (int j = 0; j < bestMatch; j++)
                         {
@@ -2147,7 +2234,7 @@ namespace Jiten.Parser
                         {
                             var candidate = sentence.Words[i + j].word;
                             if (PosMapper.IsNameLikeSudachiNoun(candidate.PartOfSpeech, candidate.PartOfSpeechSection1,
-                                    candidate.PartOfSpeechSection2, candidate.PartOfSpeechSection3))
+                                                                candidate.PartOfSpeechSection2, candidate.PartOfSpeechSection3))
                             {
                                 sectionCarrier = candidate;
                                 break;
@@ -2164,12 +2251,9 @@ namespace Jiten.Parser
 
                         var combinedWord = new WordInfo(sectionCarrier)
                                            {
-                                               Text = combinedText,
-                                               DictionaryForm = combinedText,
-                                               PartOfSpeech = sentence.Words[i].word.PartOfSpeech,
-                                               NormalizedForm = combinedText,
-                                               Reading = WanaKana.ToHiragana(combinedReading),
-                                               PreMatchedWordId = null
+                                               Text = combinedText, DictionaryForm = combinedText,
+                                               PartOfSpeech = sentence.Words[i].word.PartOfSpeech, NormalizedForm = combinedText,
+                                               Reading = WanaKana.ToHiragana(combinedReading), PreMatchedWordId = null
                                            };
 
                         result.Add((combinedWord, position, combinedLength));

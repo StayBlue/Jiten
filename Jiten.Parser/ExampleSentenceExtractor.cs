@@ -88,6 +88,17 @@ public static class ExampleSentenceExtractor
                                                });
         }
 
+        // Track surface texts that have at least one non-Name DeckWord. When a text has both
+        // Name and non-Name entries (e.g. 深雪 = name + deep snow), the name-like POS fallback
+        // should only match tokens in person name context — otherwise the Name entry steals
+        // example sentences from the Noun entry after it's consumed.
+        var textsWithNonNameEntry = new HashSet<string>();
+        foreach (var word in words)
+        {
+            if (word.PartsOfSpeech.Any(p => p is not (PartOfSpeech.Name or PartOfSpeech.Unknown)))
+                textsWithNonNameEntry.Add(word.OriginalText);
+        }
+
         var exampleSentences = new List<ExampleSentence>();
         var usedSentences = new HashSet<SentenceInfo>();
 
@@ -137,16 +148,27 @@ public static class ExampleSentenceExtractor
                 {
                     if (!wordsByText.TryGetValue(wordInfo.Text, out var wordList) || wordList.Count <= 0) continue;
 
-                    // Find first word with matching POS
+                    // Find best word with matching POS — prefer direct POS match over name-like fallback.
                     int matchIndex = -1;
+                    int fallbackIndex = -1;
                     for (int j = 0; j < wordList.Count; j++)
                     {
-                        if (IsPosCompatible(wordList[j], wordInfo))
+                        if (wordList[j].PartsOfSpeech.Any(pos => pos == wordInfo.PartOfSpeech))
                         {
                             matchIndex = j;
                             break;
                         }
+
+                        if (fallbackIndex == -1 && IsPosCompatible(wordList[j], wordInfo))
+                            fallbackIndex = j;
                     }
+
+                    // Only use the name-like fallback when either:
+                    // - this surface text has no competing non-Name DeckWord (pure name word), OR
+                    // - the token is in person name context (followed by さん/くん/etc.)
+                    if (matchIndex == -1 &&
+                        (!textsWithNonNameEntry.Contains(wordInfo.Text) || wordInfo.IsPersonNameContext))
+                        matchIndex = fallbackIndex;
 
                     // If we found a match, add it and remove from the list
                     if (matchIndex >= 0)

@@ -107,9 +107,7 @@ public class MorphologicalAnalyser
         ("多", "き", PartOfSpeech.IAdjective),
         ("ぶっ", "た", PartOfSpeech.Suffix),
     ];
-
-    private static readonly List<string> HonorificsSuffixes = ["さん", "ちゃん", "くん"];
-
+    
     private readonly HashSet<char> _sentenceEnders = ['。', '！', '？', '」'];
 
     private static readonly HashSet<string> MisparsesRemove =
