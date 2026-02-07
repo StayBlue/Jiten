@@ -47,7 +47,7 @@ namespace Jiten.Parser
             (1291070, 1), (1587980, 1), (1443970, 5), (2029660, 0), (1177490, 5), (2029000, 1),
             (1244950, 1), (1243940, 1), (2747970, 1), (2029680, 0), (1193570, 6), (1796500, 2),
             (1811220, 1), (2654270, 0), (2269410, 1), (2439040, 3), (2861095, 0), (2836250, 0),
-            (1595910,4), (2577750,0), (1365520,1), (1310720,1)
+            (1595910, 4), (2577750, 0), (1365520, 1), (1310720, 1)
         ];
 
         private static async Task InitDictionaries()
@@ -1209,9 +1209,9 @@ namespace Jiten.Parser
                             {
                                 var dictWordCache = await JmDictCache.GetWordsAsync(dictLookup);
                                 var recoveredProcess = deconjugated
-                                    .Where(d => d.Process.Count > 0 && d.Text.StartsWith(dictFormHiragana))
-                                    .MinBy(d => d.Text.Length)?.Process
-                                    ?.Where(p => !string.IsNullOrEmpty(p)).ToList() ?? [];
+                                                       .Where(d => d.Process.Count > 0 && d.Text.StartsWith(dictFormHiragana))
+                                                       .MinBy(d => d.Text.Length)?.Process
+                                                       ?.Where(p => !string.IsNullOrEmpty(p)).ToList() ?? [];
                                 foreach (var dictWord in dictWordCache.Values)
                                 {
                                     List<PartOfSpeech> pos = dictWord.PartsOfSpeech.ToPartOfSpeech();
@@ -1246,9 +1246,9 @@ namespace Jiten.Parser
                             {
                                 var normalizedWordCache = await JmDictCache.GetWordsAsync(normalizedLookup);
                                 var recoveredProcess = deconjugated
-                                    .Where(d => d.Process.Count > 0 && d.Text.StartsWith(normalizedHiragana))
-                                    .MinBy(d => d.Text.Length)?.Process
-                                    ?.Where(p => !string.IsNullOrEmpty(p)).ToList() ?? [];
+                                                       .Where(d => d.Process.Count > 0 && d.Text.StartsWith(normalizedHiragana))
+                                                       .MinBy(d => d.Text.Length)?.Process
+                                                       ?.Where(p => !string.IsNullOrEmpty(p)).ToList() ?? [];
                                 foreach (var normalizedWord in normalizedWordCache.Values)
                                 {
                                     List<PartOfSpeech> pos = normalizedWord.PartsOfSpeech.ToPartOfSpeech();
@@ -2109,7 +2109,7 @@ namespace Jiten.Parser
                             var w = sentence.Words[i + j].word;
                             bool isNoun = PosMapper.IsNounForCompounding(w.PartOfSpeech);
                             bool isNoParticle = w.PartOfSpeech == PartOfSpeech.Particle && w.Text == "の"
-                                                && j > 0 && j < windowSize - 1;
+                                                                                        && j > 0 && j < windowSize - 1;
                             if (!isNoun && !isNoParticle)
                             {
                                 allValid = false;
@@ -2117,7 +2117,7 @@ namespace Jiten.Parser
                             }
 
                             if (isNoun && PosMapper.IsNameLikeSudachiNoun(w.PartOfSpeech, w.PartOfSpeechSection1,
-                                                                w.PartOfSpeechSection2, w.PartOfSpeechSection3))
+                                                                          w.PartOfSpeechSection2, w.PartOfSpeechSection3))
                                 hasNameLikeToken = true;
                         }
 
@@ -2185,7 +2185,9 @@ namespace Jiten.Parser
                                            {
                                                Text = combinedText, DictionaryForm = combinedText,
                                                PartOfSpeech = sentence.Words[i].word.PartOfSpeech, NormalizedForm = combinedText,
-                                               Reading = WanaKana.ToHiragana(combinedReading), PreMatchedWordId = null
+                                               Reading = WanaKana.ToHiragana(combinedReading,
+                                                                             new DefaultOptions { ConvertLongVowelMark = false }),
+                                               PreMatchedWordId = null
                                            };
 
                         result.Add((combinedWord, position, combinedLength));
@@ -2227,17 +2229,17 @@ namespace Jiten.Parser
 
         private static void CleanCompoundCache()
         {
-            if (CompoundExpressionCache.Count < MAX_COMPOUND_CACHE_SIZE) 
+            if (CompoundExpressionCache.Count < MAX_COMPOUND_CACHE_SIZE)
                 return;
-            
+
             // Evict oldest entries (first added) instead of clearing all
             int toRemove = Math.Min(EVICTION_BATCH_SIZE, CompoundCacheOrder.Count);
             for (int i = 0; i < toRemove; i++)
             {
                 var oldest = CompoundCacheOrder.First;
-                if (oldest == null) 
+                if (oldest == null)
                     continue;
-                    
+
                 CompoundExpressionCache.Remove(oldest.Value);
                 CompoundCacheOrder.RemoveFirst();
             }
@@ -2290,11 +2292,11 @@ namespace Jiten.Parser
             {
                 var deconj = Deconjugator.Instance.Deconjugate(WanaKana.ToHiragana(verb.Text));
                 foreach (var form in deconj
-                             .Select(d => d.Text)
-                             .Where(t => !string.IsNullOrEmpty(t) && t != dictForm)
-                             .Distinct()
-                             .OrderBy(t => t.Length)
-                             .ThenBy(t => t, StringComparer.Ordinal))
+                                     .Select(d => d.Text)
+                                     .Where(t => !string.IsNullOrEmpty(t) && t != dictForm)
+                                     .Distinct()
+                                     .OrderBy(t => t.Length)
+                                     .ThenBy(t => t, StringComparer.Ordinal))
                 {
                     result = await TryMatchCompoundWindow(wordInfos, wordIndex, lastConsumedIndex, form);
                     if (result.HasValue) return result;
@@ -2723,20 +2725,19 @@ namespace Jiten.Parser
                 }
             }
 
-            if (diagnostics == null || best == null) 
+            if (diagnostics == null || best == null)
                 return best;
-            
+
             var topCandidates = allCandidates
                                 .OrderByDescending(c => c.TotalScore)
                                 .Take(10)
                                 .Select(c => new Diagnostics.FormCandidateDiagnostic
                                              {
                                                  WordId = c.Word.WordId, FormText = c.Form.Text, ReadingIndex = c.ReadingIndex,
-                                                 IsSelected = ReferenceEquals(c, best), TotalScore = c.TotalScore,
-                                                 WordScore = c.WordScore, EntryPriorityScore = c.EntryPriorityScore,
-                                                 FormPriorityScore = c.FormPriorityScore, FormFlagScore = c.FormFlagScore,
-                                                 SurfaceMatchScore = c.SurfaceMatchScore, ScriptScore = c.ScriptScore,
-                                                 ReadingMatchScore = c.ReadingMatchScore
+                                                 IsSelected = ReferenceEquals(c, best), TotalScore = c.TotalScore, WordScore = c.WordScore,
+                                                 EntryPriorityScore = c.EntryPriorityScore, FormPriorityScore = c.FormPriorityScore,
+                                                 FormFlagScore = c.FormFlagScore, SurfaceMatchScore = c.SurfaceMatchScore,
+                                                 ScriptScore = c.ScriptScore, ReadingMatchScore = c.ReadingMatchScore
                                              })
                                 .ToList();
 

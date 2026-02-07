@@ -276,6 +276,13 @@ public static class PosMapper
         if (sudachiPos == PartOfSpeech.Suffix && convertedPosList.Contains(PartOfSpeech.NounSuffix))
             return true;
 
+        // Sudachi 動詞/形容詞 (Verb/IAdjective) should match JMDict exp (Expression).
+        // Many JMDict expressions are grammatically verbal/adjectival set phrases.
+        // E.g. いけない, ならない, しょうがない, たまらない.
+        if (sudachiPos is PartOfSpeech.Verb or PartOfSpeech.IAdjective &&
+            convertedPosList.Contains(PartOfSpeech.Expression))
+            return true;
+
         return false;
     }
 
