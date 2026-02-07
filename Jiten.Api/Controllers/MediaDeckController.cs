@@ -210,7 +210,7 @@ public class MediaDeckController(
     /// <param name="titleFilter">Full‑text filter on title (supports romaji/english/japanese).</param>
     /// <param name="sortBy">Sort field (title, difficulty, charCount, wordCount, sentenceLength, dialoguePercentage, uKanji, uWordCount, uKanjiOnce, filter, releaseDate, coverage, uCoverage, etc.).</param>
     /// <param name="sortOrder">Ascending or Descending.</param>
-    /// <param name="status">Status (none, fav, ignore, planning, ongoing, completed, dropped)</param>
+    /// <param name="status">Status (none, nostatus, fav, ignore, planning, ongoing, completed, dropped)</param>
     /// <param name="charCountMin"></param>
     /// <param name="charCountMax"></param>
     /// <param name="difficultyMin"></param>
@@ -494,6 +494,14 @@ public class MediaDeckController(
             else if (normalizedStatus == "ignore")
             {
                 query = query.Where(d => ignoredDeckIds.Contains(d.DeckId));
+            }
+            else if (normalizedStatus == "nostatus")
+            {
+                var decksWithStatus = allUserPrefs
+                                      .Where(p => p.Value.Status != null)
+                                      .Select(p => p.Key)
+                                      .ToHashSet();
+                query = query.Where(d => !decksWithStatus.Contains(d.DeckId));
             }
             else if (normalizedStatus != "none")
             {

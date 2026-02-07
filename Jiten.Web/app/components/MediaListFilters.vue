@@ -57,6 +57,7 @@
 
   const statusFilterOptions = [
     { label: 'Show All', value: 'none' },
+    { label: 'Without Status', value: 'nostatus' },
     { label: 'Only Favourited', value: 'fav' },
     { label: 'Only Ignored', value: 'ignore' },
     { label: 'Only Planning', value: 'planning' },
