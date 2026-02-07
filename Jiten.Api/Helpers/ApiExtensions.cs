@@ -21,8 +21,9 @@ public static class ApiExtensions
                                    PartsOfSpeech = definition.PartsOfSpeech.ToHumanReadablePartsOfSpeech(),
                                    Pos = definition.Pos.Count > 0 ? definition.Pos : null,
                                    Misc = definition.Misc.Count > 0 ? definition.Misc : null,
-                                   Field = definition.Field.Count > 0 ? definition.Field : null,
-                                   Dial = definition.Dial.Count > 0 ? definition.Dial : null
+                                   Field = definition.Field.Count > 0 ? definition.Field.ToHumanReadablePartsOfSpeech() : null,
+                                   Dial = definition.Dial.Count > 0 ? definition.Dial.ToHumanReadablePartsOfSpeech() : null,
+                                   RestrictedToReadingIndices = definition.RestrictedToReadingIndices
                                });
         }
 

@@ -132,6 +132,9 @@ export interface Definition {
   index: number;
   meanings: string[];
   partsOfSpeech: string[];
+  restrictedToReadingIndices?: number[];
+  dial?: string[];
+  field?: string[];
 }
 
 export class PaginatedResponse<T> {

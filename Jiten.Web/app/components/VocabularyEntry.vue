@@ -35,7 +35,7 @@
     </template>
     <template #subtitle />
     <template #content>
-      <VocabularyDefinitions :definitions="word.definitions" :is-compact="isCompact" />
+      <VocabularyDefinitions :definitions="word.definitions" :is-compact="isCompact" :current-reading-index="word.mainReading.readingIndex" :readings="word.alternativeReadings" />
     </template>
   </Card>
 </template>

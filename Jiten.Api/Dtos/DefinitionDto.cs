@@ -9,4 +9,5 @@ public class DefinitionDto
     public List<string>? Misc { get; set; }
     public List<string>? Field { get; set; }
     public List<string>? Dial { get; set; }
+    public List<short>? RestrictedToReadingIndices { get; set; }
 }

@@ -157,7 +157,7 @@
           <div>
             <h1 class="text-gray-500 dark:text-gray-300 text-sm">Meanings</h1>
             <div class="pl-2">
-              <VocabularyDefinitions :definitions="response.definitions" :is-compact="false" />
+              <VocabularyDefinitions :definitions="response.definitions" :is-compact="false" :current-reading-index="currentReadingIndex" :readings="response.alternativeReadings" />
             </div>
           </div>
 
