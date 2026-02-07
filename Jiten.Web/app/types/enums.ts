@@ -109,6 +109,12 @@ export enum DifficultyValueDisplayStyle {
   Percentage = 2,
 }
 
+export enum ThemeMode {
+  Light = 'light',
+  Dark = 'dark',
+  Auto = 'auto',
+}
+
 export enum DeckStatus {
   None = 0,
   Planning = 1,

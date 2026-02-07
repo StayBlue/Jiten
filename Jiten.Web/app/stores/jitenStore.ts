@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia';
-import { type DifficultyDisplayStyle, DifficultyValueDisplayStyle, TitleLanguage } from '~/types';
+import { type DifficultyDisplayStyle, DifficultyValueDisplayStyle, ThemeMode, TitleLanguage } from '~/types';
 
 const YEAR = 60 * 60 * 24 * 365;
 
@@ -23,7 +23,9 @@ function createCookieState<T>(key: string, defaultValue: T): Ref<T> {
 export const useJitenStore = defineStore('jiten', () => {
   const titleLanguage = createCookieState<TitleLanguage>('title-language', TitleLanguage.Romaji);
   const displayFurigana = createCookieState<boolean>('display-furigana', true);
-  const darkMode = createCookieState<boolean>('dark-mode', false);
+  let defaultTheme = ThemeMode.Auto;
+
+  const themeMode = createCookieState<ThemeMode>('theme-mode', defaultTheme);
   const displayAdminFunctions = createCookieState<boolean>('display-admin-functions', false);
   const readingSpeed = createCookieState<number>('reading-speed', 14000);
   const displayAllNsfw = createCookieState<boolean>('display-all-nsfw', false);
@@ -87,7 +89,7 @@ export const useJitenStore = defineStore('jiten', () => {
     // state
     titleLanguage,
     displayFurigana,
-    darkMode,
+    themeMode,
     displayAdminFunctions,
     readingSpeed,
     knownWordIds,

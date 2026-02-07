@@ -5,6 +5,10 @@
   import { useJitenStore } from '~/stores/jitenStore';
   import { useAuthStore } from '~/stores/authStore';
 
+  import { useToast } from 'primevue/usetoast';
+  import { ThemeMode } from '~/types';
+
+  const toast = useToast();
   const store = useJitenStore();
   const {
     titleLanguage,
@@ -20,6 +24,7 @@
     readingSpeed,
     difficultyDisplayStyle,
     difficultyValueDisplayStyle,
+    themeMode,
   } = storeToRefs(store);
   const auth = useAuthStore();
   const tokenCookie = useCookie('token');
@@ -37,16 +42,46 @@
     }
   );
 
-  onMounted(() => {
-    if (store.darkMode) {
-      document.documentElement.classList.add('dark-mode');
-    }
+  function applyTheme(mode: ThemeMode) {
+    const shouldBeDark = mode === ThemeMode.Dark
+      || (mode === ThemeMode.Auto && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    document.documentElement.classList.toggle('dark-mode', shouldBeDark);
+  }
+
+  const themeLabels: Record<ThemeMode, string> = {
+    [ThemeMode.Light]: 'light',
+    [ThemeMode.Dark]: 'dark',
+    [ThemeMode.Auto]: 'system',
+  };
+
+  function cycleTheme() {
+    const order = [ThemeMode.Light, ThemeMode.Dark, ThemeMode.Auto];
+    const next = order[(order.indexOf(themeMode.value) + 1) % order.length];
+    themeMode.value = next;
+    applyTheme(next);
+    toast.add({ severity: 'info', summary: `Switched to ${themeLabels[next].toLowerCase()} theme`, life: 1500 });
+  }
+
+  const themeIcon = computed(() => {
+    if (themeMode.value === ThemeMode.Light) return 'line-md:sun-rising-loop';
+    if (themeMode.value === ThemeMode.Dark) return 'line-md:moon-rising-loop';
+    return 'line-md:light-dark';
   });
 
-  function toggleDarkMode() {
-    document.documentElement.classList.toggle('dark-mode');
-    store.darkMode = !store.darkMode;
-  }
+  const themeLabel = computed(() => {
+    if (themeMode.value === ThemeMode.Light) return 'Light';
+    if (themeMode.value === ThemeMode.Dark) return 'Dark';
+    return 'Auto';
+  });
+
+  onMounted(() => {
+    applyTheme(store.themeMode);
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+      if (store.themeMode === ThemeMode.Auto) {
+        applyTheme(ThemeMode.Auto);
+      }
+    });
+  });
 
   const settings = ref();
 
@@ -122,8 +157,8 @@
             <Icon name="material-symbols-light:settings" />
           </Button>
 
-          <Button label="Toggle Dark Mode" severity="secondary" @click="toggleDarkMode()">
-            <Icon name="line-md:light-dark" />
+          <Button :label="themeLabel" severity="secondary" @click="cycleTheme()">
+            <Icon :name="themeIcon" />
           </Button>
         </nav>
 
@@ -175,8 +210,8 @@
             >
               <Icon name="material-symbols-light:settings" />
             </Button>
-            <Button label="Dark Mode" severity="secondary" class="w-full justify-center" @click="toggleDarkMode()">
-              <Icon name="line-md:light-dark" />
+            <Button :label="themeLabel" severity="secondary" class="w-full justify-center" @click="cycleTheme()">
+              <Icon :name="themeIcon" />
             </Button>
           </div>
         </div>
