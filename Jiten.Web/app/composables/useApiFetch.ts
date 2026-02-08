@@ -120,16 +120,25 @@ export  function useApiFetchPaginated<T>(
 
   setup401ErrorHandler(error, execute, request, authStore);
 
-  const paginatedData = computed(() => {
-    if (data.value) {
-      return new PaginatedResponse<T>(
-        data.value.data,
-        data.value.totalItems,
-        data.value.pageSize,
-        data.value.currentOffset
-      );
+  const paginatedData = computed({
+    get: () => {
+      if (data.value) {
+        return new PaginatedResponse<T>(
+          data.value.data,
+          data.value.totalItems,
+          data.value.pageSize,
+          data.value.currentOffset
+        );
+      }
+      return null;
+    },
+    set: (newValue) => {
+      if (newValue) {
+        data.value = { data: newValue.data, totalItems: newValue.totalItems, pageSize: newValue.pageSize, currentOffset: newValue.currentOffset } as any;
+      } else {
+        data.value = null;
+      }
     }
-    return null;
   });
 
   return {
