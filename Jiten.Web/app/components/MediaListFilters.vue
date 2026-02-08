@@ -563,7 +563,7 @@
 
       <!-- Reset Button -->
       <div class="flex justify-end pt-3 border-t border-gray-200 dark:border-gray-700">
-        <Button severity="info" @click="handleReset">
+        <Button severity="danger" @click="handleReset">
           <Icon name="material-symbols:refresh" class="mr-2" />
           Reset All Filters
         </Button>
