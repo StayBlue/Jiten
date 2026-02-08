@@ -910,7 +910,7 @@ public class ComputationJob(
 
         // Generate Yomitan deck
         string index = YomitanHelper.GetIndexJson(null);
-        var bytes = await YomitanHelper.GenerateYomitanFrequencyDeck(contextFactory, wordFrequencies, null, index);
+        var bytes = await YomitanHelper.GenerateYomitanFrequencyDeck(contextFactory, wordFrequencies, formFrequencies, null, index);
         var filePath = Path.Join(path, "jiten_freq_global.zip");
         string indexFilePath = Path.Join(path, "jiten_freq_global.json");
         await File.WriteAllBytesAsync(filePath, bytes);
@@ -926,7 +926,7 @@ public class ComputationJob(
 
             // Generate Yomitan deck
             index = YomitanHelper.GetIndexJson(mediaType);
-            bytes = await YomitanHelper.GenerateYomitanFrequencyDeck(contextFactory, wordFrequencies, mediaType, index);
+            bytes = await YomitanHelper.GenerateYomitanFrequencyDeck(contextFactory, wordFrequencies, formFrequencies, mediaType, index);
             filePath = Path.Join(path, $"jiten_freq_{mediaType.ToString()}.zip");
             indexFilePath = Path.Join(path, $"jiten_freq_{mediaType.ToString()}.json");
             await File.WriteAllBytesAsync(filePath, bytes);

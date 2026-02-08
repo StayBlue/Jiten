@@ -36,8 +36,9 @@ public static class YomitanHelper
     /// Generates a zipped Yomitan frequency dictionary for a given media type.
     /// </summary>
     public static async Task<byte[]> GenerateYomitanFrequencyDeck(IDbContextFactory<JitenDbContext> contextFactory,
-                                                                  List<JmDictWordFrequency> frequencies, MediaType? mediaType,
-                                                                  string indexJson)
+                                                                  List<JmDictWordFrequency> frequencies,
+                                                                  List<JmDictWordFormFrequency> formFrequencies,
+                                                                  MediaType? mediaType, string indexJson)
     {
         await using var context = await contextFactory.CreateDbContextAsync();
 
@@ -48,9 +49,7 @@ public static class YomitanHelper
                                     .ToListAsync();
         var formsByWord = allForms.GroupBy(wf => wf.WordId).ToDictionary(g => g.Key, g => g.OrderBy(wf => wf.ReadingIndex).ToList());
 
-        var allFormFreqs = await context.WordFormFrequencies.AsNoTracking()
-                                        .Where(wff => wordIds.Contains(wff.WordId))
-                                        .ToDictionaryAsync(wff => (wff.WordId, wff.ReadingIndex));
+        var allFormFreqs = formFrequencies.ToDictionary(wff => (wff.WordId, wff.ReadingIndex));
 
         var yomitanTermList = new List<List<object>>();
         var addedEntries = new HashSet<string>();
