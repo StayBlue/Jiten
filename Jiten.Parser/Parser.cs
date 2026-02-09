@@ -1027,7 +1027,7 @@ namespace Jiten.Parser
                 var allFormCandidates = new List<FormCandidate>();
                 foreach (JmDictWord word in candidatePool)
                 {
-                    var forms = EnumerateCandidateForms(word, textInHiragana, allowLooseLvmMatch: true);
+                    var forms = EnumerateCandidateForms(word, textInHiragana, allowLooseLvmMatch: true, surface: text);
                     allFormCandidates.AddRange(forms);
 
                     // Also try with stripped text if applicable
@@ -1038,7 +1038,7 @@ namespace Jiten.Parser
                     if (strippedHira == textInHiragana)
                         continue;
 
-                    var strippedForms = EnumerateCandidateForms(word, strippedHira, allowLooseLvmMatch: true);
+                    var strippedForms = EnumerateCandidateForms(word, strippedHira, allowLooseLvmMatch: true, surface: textStripped);
                     allFormCandidates.AddRange(strippedForms);
                 }
 
@@ -1280,7 +1280,8 @@ namespace Jiten.Parser
             foreach (var match in matches)
             {
                 var formCandidates = EnumerateCandidateForms(match.word, match.form.Text,
-                                                             allowLooseLvmMatch: true, deconjForm: match.form);
+                                                             allowLooseLvmMatch: true, deconjForm: match.form,
+                                                             surface: wordData.wordInfo.Text);
                 allFormCandidates.AddRange(formCandidates);
             }
 
@@ -1685,7 +1686,7 @@ namespace Jiten.Parser
                 return 0;
 
             var targetHiragana = WanaKana.ToHiragana(originalText, new DefaultOptions { ConvertLongVowelMark = false });
-            var candidates = EnumerateCandidateForms(word, targetHiragana, allowLooseLvmMatch: true);
+            var candidates = EnumerateCandidateForms(word, targetHiragana, allowLooseLvmMatch: true, surface: originalText);
 
             if (candidates.Count == 0)
                 return 255;
@@ -2463,7 +2464,8 @@ namespace Jiten.Parser
             JmDictWord word,
             string targetHiragana,
             bool allowLooseLvmMatch,
-            DeconjugationForm? deconjForm = null)
+            DeconjugationForm? deconjForm = null,
+            string? surface = null)
         {
             var candidates = new List<FormCandidate>();
             var targetNormalized = KanaNormalizer.Normalize(targetHiragana);
@@ -2495,11 +2497,11 @@ namespace Jiten.Parser
             if (candidates.Count <= 1)
                 return candidates;
 
-            var nonSearchOnly = candidates.Where(c => !c.Form.IsSearchOnly).ToList();
+            var nonSearchOnly = candidates.Where(c => !c.Form.IsSearchOnly || c.Form.Text == surface).ToList();
             if (nonSearchOnly.Count > 0)
                 candidates = nonSearchOnly;
 
-            var nonObsolete = candidates.Where(c => !c.Form.IsObsolete).ToList();
+            var nonObsolete = candidates.Where(c => !c.Form.IsObsolete || c.Form.Text == surface).ToList();
             if (nonObsolete.Count > 0)
                 candidates = nonObsolete;
 

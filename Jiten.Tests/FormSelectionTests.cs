@@ -149,6 +149,10 @@ public class FormSelectionTests
 
         // 後 as あと before numeral — FixReadingAmbiguity overrides Sudachi ゴ→アト
         yield return ["今死んどけば後何年も苦しまずに済むぞ。", "後", 1269320, (byte)0];
+
+        // メンドイ in katakana should select the katakana form (index 2), not the hiragana めんどい (index 1)
+        // The katakana form is tagged sk (search-only) but exact surface match preserves it
+        yield return ["メンドイ", "メンドイ", 2078360, (byte)2];
     }
 
     [Theory]
