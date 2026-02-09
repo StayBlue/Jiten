@@ -87,8 +87,10 @@ dotnet ef migrations add MigrationName --project Jiten.Core --startup-project Ji
 ```bash
 dotnet run --project Jiten.Cli -- --parse-test "飲んだから"                    # Single input diagnostics
 dotnet run --project Jiten.Cli -- --parse-test "食べている" --parse-test-output diag.json
-dotnet run --project Jiten.Cli -- --run-parser-tests                          # Batch tests
+dotnet run --project Jiten.Cli -- --run-parser-tests                          # Batch segmentation tests
 dotnet run --project Jiten.Cli -- --run-parser-tests --parse-test-output failures.json
+dotnet run --project Jiten.Cli -- --run-form-tests                           # WordId/ReadingIndex correctness tests
+dotnet run --project Jiten.Cli -- --run-form-tests --parse-test-output failures.json
 dotnet run --project Jiten.Cli -- --deconjugate-test "飲んだ"                   # Show all deconjugation forms
 dotnet run --project Jiten.Cli -- --deconjugate-test "食べさせられた" --parse-test-output deconj.json
 ```

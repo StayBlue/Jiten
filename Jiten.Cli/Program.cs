@@ -131,6 +131,11 @@ public class Program
             await diagnosticCommands.RunParserTests(options);
         }
 
+        if (options.RunFormTests)
+        {
+            await diagnosticCommands.RunFormTests(options);
+        }
+
         if (options.DeconjugateTest != null)
         {
             await diagnosticCommands.DeconjugateTest(options);

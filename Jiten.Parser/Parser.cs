@@ -47,7 +47,7 @@ namespace Jiten.Parser
             (1291070, 1), (1587980, 1), (1443970, 5), (2029660, 0), (1177490, 5), (2029000, 1),
             (1244950, 1), (1243940, 1), (2747970, 1), (2029680, 0), (1193570, 6), (1796500, 2),
             (1811220, 1), (2654270, 0), (2269410, 1), (2439040, 3), (2861095, 0), (2836250, 0),
-            (1595910, 4), (2577750, 0), (1365520, 1), (1310720, 1)
+            (1595910, 4), (2577750, 0), (1365520, 1), (1310720, 1), (1528180,1), (2866457,1)
         ];
 
         private static async Task InitDictionaries()
@@ -2184,9 +2184,9 @@ namespace Jiten.Parser
                         var combinedWord = new WordInfo(sectionCarrier)
                                            {
                                                Text = combinedText, DictionaryForm = combinedText,
-                                               PartOfSpeech = sentence.Words[i].word.PartOfSpeech, NormalizedForm = combinedText,
-                                               Reading = WanaKana.ToHiragana(combinedReading,
-                                                                             new DefaultOptions { ConvertLongVowelMark = false }),
+                                               PartOfSpeech = sentence.Words[i].word.PartOfSpeech, NormalizedForm = combinedText, Reading =
+                                                   WanaKana.ToHiragana(combinedReading,
+                                                                       new DefaultOptions { ConvertLongVowelMark = false }),
                                                PreMatchedWordId = null
                                            };
 
@@ -2524,8 +2524,13 @@ namespace Jiten.Parser
                 wordScore += 100;
             if (!isNameContext && word.PartsOfSpeech.ToPartOfSpeech().Contains(PartOfSpeech.Name))
                 wordScore -= 50;
-            if (word.PartsOfSpeech.Contains("arch"))
-                wordScore -= 200;
+            if (word.IsFullyArchaic)
+            {
+                bool hasFrequencyMarker = word.Priorities?.Any(p =>
+                    p is "ichi1" or "ichi2" or "news1" or "news2" or "jiten" || p.StartsWith("nf")) == true;
+                if (!hasFrequencyMarker)
+                    wordScore -= 200;
+            }
 
             // 2) EntryPriorityScore — global word frequency from word-level priorities
             int entryPriorityScore = 0;
@@ -2539,7 +2544,11 @@ namespace Jiten.Parser
 
             var wnf = wordPri.FirstOrDefault(p => p.StartsWith("nf"));
             if (wnf is { Length: > 2 } && int.TryParse(wnf[2..], out var wnfRank))
+            {
                 entryPriorityScore += Math.Max(0, 5 - (int)Math.Round(wnfRank / 10f));
+                if (wnfRank <= 5)
+                    entryPriorityScore += 6 - wnfRank;
+            }
 
             if (entryPriorityScore == 0)
             {
@@ -2661,7 +2670,7 @@ namespace Jiten.Parser
                                                                                          ConvertLongVowelMark = false
                                                                                      })) == sudachiHira);
                 if (hasMatchingReading)
-                    readingMatchScore += 35;
+                    readingMatchScore += 50;
                 // Stem fallback — for conjugated verbs the reading is a conjugated stem (e.g. ヒラカ)
                 // that won't exactly match the dictionary kana form (ひらく/あく).
                 // Strip the last kana from both and compare stems to disambiguate.
@@ -2682,7 +2691,7 @@ namespace Jiten.Parser
                                                 return hiragana.Length > 1 && hiragana[..^1] == sudachiStem;
                                             });
                     if (hasStemMatch)
-                        readingMatchScore += 35;
+                        readingMatchScore += 50;
                 }
             }
 

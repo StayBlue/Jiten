@@ -182,6 +182,52 @@ public class DiagnosticCommands(CliContext context)
         }
     }
 
+    public async Task RunFormTests(CliOptions options)
+    {
+        var runner = new DiagnosticTestRunner(context.ContextFactory);
+        var result = await runner.RunFormSelectionTests();
+
+        Console.WriteLine($"=== Form Selection Test Results ===");
+        Console.WriteLine($"Total: {result.TotalTests}, Passed: {result.Passed}, Failed: {result.Failed}");
+        Console.WriteLine();
+
+        if (result.Failures.Count == 0)
+        {
+            Console.WriteLine("All tests passed!");
+            return;
+        }
+
+        Console.WriteLine($"=== Failures ({result.Failures.Count}) ===");
+        Console.WriteLine();
+
+        var jsonOptions = new JsonSerializerOptions
+        {
+            WriteIndented = true,
+            Encoder = JavaScriptEncoder.Create(UnicodeRanges.All)
+        };
+
+        foreach (var failure in result.Failures.Take(20))
+        {
+            Console.WriteLine($"Input: {failure.Input}");
+            Console.WriteLine($"Expected: token='{failure.ExpectedToken}' wordId={failure.ExpectedWordId} readingIndex={failure.ExpectedReadingIndex}");
+            Console.WriteLine($"Actual:   {(failure.ActualWordId.HasValue ? $"wordId={failure.ActualWordId} readingIndex={failure.ActualReadingIndex}" : "token not found in results")}");
+            Console.WriteLine($"Reason: {failure.Reason}");
+            Console.WriteLine();
+        }
+
+        if (result.Failures.Count > 20)
+        {
+            Console.WriteLine($"... and {result.Failures.Count - 20} more failures.");
+        }
+
+        if (!string.IsNullOrEmpty(options.ParseTestOutput))
+        {
+            var json = JsonSerializer.Serialize(result, jsonOptions);
+            await File.WriteAllTextAsync(options.ParseTestOutput, json);
+            Console.WriteLine($"Full diagnostics written to {options.ParseTestOutput}");
+        }
+    }
+
     public async Task SearchWord(string query)
     {
         await using var context1 = await context.ContextFactory.CreateDbContextAsync();

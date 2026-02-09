@@ -98,6 +98,7 @@ public class MorphologicalAnalyser
         ("何と", "も", PartOfSpeech.Adverb),
         ("なくて", "も", PartOfSpeech.Expression),
         ("なんに", "も", PartOfSpeech.Adverb),
+        ("なし", "で", PartOfSpeech.Expression),
         ("なん", "で", PartOfSpeech.Adverb),
         ("に", "ついて", PartOfSpeech.Expression),
         ("だ", "って", PartOfSpeech.Conjunction),
@@ -108,6 +109,7 @@ public class MorphologicalAnalyser
         ("多", "き", PartOfSpeech.IAdjective),
         ("ぶっ", "た", PartOfSpeech.Suffix),
         ("に", "よる", PartOfSpeech.Expression),
+        ("に", "より", PartOfSpeech.Expression),
         ("とっく", "に", PartOfSpeech.Adverb),
         ("おい", "で", PartOfSpeech.Expression),
     ];
@@ -422,6 +424,10 @@ public class MorphologicalAnalyser
                     word.Reading = "イチニチ";
             }
 
+            // 禍 (カ) → ワザワイ when standalone — カ reading only used in compounds (コロナ禍, 戦禍, 禍根)
+            if (word is { Text: "禍", Reading: "カ" })
+                word.Reading = "ワザワイ";
+
             // 寒気 (カンキ cold air) → サムケ (chills) when followed by が + する
             // e.g. 寒気がする/寒気がした (to have chills) vs 寒気が南下する (cold air moves south)
             if (word is { Text: "寒気", Reading: "カンキ" } &&
@@ -429,6 +435,16 @@ public class MorphologicalAnalyser
                 wordInfos[i + 2].DictionaryForm == "する")
             {
                 word.Reading = "サムケ";
+            }
+
+            // 後 (ゴ) → アト when followed by a numeral/何 — adverbial "more/remaining"
+            // e.g. 後何年 (how many more years), 後少し (a little more)
+            if (word is { Text: "後", Reading: "ゴ" } &&
+                i + 1 < wordInfos.Count &&
+                (wordInfos[i + 1].PartOfSpeech == PartOfSpeech.Numeral ||
+                 wordInfos[i + 1].HasPartOfSpeechSection(PartOfSpeechSection.Numeral)))
+            {
+                word.Reading = "アト";
             }
 
             // あの: Sudachi sometimes misclassifies as 感動詞 (filler) when it's prenominal,

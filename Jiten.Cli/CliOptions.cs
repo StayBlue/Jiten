@@ -130,6 +130,9 @@ public class CliOptions
     [Option(longName: "run-parser-tests", Required = false, HelpText = "Run all parser tests with diagnostics and fix suggestions.")]
     public bool RunParserTests { get; set; }
 
+    [Option(longName: "run-form-tests", Required = false, HelpText = "Run form selection tests (WordId/ReadingIndex correctness from FormSelectionTests).")]
+    public bool RunFormTests { get; set; }
+
     [Option(longName: "search-word", Required = false, HelpText = "Search for a word in JMDict by reading or WordId.")]
     public string? SearchWord { get; set; }
 

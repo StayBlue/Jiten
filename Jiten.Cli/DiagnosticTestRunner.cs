@@ -131,6 +131,140 @@ public class DiagnosticTestRunner
         return testCases;
     }
 
+    public async Task<FormTestRunResult> RunFormSelectionTests()
+    {
+        var testCases = LoadFormSelectionCasesFromAssembly();
+        var failures = new List<FormTestFailure>();
+        var passed = 0;
+
+        Console.WriteLine($"Running {testCases.Count} form selection tests...");
+
+        foreach (var (input, expectedToken, expectedWordId, expectedReadingIndex) in testCases)
+        {
+            if (_contextFactory == null)
+            {
+                Console.WriteLine($"Test failed: {input} - No context factory available");
+                continue;
+            }
+
+            var result = await Parser.Parser.ParseText(_contextFactory, input);
+            var match = result.FirstOrDefault(w => w.OriginalText == expectedToken);
+
+            if (match == null)
+            {
+                failures.Add(new FormTestFailure
+                {
+                    Input = input, ExpectedToken = expectedToken,
+                    ExpectedWordId = expectedWordId, ExpectedReadingIndex = expectedReadingIndex,
+                    Reason = $"Token '{expectedToken}' not found in parse results"
+                });
+                continue;
+            }
+
+            if (match.WordId == expectedWordId && match.ReadingIndex == expectedReadingIndex)
+            {
+                passed++;
+                continue;
+            }
+
+            var reasons = new List<string>();
+            if (match.WordId != expectedWordId)
+                reasons.Add($"WordId: expected {expectedWordId}, got {match.WordId}");
+            if (match.ReadingIndex != expectedReadingIndex)
+                reasons.Add($"ReadingIndex: expected {expectedReadingIndex}, got {match.ReadingIndex}");
+
+            failures.Add(new FormTestFailure
+            {
+                Input = input, ExpectedToken = expectedToken,
+                ExpectedWordId = expectedWordId, ExpectedReadingIndex = expectedReadingIndex,
+                ActualWordId = match.WordId, ActualReadingIndex = match.ReadingIndex,
+                Reason = string.Join("; ", reasons)
+            });
+        }
+
+        return new FormTestRunResult
+        {
+            TotalTests = testCases.Count, Passed = passed, Failed = failures.Count, Failures = failures
+        };
+    }
+
+    public List<(string Input, string ExpectedToken, int ExpectedWordId, byte ExpectedReadingIndex)> LoadFormSelectionCasesFromAssembly()
+    {
+        var testCases = new List<(string, string, int, byte)>();
+
+        var baseDir = AppDomain.CurrentDomain.BaseDirectory;
+        var candidatePaths = new[]
+        {
+            Path.Combine(baseDir, "Jiten.Tests.dll"),
+            Path.Combine(baseDir, "..", "..", "..", "..", "Jiten.Tests", "bin", "Debug", "net9.0", "Jiten.Tests.dll"),
+            Path.Combine(baseDir, "..", "..", "..", "..", "Jiten.Tests", "bin", "Release", "net9.0", "Jiten.Tests.dll"),
+            Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), "Jiten.Tests", "bin", "Debug", "net9.0", "Jiten.Tests.dll")),
+        };
+
+        string? testAssemblyPath = null;
+        foreach (var path in candidatePaths)
+        {
+            var fullPath = Path.GetFullPath(path);
+            if (File.Exists(fullPath))
+            {
+                testAssemblyPath = fullPath;
+                break;
+            }
+        }
+
+        if (testAssemblyPath == null)
+        {
+            Console.WriteLine("Error: Test assembly not found. Searched paths:");
+            foreach (var path in candidatePaths)
+                Console.WriteLine($"  - {Path.GetFullPath(path)}");
+            return testCases;
+        }
+
+        try
+        {
+            var testAssembly = Assembly.LoadFrom(testAssemblyPath);
+            var testClass = testAssembly.GetType("Jiten.Tests.FormSelectionTests");
+            if (testClass == null)
+            {
+                Console.WriteLine("Error: Test class 'Jiten.Tests.FormSelectionTests' not found in assembly.");
+                return testCases;
+            }
+
+            var dataMethod = testClass.GetMethod("FormSelectionCases", BindingFlags.Public | BindingFlags.Static);
+            if (dataMethod == null)
+            {
+                Console.WriteLine("Error: Method 'FormSelectionCases' not found in class.");
+                return testCases;
+            }
+
+            var result = dataMethod.Invoke(null, null);
+            if (result is IEnumerable<object[]> dataEnumerable)
+            {
+                foreach (var data in dataEnumerable)
+                {
+                    if (data?.Length >= 4 && data[0] is string input && data[1] is string expectedToken
+                                          && data[2] is int expectedWordId && data[3] is byte expectedReadingIndex)
+                    {
+                        testCases.Add((input, expectedToken, expectedWordId, expectedReadingIndex));
+                    }
+                }
+            }
+
+            if (testCases.Count == 0)
+                Console.WriteLine("Warning: No form selection test cases found.");
+            else
+                Console.WriteLine($"Loaded {testCases.Count} form selection test cases from {Path.GetFileName(testAssemblyPath)}");
+
+            return testCases;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading test assembly: {ex.Message}");
+        }
+
+        return testCases;
+    }
+
     public async Task<TestRunResult> RunSegmentationTests()
     {
         var testCases = LoadTestCasesFromAssembly();

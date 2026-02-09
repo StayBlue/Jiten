@@ -1,3 +1,5 @@
+using System.ComponentModel.DataAnnotations.Schema;
+
 namespace Jiten.Core.Data.JMDict;
 
 public class JmDictWord
@@ -11,6 +13,9 @@ public class JmDictWord
     public List<string>? Priorities { get; set; } = [];
     public WordOrigin Origin { get; set; } = WordOrigin.Unknown;
     public List<JmDictWordForm> Forms { get; set; } = [];
+
+    [NotMapped]
+    public bool IsFullyArchaic { get; set; }
 
     public int GetPriorityScore(bool isKana)
     {

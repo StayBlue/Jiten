@@ -57,6 +57,10 @@ public class FormSelectionTests
         // Both score identically — tie-broken by lower WordId
         yield return ["いえない", "いえない", 1008860, (byte)2];
 
+        // いえる should resolve to 言える (1008860, "to be able to say"), not 癒える (1538740, "to be healed")
+        // 言える has arch on one definition only — IsFullyArchaic=false prevents the -200 penalty
+        yield return ["狂信的ともいえる技術信仰", "いえる", 1008860, (byte)2];
+
         // 身体 in isolation: Sudachi gives reading シンタイ, so しんたい (2830705) wins via ReadingMatchScore.
         // In sentence context where Sudachi gives カラダ, からだ (1409140) wins via EntryPriorityScore.
         yield return ["身体", "身体", 2830705, (byte)0];
@@ -123,11 +127,28 @@ public class FormSelectionTests
         yield return ["柔らかく、冷たいあの見慣れた顔。", "あの", 1000420, (byte)1];
         yield return ["音無さんのあの『パンツ』発言。", "あの", 1000420, (byte)1];
 
+        // 禍 standalone → わざわい/disaster (1295080), not か (2844158)
+        // FixReadingAmbiguity overrides Sudachi カ→ワザワイ for standalone 禍
+        yield return ["大戦の禍に飲み込まれた", "禍", 1295080, (byte)1];
+
         // 空 as から (empty, 1245280) — Sudachi gives 形状詞/ウツロ, ProcessSpecialCases overrides to noun/カラ
         yield return ["妹のベッドも空なのか？", "空", 1245280, (byte)0];
 
         // 空 as そら (sky, 1245290) — Sudachi gives 名詞/ソラ, ReadingMatchScore disambiguates
         yield return ["空を見上げた", "空", 1245290, (byte)0];
+
+        // 君 as くん/Mr (1247260), not ぎみ (2697530)
+        // Common word with one archaic sense: no arch penalty (has ichi1), ReadingMatchScore disambiguates
+        yield return ["６君にはＡｎｃｉｅｎｔ　Ｏｒｄｅｒの廃墟まで行ってもらう。", "君", 1247260, (byte)0];
+
+        // 後 as あと/after (1269320) in kanji — Sudachi reading アト disambiguates vs うしろ (1269410)
+        yield return ["一瞬の溜めの後、少女は勢いよく俺を引っ張った。", "後", 1269320, (byte)0];
+
+        // あと in kana — 後/after (1269320, nf01) beats 跡/trace (1383680, nf03) via top-band nf granularity
+        yield return ["あとＴｈｉｅｖｅｓ　Ｃｉｒｃｌｅが例のごとくチンケな問題を起こしている。", "あと", 1269320, (byte)1];
+
+        // 後 as あと before numeral — FixReadingAmbiguity overrides Sudachi ゴ→アト
+        yield return ["今死んどけば後何年も苦しまずに済むぞ。", "後", 1269320, (byte)0];
     }
 
     [Theory]

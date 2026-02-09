@@ -127,3 +127,22 @@ public class FailureAnalysis
     public string? ProbableCause { get; set; }
     public string? SuggestedFix { get; set; }
 }
+
+public class FormTestRunResult
+{
+    public int TotalTests { get; set; }
+    public int Passed { get; set; }
+    public int Failed { get; set; }
+    public List<FormTestFailure> Failures { get; set; } = [];
+}
+
+public class FormTestFailure
+{
+    public string Input { get; set; } = string.Empty;
+    public string ExpectedToken { get; set; } = string.Empty;
+    public int ExpectedWordId { get; set; }
+    public byte ExpectedReadingIndex { get; set; }
+    public int? ActualWordId { get; set; }
+    public byte? ActualReadingIndex { get; set; }
+    public string Reason { get; set; } = string.Empty;
+}

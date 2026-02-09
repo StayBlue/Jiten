@@ -135,15 +135,16 @@ public class RedisJmDictCache : IJmDictCache
         {
             await using var dbContext = await _contextFactory.CreateDbContextAsync();
 
-            // Fetch the word from database
             var word = await dbContext.JMDictWords
                                       .AsNoTracking()
                                       .Include(w => w.Forms.OrderBy(f => f.ReadingIndex))
+                                      .Include(w => w.Definitions)
                                       .FirstOrDefaultAsync(w => w.WordId == wordId);
 
-            // Cache the result if found
             if (word != null)
             {
+                ComputeArchaicFlag(word);
+                word.Definitions = [];
                 var newJson = JsonSerializer.Serialize(word, _jsonOptions);
                 await _redisDb.StringSetAsync(redisKey, newJson, expiry: _cacheExpiry);
             }
@@ -222,19 +223,20 @@ public class RedisJmDictCache : IJmDictCache
                             var dbWords = await dbContext.JMDictWords
                                 .AsNoTracking()
                                 .Include(w => w.Forms.OrderBy(f => f.ReadingIndex))
+                                .Include(w => w.Definitions)
                                 .Where(w => batchIds.Contains(w.WordId))
                                 .ToListAsync();
-    
+
                             if (dbWords.Any())
                             {
-                                // Cache the results in Redis
                                 var cacheBatch = _redisDb.CreateBatch();
                                 foreach (var word in dbWords)
                                 {
+                                    ComputeArchaicFlag(word);
+                                    word.Definitions = [];
                                     results[word.WordId] = word;
                                     var redisKey = BuildWordKey(word.WordId);
                                     var json = JsonSerializer.Serialize(word, _jsonOptions);
-                                    // Use FireAndForget to avoid waiting for Redis response
                                     cacheBatch.StringSetAsync(redisKey, json, expiry: _cacheExpiry, flags: CommandFlags.FireAndForget);
                                 }
                                 cacheBatch.Execute();
@@ -308,6 +310,15 @@ public class RedisJmDictCache : IJmDictCache
         await Task.WhenAll(tasks);
 
         return tasks.All(t => t.Result);
+    }
+
+    private static void ComputeArchaicFlag(JmDictWord word)
+    {
+        if (!word.PartsOfSpeech.Contains("arch"))
+            return;
+
+        word.IsFullyArchaic = word.Definitions.Count > 0
+                              && word.Definitions.All(d => d.PartsOfSpeech.Contains("arch"));
     }
 
     public async Task<bool> IsCacheInitializedAsync()
