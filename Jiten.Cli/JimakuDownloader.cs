@@ -21,6 +21,26 @@ public class JimakuDownloader
     private static string _tmdbApiKey;
 
     private static readonly List<string> _supportedExtensions = [".ass", ".srt", ".ssa"];
+    // ASS styles/markers to skip (CN lines)
+    private static readonly string[] _chineseLineMarkers =
+    [
+        "cn",
+        "720通用注釋",
+        "1080通用注釋",
+        "通用720中文",
+        "單語720中文",
+        "通用1080中文",
+        "單語1080中文",
+        "花語製作通用",
+        "CN",
+        "CN2",
+        "OPCN",
+        "EDCN",
+        "SCR",
+        "STAFF",
+        "CHI",
+        "EDSC"
+    ];
 
     public static async Task Download(string? baseDirectory, int startRange, int endRange)
     {
@@ -145,7 +165,13 @@ public class JimakuDownloader
             {
                 var ssaFile = Path.ChangeExtension(assFile, ".ssa");
                 var lines = await File.ReadAllLinesAsync(assFile);
-                var filteredLines = lines.Where(line => !line.TrimStart().StartsWith(";") && !line.Contains("cn")).ToList();
+                // Drop comments and CN-marked lines
+                var filteredLines = lines
+                    .Where(line =>
+                        !line.TrimStart().StartsWith(";") &&
+                        !line.StartsWith("Comment:", StringComparison.OrdinalIgnoreCase) &&
+                        !_chineseLineMarkers.Any(marker => line.Contains(marker, StringComparison.Ordinal)))
+                    .ToList();
                 await File.WriteAllLinesAsync(ssaFile, filteredLines);
                 File.Delete(assFile);
             }
