@@ -224,6 +224,34 @@ export interface Issues {
   missingTags: number[];
 }
 
+export interface WordFormSummary {
+  readingIndex: number;
+  text: string;
+  rubyText: string;
+  formType: number;
+}
+
+export interface MissingFuriganaItem {
+  wordId: number;
+  readingIndex: number;
+  text: string;
+  rubyText: string;
+  formType: number;
+  partsOfSpeech: string[];
+  allForms: WordFormSummary[];
+}
+
+export interface MissingFuriganaPaginatedResponse {
+  items: MissingFuriganaItem[];
+  totalCount: number;
+}
+
+export interface WordFormsResponse {
+  wordId: number;
+  partsOfSpeech: string[];
+  forms: WordFormSummary[];
+}
+
 export interface LoginRequest {
   usernameOrEmail: string;
   password: string;

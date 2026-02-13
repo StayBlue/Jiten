@@ -77,6 +77,16 @@
           </div>
         </template>
       </Card>
+
+      <Card class="shadow-md">
+        <template #title>Furigana Issues</template>
+        <template #content>
+          <p class="mb-4">Find and fix kanji words missing furigana</p>
+          <div class="flex justify-center">
+            <Button label="Manage Furigana" class="p-button-primary" @click="navigateTo('/dashboard/furigana-issues')" />
+          </div>
+        </template>
+      </Card>
     </div>
   </div>
 </template>

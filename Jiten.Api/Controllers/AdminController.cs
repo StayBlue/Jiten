@@ -10,6 +10,7 @@ using Jiten.Cli;
 using Jiten.Core;
 using Jiten.Core.Data;
 using Jiten.Core.Data.FSRS;
+using Jiten.Core.Data.JMDict;
 using Jiten.Core.Data.Providers;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -780,6 +781,117 @@ public partial class AdminController(
                                   .Select(d => d.DeckId).ToList();
 
         return Ok(issues);
+    }
+
+    [HttpGet("words/missing-furigana")]
+    public async Task<IActionResult> GetMissingFurigana(
+        [FromQuery] int limit = 50,
+        [FromQuery] int offset = 0,
+        [FromQuery] string? search = null)
+    {
+        var nameOnlyWordIds = await JmDictHelper.LoadNameOnlyWordIds(dbContext);
+
+        var query = dbContext.WordForms.AsNoTracking()
+            .Where(wf => wf.FormType == JmDictFormType.KanjiForm)
+            .Where(wf => !wf.RubyText.Contains("["))
+            .Where(wf => !nameOnlyWordIds.Contains(wf.WordId));
+
+        if (!string.IsNullOrWhiteSpace(search))
+            query = query.Where(wf => wf.Text.Contains(search));
+
+        var totalCount = await query.CountAsync();
+
+        var forms = await query
+            .OrderBy(wf => wf.WordId).ThenBy(wf => wf.ReadingIndex)
+            .Skip(offset)
+            .Take(limit)
+            .ToListAsync();
+
+        var wordIds = forms.Select(f => f.WordId).Distinct().ToList();
+
+        var words = await dbContext.JMDictWords.AsNoTracking()
+            .Where(w => wordIds.Contains(w.WordId))
+            .Include(w => w.Forms.OrderBy(f => f.ReadingIndex))
+            .ToDictionaryAsync(w => w.WordId);
+
+        var items = forms.Select(f =>
+        {
+            words.TryGetValue(f.WordId, out var word);
+            return new MissingFuriganaDto
+            {
+                WordId = f.WordId,
+                ReadingIndex = f.ReadingIndex,
+                Text = f.Text,
+                RubyText = f.RubyText ?? "",
+                FormType = f.FormType,
+                PartsOfSpeech = word?.PartsOfSpeech ?? [],
+                AllForms = word?.Forms.Select(af => new WordFormSummary
+                {
+                    ReadingIndex = af.ReadingIndex,
+                    Text = af.Text,
+                    RubyText = af.RubyText ?? "",
+                    FormType = af.FormType
+                }).ToList() ?? []
+            };
+        }).ToList();
+
+        return Ok(new MissingFuriganaPaginatedResponse { Items = items, TotalCount = totalCount });
+    }
+
+    [HttpGet("words/{wordId}/forms")]
+    public async Task<IActionResult> GetWordForms(int wordId)
+    {
+        var word = await dbContext.JMDictWords.AsNoTracking()
+            .Include(w => w.Forms.OrderBy(f => f.ReadingIndex))
+            .FirstOrDefaultAsync(w => w.WordId == wordId);
+
+        if (word == null)
+            return NotFound(new { Message = $"Word {wordId} not found" });
+
+        var forms = word.Forms.Select(f => new WordFormSummary
+        {
+            ReadingIndex = f.ReadingIndex,
+            Text = f.Text,
+            RubyText = f.RubyText ?? "",
+            FormType = f.FormType
+        }).ToList();
+
+        return Ok(new { word.WordId, word.PartsOfSpeech, Forms = forms });
+    }
+
+    [HttpPut("words/{wordId}/forms/{readingIndex}/ruby-text")]
+    public async Task<IActionResult> UpdateRubyText(
+        int wordId,
+        short readingIndex,
+        [FromBody] UpdateRubyTextRequest request)
+    {
+        var form = await dbContext.WordForms
+            .FirstOrDefaultAsync(wf => wf.WordId == wordId && wf.ReadingIndex == readingIndex);
+
+        if (form == null)
+            return NotFound(new { Message = $"Form {wordId}:{readingIndex} not found" });
+
+        var oldRubyText = form.RubyText;
+        form.RubyText = request.RubyText;
+        await dbContext.SaveChangesAsync();
+
+        try
+        {
+            var connection = await ConnectionMultiplexer.ConnectAsync(config.GetConnectionString("Redis")!);
+            var redisDb = connection.GetDatabase();
+            await redisDb.KeyDeleteAsync($"jmdict:word:{wordId}");
+            await connection.CloseAsync();
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Failed to invalidate Redis cache for word {WordId}", wordId);
+        }
+
+        logger.LogInformation(
+            "Admin updated RubyText for {WordId}:{ReadingIndex}: '{OldRubyText}' -> '{NewRubyText}'",
+            wordId, readingIndex, oldRubyText, request.RubyText);
+
+        return Ok(new { Message = "RubyText updated", WordId = wordId, ReadingIndex = readingIndex });
     }
 
     [HttpPost("fetch-metadata/{deckId}")]
