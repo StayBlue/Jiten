@@ -99,11 +99,14 @@ public class MediaDeckController(
 
         limit = Math.Clamp(limit, 1, 10);
 
-        var normalizedFilter = query.Trim();
-        if (TextNormalizationHelper.ContainsRomaji(normalizedFilter))
-            normalizedFilter = TextNormalizationHelper.NormaliseRomaji(normalizedFilter);
-        var filterNoSpaces = normalizedFilter.Replace(" ", "");
-        var queryLength = normalizedFilter.Length;
+        var originalFilter = query.Trim();
+        var romajiFilter = TextNormalizationHelper.ContainsRomaji(originalFilter)
+            ? TextNormalizationHelper.NormaliseRomaji(originalFilter)
+            : originalFilter;
+        var hasRomajiVariant = romajiFilter != originalFilter.ToLowerInvariant();
+        var filterNoSpaces = originalFilter.Replace(" ", "");
+        var romajiFilterNoSpaces = romajiFilter.Replace(" ", "");
+        var queryLength = originalFilter.Length;
 
         FormattableString sql = $$"""
                                   WITH exact_matches AS (
@@ -113,8 +116,9 @@ public class MediaDeckController(
                                              dt."TitleType",
                                              LENGTH(dt."Title") AS title_length
                                       FROM jiten."DeckTitles" dt
-                                      WHERE LOWER(dt."Title") = LOWER({{normalizedFilter}})
+                                      WHERE LOWER(dt."Title") = LOWER({{originalFilter}})
                                          OR LOWER(dt."TitleNoSpaces") = LOWER({{filterNoSpaces}})
+                                         OR ({{hasRomajiVariant}} AND (LOWER(dt."Title") = {{romajiFilter}} OR LOWER(dt."TitleNoSpaces") = {{romajiFilterNoSpaces}}))
                                   ),
                                   fuzzy_title_matches AS (
                                       SELECT dt."DeckId",
@@ -123,7 +127,7 @@ public class MediaDeckController(
                                              dt."TitleType",
                                              LENGTH(dt."Title") AS title_length
                                       FROM jiten."DeckTitles" dt
-                                      WHERE dt."Title" &@~ {{normalizedFilter}}
+                                      WHERE (dt."Title" &@~ {{originalFilter}} OR ({{hasRomajiVariant}} AND dt."Title" &@~ {{romajiFilter}}))
                                         AND dt."DeckId" NOT IN (SELECT "DeckId" FROM exact_matches)
                                   ),
                                   fuzzy_nospace_matches AS (
@@ -134,7 +138,7 @@ public class MediaDeckController(
                                              LENGTH(dt."TitleNoSpaces") AS title_length
                                       FROM jiten."DeckTitles" dt
                                       WHERE dt."TitleType" IN (1, 3)
-                                        AND dt."TitleNoSpaces" &@~ {{filterNoSpaces}}
+                                        AND (dt."TitleNoSpaces" &@~ {{filterNoSpaces}} OR ({{hasRomajiVariant}} AND dt."TitleNoSpaces" &@~ {{romajiFilterNoSpaces}}))
                                         AND dt."DeckId" NOT IN (SELECT "DeckId" FROM exact_matches)
                                         AND dt."DeckId" NOT IN (SELECT "DeckId" FROM fuzzy_title_matches)
                                   ),
@@ -170,7 +174,7 @@ public class MediaDeckController(
         var results = await context.Database.SqlQuery<DeckIdWithCount>(sql).ToListAsync();
 
         if (results.Count == 0)
-            results = await LevenshteinSuggestionsFallback(normalizedFilter, filterNoSpaces, limit);
+            results = await LevenshteinSuggestionsFallback(originalFilter, filterNoSpaces, limit);
 
         if (results.Count == 0)
             return Ok(new MediaSuggestionsResponse());
@@ -275,11 +279,14 @@ public class MediaDeckController(
 
         if (!string.IsNullOrEmpty(titleFilter))
         {
-            var normalizedFilter = titleFilter.Trim();
-            if (TextNormalizationHelper.ContainsRomaji(normalizedFilter))
-                normalizedFilter = TextNormalizationHelper.NormaliseRomaji(normalizedFilter);
-            var filterNoSpaces = normalizedFilter.Replace(" ", "");
-            var queryLength = normalizedFilter.Length;
+            var originalFilter = titleFilter.Trim();
+            var romajiFilter = TextNormalizationHelper.ContainsRomaji(originalFilter)
+                ? TextNormalizationHelper.NormaliseRomaji(originalFilter)
+                : originalFilter;
+            var hasRomajiVariant = romajiFilter != originalFilter.ToLowerInvariant();
+            var filterNoSpaces = originalFilter.Replace(" ", "");
+            var romajiFilterNoSpaces = romajiFilter.Replace(" ", "");
+            var queryLength = originalFilter.Length;
 
             FormattableString sql = $$"""
                                       WITH exact_matches AS (
@@ -289,8 +296,9 @@ public class MediaDeckController(
                                                  dt."TitleType",
                                                  LENGTH(dt."Title") AS title_length
                                           FROM jiten."DeckTitles" dt
-                                          WHERE LOWER(dt."Title") = LOWER({{normalizedFilter}})
+                                          WHERE LOWER(dt."Title") = LOWER({{originalFilter}})
                                              OR LOWER(dt."TitleNoSpaces") = LOWER({{filterNoSpaces}})
+                                             OR ({{hasRomajiVariant}} AND (LOWER(dt."Title") = {{romajiFilter}} OR LOWER(dt."TitleNoSpaces") = {{romajiFilterNoSpaces}}))
                                       ),
                                       fuzzy_title_matches AS (
                                           SELECT dt."DeckId",
@@ -299,7 +307,7 @@ public class MediaDeckController(
                                                  dt."TitleType",
                                                  LENGTH(dt."Title") AS title_length
                                           FROM jiten."DeckTitles" dt
-                                          WHERE dt."Title" &@~ {{normalizedFilter}}
+                                          WHERE (dt."Title" &@~ {{originalFilter}} OR ({{hasRomajiVariant}} AND dt."Title" &@~ {{romajiFilter}}))
                                             AND dt."DeckId" NOT IN (SELECT "DeckId" FROM exact_matches)
                                       ),
                                       fuzzy_nospace_matches AS (
@@ -310,7 +318,7 @@ public class MediaDeckController(
                                                  LENGTH(dt."TitleNoSpaces") AS title_length
                                           FROM jiten."DeckTitles" dt
                                           WHERE dt."TitleType" IN (1, 3)
-                                            AND dt."TitleNoSpaces" &@~ {{filterNoSpaces}}
+                                            AND (dt."TitleNoSpaces" &@~ {{filterNoSpaces}} OR ({{hasRomajiVariant}} AND dt."TitleNoSpaces" &@~ {{romajiFilterNoSpaces}}))
                                             AND dt."DeckId" NOT IN (SELECT "DeckId" FROM exact_matches)
                                             AND dt."DeckId" NOT IN (SELECT "DeckId" FROM fuzzy_title_matches)
                                       ),
@@ -345,7 +353,7 @@ public class MediaDeckController(
             orderedDeckIds = await context.Database.SqlQuery<int>(sql).ToListAsync();
 
             if (orderedDeckIds.Count == 0)
-                orderedDeckIds = await LevenshteinDeckIdsFallback(normalizedFilter, filterNoSpaces);
+                orderedDeckIds = await LevenshteinDeckIdsFallback(originalFilter, filterNoSpaces);
 
             query = query.Where(d => orderedDeckIds.Contains(d.DeckId));
         }
