@@ -23,7 +23,7 @@ public class Deconjugator
 
     private static readonly bool UseCache = true;
 
-    private static readonly ConcurrentDictionary<string, HashSet<DeconjugationForm>> DeconjugationCache
+    private static readonly ConcurrentDictionary<string, List<DeconjugationForm>> DeconjugationCache
         = new(StringComparer.Ordinal);
 
     public Deconjugator()
@@ -115,18 +115,17 @@ public class Deconjugator
             _seenTextPool.Enqueue(set);
     }
 
-    public HashSet<DeconjugationForm> Deconjugate(string text)
+    public List<DeconjugationForm> Deconjugate(string text)
     {
         if (UseCache && DeconjugationCache.TryGetValue(text, out var cached))
         {
-            return new HashSet<DeconjugationForm>(cached);
+            return new List<DeconjugationForm>(cached);
         }
 
-        var processed = new HashSet<DeconjugationForm>(Math.Min(text.Length * 2, 100));
-
         if (string.IsNullOrEmpty(text))
-            return processed;
+            return new List<DeconjugationForm>();
 
+        var processed = new HashSet<DeconjugationForm>(Math.Min(text.Length * 2, 100));
         var novel = new HashSet<DeconjugationForm>(20);
         var startForm = CreateInitialForm(text);
         novel.Add(startForm);
@@ -138,10 +137,10 @@ public class Deconjugator
         while (novel.Count > 0)
         {
             var newNovel = new HashSet<DeconjugationForm>(novel.Count * 2);
-            
+
             foreach (var form in novel)
             {
-                if (ShouldSkipForm(form)) 
+                if (ShouldSkipForm(form))
                     continue;
 
                 // Use for loop instead of foreach for better performance
@@ -164,12 +163,17 @@ public class Deconjugator
             novel = newNovel;
         }
 
-        if (UseCache && text.Length <= 20 && processed.Count < 55 && DeconjugationCache.Count < 250000)
+        var result = processed
+            .OrderByDescending(f => f.Text.Length)
+            .ThenBy(f => f.Text, StringComparer.Ordinal)
+            .ToList();
+
+        if (UseCache && text.Length <= 20 && result.Count < 55 && DeconjugationCache.Count < 250000)
         {
-            DeconjugationCache[text] = new HashSet<DeconjugationForm>(processed);
+            DeconjugationCache[text] = new List<DeconjugationForm>(result);
         }
 
-        return processed;
+        return result;
     }
 
     private DeconjugationForm CreateInitialForm(string text)

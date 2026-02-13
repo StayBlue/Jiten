@@ -289,6 +289,7 @@ public class MorphologicalAnalyser
             wordInfos = TrackStage(diagnostics, "RepairNTokenisation", wordInfos, RepairNTokenisation);
             wordInfos = TrackStage(diagnostics, "RepairVowelElongation", wordInfos, RepairVowelElongation);
             wordInfos = TrackStage(diagnostics, "ProcessSpecialCases", wordInfos, ProcessSpecialCases);
+            wordInfos = TrackStage(diagnostics, "CombinePrefixes", wordInfos, CombinePrefixes);
             wordInfos = TrackStage(diagnostics, "CombineInflections", wordInfos, CombineInflections);
             wordInfos = TrackStage(diagnostics, "CombineAmounts", wordInfos, CombineAmounts);
             wordInfos = TrackStage(diagnostics, "CombineTte", wordInfos, CombineTte);
@@ -827,10 +828,10 @@ public class MorphologicalAnalyser
                 Text = text, DictionaryForm = text, NormalizedForm = text, Reading = text, PartOfSpeech = PartOfSpeech.Interjection
             };
 
-        static bool IsVerbPast(HashSet<DeconjugationForm> forms) =>
+        static bool IsVerbPast(List<DeconjugationForm> forms) =>
             forms.Any(f => f.Tags.Any(t => t.StartsWith("v", StringComparison.Ordinal)) && f.Process.Any(p => p == "past"));
 
-        static bool IsRuVerb(HashSet<DeconjugationForm> forms, string expectedDictionaryHiragana) =>
+        static bool IsRuVerb(List<DeconjugationForm> forms, string expectedDictionaryHiragana) =>
             forms.Any(f => f.Text == expectedDictionaryHiragana && f.Tags.Any(t => t is "v1" or "v5r"));
 
         for (int i = 0; i < wordInfos.Count; i++)
@@ -919,7 +920,7 @@ public class MorphologicalAnalyser
     private static string NormalizeToHiragana(string text) =>
         KanaNormalizer.Normalize(WanaKana.ToHiragana(text, new DefaultOptions { ConvertLongVowelMark = false }));
 
-    private static bool IsNdaVerbForm(HashSet<DeconjugationForm> forms) =>
+    private static bool IsNdaVerbForm(List<DeconjugationForm> forms) =>
         forms.Any(f => f.Tags.Count > 0 &&
                        ((f.Tags.Any(t => t == "v5m") && f.Text.EndsWith("む")) ||
                         (f.Tags.Any(t => t == "v5n") && f.Text.EndsWith("ぬ")) ||
@@ -946,10 +947,10 @@ public class MorphologicalAnalyser
         return IsNdaVerbForm(forms);
     }
 
-    private static bool IsAnyVerbForm(HashSet<DeconjugationForm> forms) =>
+    private static bool IsAnyVerbForm(List<DeconjugationForm> forms) =>
         forms.Any(f => f.Tags.Count > 0 && f.Tags.Any(t => t.StartsWith("v")));
 
-    private static bool IsMasenVerbForm(HashSet<DeconjugationForm> forms) =>
+    private static bool IsMasenVerbForm(List<DeconjugationForm> forms) =>
         forms.Any(f => f.Tags.Count > 0 && f.Tags.Any(t => t.StartsWith("v")) && !f.Text.EndsWith("ます"));
 
     private static WordInfo CreateNToken() => new()
@@ -993,7 +994,7 @@ public class MorphologicalAnalyser
         string suffix,
         string suffixReading,
         Deconjugator deconj,
-        Func<HashSet<DeconjugationForm>, bool> validator,
+        Func<List<DeconjugationForm>, bool> validator,
         out WordInfo? combined)
     {
         combined = null;
@@ -1298,6 +1299,10 @@ public class MorphologicalAnalyser
         text = Regex.Replace(text, "とんでもねえ", "とんでもない");
         text = Regex.Replace(text, "しょうがねえ", "しょうがない");
 
+        // Strip mid-sentence ellipsis to preserve Sudachi context (e.g., ここ……からだよね → ここからだよね)
+        // Only when 2+ CJK chars precede the ellipsis; a single char is likely stuttering (e.g., ち……千尋, す……すみません)
+        text = Regex.Replace(text, @"(?<=[\p{IsHiragana}\p{IsKatakana}\p{IsCJKUnifiedIdeographs}]{2})…+(?=[^\r\n…])", "");
+
         // Replace line ending ellipsis with a sentence ender to be able to flatten later
         text = text.Replace("…\r", "。\r").Replace("…\n", "。\n");
     }
@@ -1532,10 +1537,11 @@ public class MorphologicalAnalyser
                 // Also includes quotative particle と: 好き + な + ん + だ + と → 好き + なんだと
                 if (newList.Count > 0 && IsNaAdjectiveToken(newList[^1]) && followedByN)
                 {
-                    // Build "なんだ" or similar by combining な + ん + following auxiliaries
+                    // Build "なんだ" by combining な + ん + plain copula だ only
+                    // Don't consume conjectural だろ/だろう — those are separate grammar points
                     string combined = "な" + wordInfos[i + 1].Text;
                     int j = i + 2;
-                    while (j < wordInfos.Count && wordInfos[j].PartOfSpeech == PartOfSpeech.Auxiliary)
+                    if (j < wordInfos.Count && wordInfos[j].Text == "だ" && wordInfos[j].PartOfSpeech == PartOfSpeech.Auxiliary)
                     {
                         combined += wordInfos[j].Text;
                         j++;
@@ -1603,8 +1609,8 @@ public class MorphologicalAnalyser
         var result = new List<WordInfo>(wordInfos.Count);
 
         // Local memoization cache for deconjugation results within this pass
-        var deconjCache = new Dictionary<string, HashSet<DeconjugationForm>>(StringComparer.Ordinal);
-        HashSet<DeconjugationForm> CachedDeconjugate(string hiragana)
+        var deconjCache = new Dictionary<string, List<DeconjugationForm>>(StringComparer.Ordinal);
+        List<DeconjugationForm> CachedDeconjugate(string hiragana)
         {
             if (deconjCache.TryGetValue(hiragana, out var forms)) 
                 return forms;
@@ -1818,7 +1824,7 @@ public class MorphologicalAnalyser
         return result;
     }
 
-    private bool CompoundExistsInLookup(string compoundForm, Func<string, HashSet<DeconjugationForm>> cachedDeconjugate)
+    private bool CompoundExistsInLookup(string compoundForm, Func<string, List<DeconjugationForm>> cachedDeconjugate)
     {
         if (HasCompoundLookup!(compoundForm))
             return true;
@@ -1834,7 +1840,7 @@ public class MorphologicalAnalyser
 
     private List<WordInfo> CombinePrefixes(List<WordInfo> wordInfos)
     {
-        if (wordInfos.Count < 2)
+        if (wordInfos.Count < 2 || HasCompoundLookup == null)
             return wordInfos;
 
         List<WordInfo> newList = new List<WordInfo>(wordInfos.Count);
@@ -1843,13 +1849,13 @@ public class MorphologicalAnalyser
         for (int i = 1; i < wordInfos.Count; i++)
         {
             var nextWord = wordInfos[i];
-            if (currentWord.PartOfSpeech == PartOfSpeech.Prefix && currentWord.NormalizedForm != "御" && currentWord.NormalizedForm != "大" &&
-                currentWord.NormalizedForm != "下" && currentWord.NormalizedForm != "約" && currentWord.NormalizedForm != "秋" &&
-                currentWord.NormalizedForm != "本" && currentWord.NormalizedForm != "中")
+            if (currentWord.PartOfSpeech == PartOfSpeech.Prefix &&
+                nextWord.PartOfSpeech is PartOfSpeech.Noun or PartOfSpeech.NaAdjective &&
+                HasCompoundLookup(currentWord.Text + nextWord.Text))
             {
-                var newText = currentWord.Text + nextWord.Text;
+                var combinedText = currentWord.Text + nextWord.Text;
                 currentWord = new WordInfo(nextWord);
-                currentWord.Text = newText;
+                currentWord.Text = combinedText;
             }
             else
             {

@@ -127,6 +127,7 @@ public class MorphologicalAnalyserTests
         yield return ["純粋さ健気さ", new[] { "純粋さ", "健気さ" }];
         yield return ["着てたからね", new[] { "着てた", "から", "ね" }];
         yield return ["仕出かすからだと思います", new[] { "仕出かす", "から", "だ", "と", "思います" }];
+        yield return ["ここ……からだよね？", new[] { "ここ", "から", "だよね" }];
         yield return ["みんながした", new[] { "みんな", "が", "した" }];
         yield return ["ほうが速いと", new[] { "ほう", "が", "速い", "と" }];
         yield return ["注意してください", new[] { "注意してください" }];
@@ -646,6 +647,8 @@ public class MorphologicalAnalyserTests
         yield return ["らちが明かん", new[] { "らちが明かん" }];
         yield return ["ことなきを得た", new[] { "ことなきを得た" }];
         yield return ["恩着せがましくて", new[] { "恩着せがましく", "て" }];
+        // なん + だろ should not be greedily merged into なんだろ after na-adjective
+        yield return ["おんなじなんだろ", new[] { "おんなじ", "なん", "だろ" }];
     }
 
     [Theory]

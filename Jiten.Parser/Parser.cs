@@ -47,7 +47,8 @@ namespace Jiten.Parser
             (1291070, 1), (1587980, 1), (1443970, 5), (2029660, 0), (1177490, 5), (2029000, 1),
             (1244950, 1), (1243940, 1), (2747970, 1), (2029680, 0), (1193570, 6), (1796500, 2),
             (1811220, 1), (2654270, 0), (2269410, 1), (2439040, 3), (2861095, 0), (2836250, 0),
-            (1595910, 4), (2577750, 0), (1365520, 1), (1310720, 1), (1528180,1), (2866457,1)
+            (1595910, 4), (2577750, 0), (1365520, 1), (1310720, 1), (1528180,1), (2866457,1),
+            (2394370,4), (1203250,2)
         ];
 
         private static async Task InitDictionaries()
@@ -141,6 +142,18 @@ namespace Jiten.Parser
 
         private static readonly HashSet<string> PersonHonorifics = ["さん", "ちゃん", "くん", "氏", "様"];
 
+        private static readonly HashSet<string> HonorificExclusions =
+        [
+            "うさぎ", "ウサギ", "兎",
+            "くま", "クマ", "熊",
+            "たぬき", "タヌキ", "狸",
+            "きつね", "キツネ", "狐",
+            "さる", "サル", "猿",
+            "つる", "ツル", "鶴",
+            "かめ", "カメ", "亀",
+            "ねずみ", "ネズミ", "鼠",
+        ];
+
         private static void MarkPersonNameHonorificContexts(List<SentenceInfo> sentences)
         {
             foreach (var sentence in sentences)
@@ -156,7 +169,9 @@ namespace Jiten.Parser
                     if (!PersonHonorifics.Contains(next.Text))
                         continue;
 
-                    // Only consider Sudachi tokens that look like person names (avoid place names, etc.).
+                    if (HonorificExclusions.Contains(current.Text))
+                        continue;
+
                     if (!PosMapper.IsNameLikeSudachiNoun(
                                                          current.PartOfSpeech,
                                                          current.PartOfSpeechSection1,

@@ -19,7 +19,7 @@ public class DeconjugatorTests
          Deconjugate(text).Select(r => r.Text).Should().Equal(expectedResult);
     }
     
-    private HashSet<DeconjugationForm> Deconjugate(string text)
+    private List<DeconjugationForm> Deconjugate(string text)
     {
         var deconjugator = new Deconjugator();
         return deconjugator.Deconjugate(text);
