@@ -14,6 +14,11 @@
   const convertToRuby = useConvertToRuby();
   const isCompact = ref(props.isCompact);
 
+  const { resolvedGroups } = useDictionaryDefinitions(
+    computed(() => props.word?.mainReading?.text),
+    computed(() => props.word?.definitions),
+  );
+
   const toggleCompact = () => {
     isCompact.value = !isCompact.value;
   };
@@ -35,7 +40,12 @@
     </template>
     <template #subtitle />
     <template #content>
-      <VocabularyDefinitions :definitions="word.definitions" :is-compact="isCompact" :current-reading-index="word.mainReading.readingIndex" :readings="word.alternativeReadings" />
+      <ClientOnly>
+        <VocabularyDictionaryDefinitions :resolved-groups="resolvedGroups" :is-compact="isCompact" :current-reading-index="word.mainReading.readingIndex" :readings="word.alternativeReadings" />
+        <template #fallback>
+          <VocabularyDefinitions :definitions="word.definitions" :is-compact="isCompact" :current-reading-index="word.mainReading.readingIndex" :readings="word.alternativeReadings" />
+        </template>
+      </ClientOnly>
     </template>
   </Card>
 </template>

@@ -37,6 +37,20 @@
       </template>
     </Card>
 
+    <Card class="mb-4">
+      <template #title>
+        <h3 class="text-lg font-semibold">Dictionaries</h3>
+      </template>
+      <template #content>
+        <p class="text-gray-600 dark:text-gray-300 mb-3">
+          Import Yomitan dictionaries to show custom definitions on the website and in downloaded decks. Dictionary data is stored locally and never leaves your browser.
+        </p>
+        <NuxtLink to="/settings/dictionaries">
+          <Button icon="pi pi-book" label="Manage Dictionaries" class="w-full md:w-auto" />
+        </NuxtLink>
+      </template>
+    </Card>
+
     <SettingsWordSets class="mb-4" />
 
     <SettingsFsrsParameters class="mb-4" />

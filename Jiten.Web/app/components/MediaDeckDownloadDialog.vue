@@ -6,7 +6,6 @@
   import { useConfirm } from 'primevue/useconfirm';
   import { useToast } from 'primevue/usetoast';
   import { computed, onMounted, ref, watch } from 'vue';
-
   const props = defineProps<{
     deck: Deck;
     visible: boolean;
@@ -18,9 +17,25 @@
   const localiseTitle = useLocaliseTitle();
   const confirm = useConfirm();
   const toast = useToast();
+  const { hasCustomDictionaries, loadDictionaries } = useYomitanDictionary();
+  const { processApkg, processCsv } = useClientApkg();
 
   const localVisible = ref(props.visible);
   const downloading = ref(false);
+  const downloadStatusMessage = ref('');
+
+  const useCustomDefinitions = ref(false);
+
+  onMounted(async () => {
+    await loadDictionaries();
+    useCustomDefinitions.value = hasCustomDictionaries.value;
+  });
+
+  watch(hasCustomDictionaries, (has) => {
+    useCustomDefinitions.value = has;
+  });
+
+  const showCustomDefinitions = computed(() => (format.value === DeckFormat.Anki || format.value === DeckFormat.Csv) && !isLearn.value);
 
   type Mode = 'manual' | 'target' | 'occurrence';
   const downloadMode = ref<Mode>('manual');
@@ -454,6 +469,7 @@
   const downloadFile = async () => {
     try {
       downloading.value = true;
+      downloadStatusMessage.value = 'Preparing download...';
       const url = `media-deck/${props.deck.deckId}/download`;
 
       const payload = {
@@ -470,8 +486,47 @@
       });
 
       if (response) {
+        let finalBlob: Blob = response as unknown as Blob;
+
+        if (useCustomDefinitions.value && format.value === DeckFormat.Anki) {
+          downloadStatusMessage.value = 'Applying custom definitions...';
+          try {
+            finalBlob = await processApkg(finalBlob, (progress) => {
+              if (progress.phase === 'unzipping') downloadStatusMessage.value = 'Unpacking deck...';
+              else if (progress.phase === 'loading') downloadStatusMessage.value = 'Loading database...';
+              else if (progress.phase === 'processing') downloadStatusMessage.value = `Replacing definitions (${progress.current}/${progress.total})...`;
+              else if (progress.phase === 'zipping') downloadStatusMessage.value = 'Repacking deck...';
+            });
+          } catch (err) {
+            console.error('Failed to apply custom definitions:', err);
+            toast.add({
+              severity: 'warn',
+              summary: 'Custom Definitions Failed',
+              detail: 'Downloading with default JMDict definitions instead.',
+              life: 5000,
+            });
+          }
+        } else if (useCustomDefinitions.value && format.value === DeckFormat.Csv) {
+          downloadStatusMessage.value = 'Adding definitions from your dictionaries...';
+          try {
+            finalBlob = await processCsv(finalBlob, (progress) => {
+              if (progress.phase === 'parsing') downloadStatusMessage.value = 'Parsing CSV...';
+              else if (progress.phase === 'processing') downloadStatusMessage.value = `Adding definitions (${progress.current}/${progress.total})...`;
+              else if (progress.phase === 'building') downloadStatusMessage.value = 'Building CSV...';
+            });
+          } catch (err) {
+            console.error('Failed to apply custom definitions:', err);
+            toast.add({
+              severity: 'warn',
+              summary: 'Custom Definitions Failed',
+              detail: 'Downloading with default JMDict definitions instead.',
+              life: 5000,
+            });
+          }
+        }
+
         localVisible.value = false;
-        const blobUrl = window.URL.createObjectURL(response);
+        const blobUrl = window.URL.createObjectURL(finalBlob);
         const link = document.createElement('a');
         link.href = blobUrl;
 
@@ -487,11 +542,13 @@
         document.body.appendChild(link);
         link.click();
         link.remove();
+        URL.revokeObjectURL(blobUrl);
       }
     } catch (err) {
       console.error('Error:', err);
     } finally {
       downloading.value = false;
+      downloadStatusMessage.value = '';
     }
   };
 
@@ -768,6 +825,30 @@
                 </div>
               </div>
 
+              <!-- Custom Definitions -->
+              <div
+                v-if="showCustomDefinitions"
+                class="flex items-start gap-3 p-3 rounded-lg border border-transparent transition-colors"
+                :class="hasCustomDictionaries
+                  ? 'hover:bg-gray-50 hover:dark:bg-gray-800 hover:border-gray-200 hover:dark:border-gray-700 cursor-pointer'
+                  : 'opacity-60'"
+                @click="hasCustomDictionaries && (useCustomDefinitions = !useCustomDefinitions)"
+              >
+                <Checkbox v-model="useCustomDefinitions" binary class="mt-1" :disabled="!hasCustomDictionaries" @click.stop />
+                <div class="flex-1">
+                  <div class="text-sm font-medium text-gray-800 dark:text-gray-200">Use Custom Dictionaries</div>
+                  <div class="text-xs text-gray-500 dark:text-gray-400">
+                    <template v-if="hasCustomDictionaries">
+                      Add the definitions from your custom dictionaries.
+                    </template>
+                    <template v-else>
+                      No custom dictionaries imported.
+                    </template>
+                    <NuxtLink to="/settings/dictionaries" class="text-primary hover:underline" @click.stop>Manage dictionaries</NuxtLink>
+                  </div>
+                </div>
+              </div>
+
               <!-- Learn: Vocabulary State selector -->
               <div v-if="isLearn" class="flex flex-col gap-1 p-3">
                 <label class="text-xs text-gray-500 dark:text-gray-400 font-medium">Vocabulary State</label>
@@ -801,7 +882,7 @@
 
   <div v-if="downloading" class="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-black/60 backdrop-blur-sm text-white">
     <ProgressSpinner style="width: 50px; height: 50px" stroke-width="6" />
-    <div class="mt-4 font-medium text-lg">{{ isLearn ? 'Applying vocabulary changes...' : 'Preparing download...' }}</div>
+    <div class="mt-4 font-medium text-lg">{{ isLearn ? 'Applying vocabulary changes...' : downloadStatusMessage || 'Preparing download...' }}</div>
   </div>
 </template>
 

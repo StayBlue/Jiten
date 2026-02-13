@@ -38,6 +38,11 @@
   // Just use useApiFetch directly - no wrapping needed!
   const { data: response } = useApiFetch<Word>(url);
 
+  const { resolvedGroups } = useDictionaryDefinitions(
+    computed(() => response.value?.mainReading?.text),
+    computed(() => response.value?.definitions),
+  );
+
   const getSortedReadings = () => {
     return response.value?.alternativeReadings.sort((a, b) => b.frequencyPercentage - a.frequencyPercentage) || [];
   };
@@ -157,7 +162,12 @@
           <div>
             <h1 class="text-gray-500 dark:text-gray-300 text-sm">Meanings</h1>
             <div class="pl-2">
-              <VocabularyDefinitions :definitions="response.definitions" :is-compact="false" :current-reading-index="currentReadingIndex" :readings="response.alternativeReadings" />
+              <ClientOnly>
+                <VocabularyDictionaryDefinitions :resolved-groups="resolvedGroups" :is-compact="false" :current-reading-index="currentReadingIndex" :readings="response.alternativeReadings" />
+                <template #fallback>
+                  <VocabularyDefinitions :definitions="response.definitions" :is-compact="false" :current-reading-index="currentReadingIndex" :readings="response.alternativeReadings" />
+                </template>
+              </ClientOnly>
             </div>
           </div>
 
