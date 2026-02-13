@@ -109,7 +109,8 @@
   const learnState = ref<'mastered' | 'blacklisted'>('mastered');
 
   const isLearn = computed(() => format.value === DeckFormat.Learn);
-  const showStrategyAndOptions = computed(() => format.value !== DeckFormat.Yomitan);
+  const isOccurrences = computed(() => format.value === DeckFormat.Yomitan);
+  const showStrategyAndOptions = computed(() => !isOccurrences.value);
 
   const modeOptions = computed(() => [
     { label: 'Manual', value: 'manual', icon: 'pi pi-sliders-h' },
@@ -182,6 +183,7 @@
   });
 
   const currentCardAmount = computed(() => {
+    if (isOccurrences.value) return props.deck.uniqueWordCount;
     if (requiresAccurateCardAmount.value) return accurateCardAmount.value ?? fallbackCardAmount.value;
     return fallbackCardAmount.value;
   });
@@ -863,10 +865,10 @@
       <div class="bg-gray-50 dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700 p-4 flex flex-col sm:flex-row justify-between items-center gap-4 shrink-0">
         <div class="text-sm text-gray-600 dark:text-gray-300">
           <span class="inline-flex items-center gap-2">
-            <span>Result: approx</span>
+            <span>Result:{{ isOccurrences ? '' : ' approx' }}</span>
             <span class="font-bold text-gray-900 dark:text-gray-100">{{ currentCardAmount }}</span>
             <i v-if="isCountLoading" class="pi pi-spin pi-spinner text-gray-400 dark:text-gray-500 text-xs" />
-            <span>{{ isLearn ? 'words' : 'cards' }}</span>
+            <span>{{ format === DeckFormat.Anki ? 'cards' : 'words' }}</span>
           </span>
         </div>
         <Button
