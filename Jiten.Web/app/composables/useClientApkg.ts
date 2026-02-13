@@ -97,6 +97,10 @@ function stripLinks(html: string): string {
   return html.replace(/<a\b[^>]*>/gi, '').replace(/<\/a>/gi, '');
 }
 
+function stripDataAttributes(html: string): string {
+  return html.replace(/\s+data-[a-z-]+="[^"]*"/gi, '');
+}
+
 export function useClientApkg() {
   const { dictionaries, loadDictionaries, lookupWord } = useYomitanDictionary();
 
@@ -197,7 +201,7 @@ export function useClientApkg() {
           .join('');
       }
 
-      fields[FIELD_INDEX_DEFINITION] = stripLinks(combinedHtml);
+      fields[FIELD_INDEX_DEFINITION] = stripDataAttributes(stripLinks(combinedHtml));
       stmt.run([fields.join(FIELD_SEPARATOR), noteId]);
 
       if (i % 50 === 0) {
@@ -284,7 +288,7 @@ export function useClientApkg() {
         combined = visibleGroups.map((g) => `[${g.name}]\n${g.text}`).join('\n\n');
       }
 
-      row[CSV_COL_DEFINITIONS] = stripLinks(combined);
+      row[CSV_COL_DEFINITIONS] = stripDataAttributes(stripLinks(combined));
 
       if (i % 50 === 0) {
         onProgress?.({ phase: 'processing', current: i, total: dataRows });
