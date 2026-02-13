@@ -35,12 +35,7 @@
 
   const selectedWord = ref<DeckWord | undefined>();
 
-  const activeSearchQuery = computed(() => {
-    if (!isLikelyEnglish.value && hasMeaningfulParseResults.value && selectedWord.value) {
-      return selectedWord.value.originalText;
-    }
-    return String(searchContent.value);
-  });
+  const activeSearchQuery = computed(() => String(searchContent.value));
 
   const {
     data: searchResponse,
@@ -55,6 +50,7 @@
     (newText) => {
       if (newText) {
         selectedWord.value = undefined;
+        directMatchesShowAll.value = false;
         response.value = null;
         searchResponse.value = null;
         searchContent.value = newText;
@@ -68,7 +64,36 @@
     return true;
   });
 
-  // Pagination state
+  // Word-specific direct matches (separate from main search)
+  const wordDirectMatches = ref<DictionaryEntry[]>([]);
+  const canLoadMoreWordResults = ref(false);
+  const isLoadingWordResults = ref(false);
+
+  watch(selectedWord, async (word) => {
+    directMatchesShowAll.value = false;
+    if (word && !isLikelyEnglish.value) {
+      isLoadingWordResults.value = true;
+      try {
+        const data = await $api<DictionarySearchResult>('vocabulary/search', {
+          query: { query: word.originalText },
+        });
+        wordDirectMatches.value = (data.results || []).filter(
+          r => !(r.wordId === word.wordId && r.readingIndex === word.readingIndex)
+        );
+        canLoadMoreWordResults.value = data.hasMore;
+      } catch {
+        wordDirectMatches.value = [];
+        canLoadMoreWordResults.value = false;
+      } finally {
+        isLoadingWordResults.value = false;
+      }
+    } else {
+      wordDirectMatches.value = [];
+      canLoadMoreWordResults.value = false;
+    }
+  });
+
+  // Pagination state for main search
   const extraResults = ref<DictionaryEntry[]>([]);
   const extraDictResults = ref<DictionaryEntry[]>([]);
   const canLoadMoreResults = ref(false);
@@ -93,19 +118,34 @@
     ...extraDictResults.value,
   ]);
 
+  // Direct matches: word-specific results when a word is selected, otherwise main search results
   const directMatches = computed(() => {
+    if (showParseResults.value && wordDirectMatches.value.length > 0) {
+      return wordDirectMatches.value;
+    }
     if (!selectedWord.value) return allResults.value;
     return allResults.value.filter(
       r => !(r.wordId === selectedWord.value!.wordId && r.readingIndex === selectedWord.value!.readingIndex)
     );
   });
 
-  const dictionaryMatches = computed(() => allDictResults.value);
+  const dictionaryMatches = computed(() => {
+    if (!showParseResults.value) return allDictResults.value;
+    // Only include English gloss results: dictionaryResults from backend,
+    // plus main results when the backend treated the query as English
+    const englishMainResults = searchQueryType.value === 'english' ? allResults.value : [];
+    const combined = [...englishMainResults, ...allDictResults.value];
+    if (!selectedWord.value) return combined;
+    return combined.filter(
+      r => !(r.wordId === selectedWord.value!.wordId && r.readingIndex === selectedWord.value!.readingIndex)
+    );
+  });
 
   const searchQueryType = computed(() => searchResponse.value?.queryType || '');
   const isSearchLoading = computed(() => searchStatus.value === 'pending');
 
   const directMatchesLabel = computed(() => {
+    if (showParseResults.value && wordDirectMatches.value.length > 0) return 'Direct matches';
     const type = searchQueryType.value;
     if (type === 'english') return 'Dictionary results';
     if (type === 'wildcard') return 'Wildcard results';
@@ -114,7 +154,7 @@
 
   const resultsTotalLabel = computed(() => {
     const count = directMatches.value.length;
-    const more = canLoadMoreResults.value ? '+' : '';
+    const more = (showParseResults.value ? canLoadMoreWordResults.value : canLoadMoreResults.value) ? '+' : '';
     return `${count}${more}`;
   });
 
@@ -125,19 +165,39 @@
   });
 
   async function loadMoreResults() {
-    if (isLoadingMoreResults.value || !canLoadMoreResults.value) return;
-    isLoadingMoreResults.value = true;
-    try {
-      const offset = allResults.value.length;
-      const data = await $api<DictionarySearchResult>('vocabulary/search', {
-        query: { query: activeSearchQuery.value, offset, limit: 50 },
-      });
-      if (data.results.length > 0) {
-        extraResults.value.push(...data.results);
-      }
-      canLoadMoreResults.value = data.hasMore;
-    } catch { canLoadMoreResults.value = false; }
-    finally { isLoadingMoreResults.value = false; }
+    if (showParseResults.value && selectedWord.value) {
+      if (isLoadingMoreResults.value || !canLoadMoreWordResults.value) return;
+      isLoadingMoreResults.value = true;
+      try {
+        const offset = wordDirectMatches.value.length;
+        const data = await $api<DictionarySearchResult>('vocabulary/search', {
+          query: { query: selectedWord.value.originalText, offset, limit: 50 },
+        });
+        if (data.results.length > 0) {
+          const word = selectedWord.value;
+          const filtered = data.results.filter(
+            r => !(r.wordId === word.wordId && r.readingIndex === word.readingIndex)
+          );
+          wordDirectMatches.value.push(...filtered);
+        }
+        canLoadMoreWordResults.value = data.hasMore;
+      } catch { canLoadMoreWordResults.value = false; }
+      finally { isLoadingMoreResults.value = false; }
+    } else {
+      if (isLoadingMoreResults.value || !canLoadMoreResults.value) return;
+      isLoadingMoreResults.value = true;
+      try {
+        const offset = allResults.value.length;
+        const data = await $api<DictionarySearchResult>('vocabulary/search', {
+          query: { query: activeSearchQuery.value, offset, limit: 50 },
+        });
+        if (data.results.length > 0) {
+          extraResults.value.push(...data.results);
+        }
+        canLoadMoreResults.value = data.hasMore;
+      } catch { canLoadMoreResults.value = false; }
+      finally { isLoadingMoreResults.value = false; }
+    }
   }
 
   async function loadMoreDictResults() {
@@ -209,7 +269,16 @@
   };
 
   const directMatchesExpanded = ref(true);
+  const directMatchesShowAll = ref(false);
   const dictionaryMatchesExpanded = ref(true);
+
+  const directMatchesLimit = 10;
+  const directMatchesTruncated = computed(() =>
+    dictionaryMatches.value.length > 0 && !directMatchesShowAll.value && directMatches.value.length > directMatchesLimit
+  );
+  const visibleDirectMatches = computed(() =>
+    directMatchesTruncated.value ? directMatches.value.slice(0, directMatchesLimit) : directMatches.value
+  );
 </script>
 
 <template>
@@ -262,11 +331,18 @@
 
       <div v-if="directMatchesExpanded" class="flex flex-col gap-2">
         <DictionaryResultEntry
-          v-for="entry in directMatches"
+          v-for="entry in visibleDirectMatches"
           :key="`${entry.wordId}-${entry.readingIndex}`"
           :entry="entry"
         />
-        <div v-if="canLoadMoreResults" ref="resultsSentinel" class="flex justify-center py-4">
+        <button
+          v-if="directMatchesTruncated"
+          class="text-sm text-purple-600 dark:text-purple-400 hover:underline self-start"
+          @click="directMatchesShowAll = true"
+        >
+          + View {{ directMatches.length - directMatchesLimit }} more
+        </button>
+        <div v-if="!directMatchesTruncated && (showParseResults ? canLoadMoreWordResults : canLoadMoreResults)" ref="resultsSentinel" class="flex justify-center py-4">
           <ProgressSpinner v-if="isLoadingMoreResults" style="width: 30px; height: 30px" stroke-width="4" />
         </div>
       </div>
