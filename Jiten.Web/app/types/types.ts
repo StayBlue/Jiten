@@ -490,3 +490,21 @@ export interface UserWordSetSubscriptionDto {
 export interface WordSetSubscribeRequest {
   state: WordSetStateType;
 }
+
+export interface DictionaryEntry {
+  wordId: number;
+  readingIndex: number;
+  text: string;
+  primaryKanjiText?: string;
+  partsOfSpeech: string[];
+  meanings: string[];
+  frequencyRank: number;
+}
+
+export interface DictionarySearchResult {
+  query: string;
+  queryType: string;
+  results: DictionaryEntry[];
+  dictionaryResults: DictionaryEntry[];
+  hasMore: boolean;
+}

@@ -36,6 +36,26 @@ const kanjiSearchTarget = computed(() => {
   return extractFirstKanji(searchPart);
 });
 
+const containsJapanese = (text: string) => /[\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FFF\u3400-\u4DBF]/.test(text);
+
+const searchMode = computed<'parse' | 'dictionary'>(() => {
+  const text = searchText.value.trim();
+  if (text.includes('*')) return 'dictionary';
+  if (containsJapanese(text)) return 'parse';
+  if (text.includes(' ')) return 'dictionary';
+  return 'parse';
+});
+
+const primaryActionLabel = computed(() => {
+  if (searchMode.value === 'dictionary') return `Search: "${searchText.value}"`;
+  return `Parse: "${searchText.value}"`;
+});
+
+const primaryActionDescription = computed(() => {
+  if (searchMode.value === 'dictionary') return 'Search dictionary by meaning or wildcard. Use #kanji to view kanji details';
+  return 'Look up words and definitions. Use * for wildcard, #kanji for kanji details';
+});
+
 const showMediaSection = computed(() => searchText.value.length >= 2);
 
 watch(searchText, (newValue) => {
@@ -187,7 +207,7 @@ const remainingCount = computed(() => {
         <InputText
           v-model="searchText"
           type="text"
-          :placeholder="placeholder || 'Search words, sentences, or media'"
+          :placeholder="placeholder || 'Search words, sentences, or media. Use * for wildcard'"
           class="w-full text-sm sm:text-base"
           maxlength="2000"
           :autofocus="autofocus"
@@ -199,7 +219,7 @@ const remainingCount = computed(() => {
           @focus="searchText.length >= 1 && (isDropdownOpen = true)"
         />
       </IconField>
-      <Button label="Parse" class="ml-2" :disabled="!searchText.trim()" @click="navigateToParse">
+      <Button :label="searchMode === 'dictionary' ? 'Search' : 'Parse'" class="ml-2" :disabled="!searchText.trim()" @click="navigateToParse">
         <Icon name="material-symbols:search-rounded" />
       </Button>
     </div>
@@ -243,10 +263,10 @@ const remainingCount = computed(() => {
           @click="navigateToParse"
           @mouseenter="highlightedIndex = 0"
         >
-          <Icon name="material-symbols:translate" class="text-xl text-purple-500" />
+          <Icon :name="searchMode === 'dictionary' ? 'material-symbols:search-rounded' : 'material-symbols:translate'" class="text-xl text-purple-500" />
           <div class="min-w-0 flex-1">
-            <div class="font-medium">Parse: "{{ searchText }}"</div>
-            <div class="text-sm text-gray-500 dark:text-gray-400">Look up words and definitions. Use #kanji to view kanji details</div>
+            <div class="font-medium">{{ primaryActionLabel }}</div>
+            <div class="text-sm text-gray-500 dark:text-gray-400">{{ primaryActionDescription }}</div>
           </div>
           <div class="text-xs text-gray-400 dark:text-gray-500">
             <kbd class="px-1.5 py-0.5 bg-gray-200 dark:bg-gray-700 rounded font-mono text-xs">Enter</kbd>

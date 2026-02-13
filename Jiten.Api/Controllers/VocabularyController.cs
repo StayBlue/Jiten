@@ -8,7 +8,10 @@ using Jiten.Core.Utils;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
+using StackExchange.Redis;
 using Swashbuckle.AspNetCore.Annotations;
+using System.Text.Json;
+using WanaKanaShaapu;
 
 namespace Jiten.Api.Controllers;
 
@@ -19,7 +22,7 @@ namespace Jiten.Api.Controllers;
 [Route("api/vocabulary")]
 [EnableRateLimiting("fixed")]
 [Produces("application/json")]
-public class VocabularyController(JitenDbContext context, IDbContextFactory<JitenDbContext> contextFactory, ICurrentUserService currentUserService, ILogger<VocabularyController> logger) : ControllerBase
+public class VocabularyController(JitenDbContext context, IDbContextFactory<JitenDbContext> contextFactory, ICurrentUserService currentUserService, IConnectionMultiplexer redis, ILogger<VocabularyController> logger) : ControllerBase
 {
     /// <summary>
     /// Gets a word by its ID and reading index, including definitions, readings, frequency and user known state.
@@ -339,4 +342,291 @@ public class VocabularyController(JitenDbContext context, IDbContextFactory<Jite
             };
         }).ToList();
     }
+
+    /// <summary>
+    /// Searches the dictionary by Japanese text, romaji, English meaning, or wildcard pattern.
+    /// </summary>
+    [HttpGet("search")]
+    [SwaggerOperation(Summary = "Search dictionary",
+                      Description = "Searches by Japanese text, romaji, English meaning, or wildcard pattern (use * for wildcard).")]
+    [ProducesResponseType(typeof(DictionarySearchResultDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<IResult> SearchDictionary(
+        [FromQuery] string query,
+        [FromQuery] int limit = 50,
+        [FromQuery] int offset = 0)
+    {
+        if (string.IsNullOrWhiteSpace(query))
+            return Results.Ok(new DictionarySearchResultDto { Query = query ?? "" });
+
+        limit = Math.Clamp(limit, 1, 100);
+        var trimmed = query.Trim().ToLowerInvariant();
+
+        if (trimmed.Length > 200)
+            return Results.BadRequest("Query too long");
+
+        var cacheKey = $"jiten:dict-search:{trimmed}:{limit}:{offset}";
+        var redisDb = redis.GetDatabase();
+        try
+        {
+            var cachedJson = await redisDb.StringGetAsync(cacheKey);
+            if (cachedJson.HasValue)
+                return Results.Ok(JsonSerializer.Deserialize<DictionarySearchResultDto>(cachedJson!));
+        }
+        catch { }
+
+        var hasWildcard = trimmed.Contains('*');
+        var cleanText = trimmed.Replace("*", "");
+
+        if (cleanText.Length == 0)
+            return Results.BadRequest("Query must contain searchable text");
+
+        var hasJapanese = ContainsJapanese(cleanText);
+        var isAsciiOnly = cleanText.All(c => c < 128);
+        var hasSpaces = cleanText.Contains(' ');
+
+        string queryType;
+        List<DictionaryEntryDto> results;
+        List<DictionaryEntryDto> dictionaryResults = [];
+
+        if (hasWildcard)
+        {
+            queryType = "wildcard";
+            var parts = trimmed.Split('*');
+
+            string[] processedParts;
+            if (!hasJapanese && isAsciiOnly && !hasSpaces)
+            {
+                processedParts = parts.Select(p =>
+                    string.IsNullOrEmpty(p) ? "" : SanitizeLikeInput(WanaKana.ToHiragana(p.ToLowerInvariant()))
+                ).ToArray();
+            }
+            else
+            {
+                processedParts = parts.Select(SanitizeLikeInput).ToArray();
+            }
+
+            var likePattern = string.Join("%", processedParts);
+            results = await SearchLookupsByPattern(likePattern, limit, offset);
+        }
+        else if (hasJapanese)
+        {
+            queryType = "japanese";
+            var wordIds = await SearchLookupsExact(trimmed, limit, offset);
+            results = await BuildDictionaryEntries(wordIds, trimmed);
+        }
+        else if (isAsciiOnly && !hasSpaces)
+        {
+            var hiragana = WanaKana.ToHiragana(trimmed.ToLowerInvariant());
+            var isValidRomaji = hiragana.All(c =>
+                (c >= '\u3040' && c <= '\u309F') ||
+                (c >= '\u30A0' && c <= '\u30FF'));
+
+            if (isValidRomaji)
+            {
+                var romajiWordIds = await SearchLookupsExact(hiragana, limit, offset);
+                if (romajiWordIds.Count > 0)
+                {
+                    queryType = "romaji";
+                    results = await BuildDictionaryEntries(romajiWordIds, hiragana);
+
+                    var englishResults = await SearchByEnglishGloss(trimmed, limit, offset);
+                    var existingWordIds = results.Select(r => r.WordId).ToHashSet();
+                    dictionaryResults = englishResults.Where(e => !existingWordIds.Contains(e.WordId)).ToList();
+                }
+                else
+                {
+                    queryType = "english";
+                    results = await SearchByEnglishGloss(trimmed, limit, offset);
+                }
+            }
+            else
+            {
+                queryType = "english";
+                results = await SearchByEnglishGloss(trimmed, limit, offset);
+            }
+        }
+        else
+        {
+            queryType = "english";
+            results = await SearchByEnglishGloss(trimmed, limit, offset);
+        }
+
+        var dto = new DictionarySearchResultDto
+        {
+            Query = trimmed,
+            QueryType = queryType,
+            Results = results,
+            DictionaryResults = dictionaryResults,
+            HasMore = results.Count >= limit
+        };
+
+        try { await redisDb.StringSetAsync(cacheKey, JsonSerializer.Serialize(dto), TimeSpan.FromDays(7)); }
+        catch { }
+
+        return Results.Ok(dto);
+    }
+
+    #region Dictionary search helpers
+
+    private async Task<List<int>> SearchLookupsExact(string lookupKey, int limit, int offset)
+    {
+        return await context.Lookups
+            .AsNoTracking()
+            .Where(l => l.LookupKey == lookupKey)
+            .Select(l => l.WordId)
+            .Distinct()
+            .OrderBy(id => id)
+            .Skip(offset)
+            .Take(limit)
+            .ToListAsync();
+    }
+
+    private async Task<List<DictionaryEntryDto>> SearchLookupsByPattern(string likePattern, int limit, int offset)
+    {
+        var wordIds = await context.Lookups
+            .AsNoTracking()
+            .Where(l => EF.Functions.Like(l.LookupKey, likePattern))
+            .Select(l => l.WordId)
+            .Distinct()
+            .OrderBy(id => id)
+            .Skip(offset)
+            .Take(limit)
+            .ToListAsync();
+
+        return await BuildDictionaryEntries(wordIds);
+    }
+
+    private async Task<List<DictionaryEntryDto>> SearchByEnglishGloss(string query, int limit, int offset)
+    {
+        var regexPattern = $@"\m{SanitizeRegexInput(query)}\M";
+        var oversampleLimit = limit * 4;
+
+        var wordIds = await context.Database
+            .SqlQueryRaw<int>(
+                """
+                SELECT DISTINCT "WordId" AS "Value" FROM jmdict."Definitions"
+                WHERE EXISTS (
+                    SELECT 1 FROM unnest("EnglishMeanings") AS m
+                    WHERE m ~* {0}
+                )
+                ORDER BY "WordId"
+                LIMIT {1}
+                """, regexPattern, oversampleLimit)
+            .ToListAsync();
+
+        var entries = await BuildDictionaryEntries(wordIds, englishQuery: query);
+        return entries
+            .OrderByDescending(e => e.Meanings.Any(m => m.Contains(query, StringComparison.OrdinalIgnoreCase)))
+            .ThenBy(e => e.FrequencyRank)
+            .Skip(offset)
+            .Take(limit)
+            .ToList();
+    }
+
+    private async Task<List<DictionaryEntryDto>> BuildDictionaryEntries(List<int> wordIds, string? matchText = null, string? englishQuery = null)
+    {
+        if (wordIds.Count == 0) return [];
+
+        var words = await context.JMDictWords
+            .AsNoTracking()
+            .Include(w => w.Definitions)
+            .Where(w => wordIds.Contains(w.WordId))
+            .ToListAsync();
+
+        var wordForms = await context.WordForms
+            .AsNoTracking()
+            .Where(wf => wordIds.Contains(wf.WordId))
+            .ToListAsync();
+
+        var formsByWord = wordForms.GroupBy(f => f.WordId)
+            .ToDictionary(g => g.Key, g => g.ToList());
+
+        var frequencies = await context.WordFormFrequencies
+            .AsNoTracking()
+            .Where(f => wordIds.Contains(f.WordId))
+            .ToListAsync();
+
+        var freqByWordReading = frequencies
+            .ToDictionary(f => (f.WordId, f.ReadingIndex));
+
+        return words
+            .Select(w =>
+            {
+                if (!formsByWord.TryGetValue(w.WordId, out var forms) || forms.Count == 0)
+                    return null;
+
+                JmDictWordForm? bestForm = null;
+                if (matchText != null)
+                    bestForm = forms.FirstOrDefault(f => f.Text == matchText);
+                bestForm ??= forms.OrderBy(f => f.ReadingIndex).First();
+
+                var freq = freqByWordReading.GetValueOrDefault((w.WordId, bestForm.ReadingIndex));
+                var firstDef = w.Definitions
+                    .Where(d => d.EnglishMeanings.Count > 0)
+                    .OrderBy(d => d.SenseIndex)
+                    .FirstOrDefault();
+
+                if (englishQuery != null)
+                {
+                    var matchingDef = w.Definitions
+                        .Where(d => d.EnglishMeanings.Any(m => m.Contains(englishQuery, StringComparison.OrdinalIgnoreCase)))
+                        .OrderBy(d => d.SenseIndex)
+                        .FirstOrDefault();
+                    if (matchingDef != null) firstDef = matchingDef;
+                }
+
+                string? primaryKanjiText = null;
+                if (bestForm.FormType == JmDictFormType.KanaForm)
+                {
+                    var kanjiForm = forms
+                        .Where(f => f.FormType == JmDictFormType.KanjiForm && !f.IsSearchOnly)
+                        .OrderByDescending(f => freqByWordReading.GetValueOrDefault((w.WordId, f.ReadingIndex))?.FrequencyRank != null ? 1 : 0)
+                        .ThenBy(f => freqByWordReading.GetValueOrDefault((w.WordId, f.ReadingIndex))?.FrequencyRank ?? int.MaxValue)
+                        .ThenBy(f => f.ReadingIndex)
+                        .FirstOrDefault();
+                    if (kanjiForm != null)
+                        primaryKanjiText = kanjiForm.RubyText;
+                }
+
+                return new DictionaryEntryDto
+                {
+                    WordId = w.WordId,
+                    ReadingIndex = (byte)bestForm.ReadingIndex,
+                    Text = bestForm.RubyText,
+                    PrimaryKanjiText = primaryKanjiText,
+                    PartsOfSpeech = w.PartsOfSpeech,
+                    Meanings = firstDef?.EnglishMeanings ?? [],
+                    FrequencyRank = freq?.FrequencyRank ?? int.MaxValue
+                };
+            })
+            .Where(e => e != null)
+            .OrderBy(e => e!.FrequencyRank)
+            .Cast<DictionaryEntryDto>()
+            .ToList();
+    }
+
+    private static bool ContainsJapanese(string text)
+    {
+        return text.Any(c =>
+            (c >= '\u3040' && c <= '\u309F') ||
+            (c >= '\u30A0' && c <= '\u30FF') ||
+            (c >= '\u4E00' && c <= '\u9FFF') ||
+            (c >= '\u3400' && c <= '\u4DBF'));
+    }
+
+    private static string SanitizeLikeInput(string input)
+    {
+        return input
+            .Replace("\\", "\\\\")
+            .Replace("%", "\\%")
+            .Replace("_", "\\_");
+    }
+
+    private static string SanitizeRegexInput(string input)
+    {
+        return System.Text.RegularExpressions.Regex.Replace(input, @"[.*+?^${}()|[\]\\]", @"\$&");
+    }
+
+    #endregion
 }

@@ -160,6 +160,8 @@ const generateRequestKey = (request: string | (() => string)) => {
     } catch (e) {
       return 'dynamic-request';
     }
+  } else if (request && typeof request === 'object' && 'value' in request) {
+    return String(request.value);
   } else {
     return String(request);
   }
