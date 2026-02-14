@@ -12,7 +12,7 @@ public class AnkiImportRequest
 
 public class AnkiCardWrapper
 {
-    public AnkiCardImport Card { get; set; }
+    public required AnkiCardImport Card { get; set; }
     public List<AnkiReviewLogImport> ReviewLogs { get; set; } = new();
 }
 

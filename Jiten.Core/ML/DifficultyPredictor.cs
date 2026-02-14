@@ -117,7 +117,7 @@ public class DifficultyPredictor
 
             var deckWords = deck.DeckWords.ToList();
 
-            MLHelper.ExtractCharacterCounts(deck.RawText.RawText, extractedFeatures);
+            MLHelper.ExtractCharacterCounts(deck.RawText!.RawText, extractedFeatures);
             await MLHelper.ExtractFrequencyStats(context, deckWords, extractedFeatures);
             MLHelper.ExtractConjugationStats(deckWords, extractedFeatures);
             MLHelper.ExtractReadabilityScore(deckWords, extractedFeatures);
@@ -161,7 +161,7 @@ public class DifficultyPredictor
 
         // 4. Predict
         var prediction = _predictionEngine.Predict(predictorInput);
-        var predictedDifficulty = prediction.PredictedDifficulty[0];
+        var predictedDifficulty = prediction.PredictedDifficulty![0];
 
         // Console.WriteLine("Predicted difficulty (not rounded): " + predictedDifficulty + "");
         // Console.WriteLine("Predicted difficulty (rounded): " + (float)Math.Clamp(Math.Round(predictedDifficulty), 0, 5) + "");

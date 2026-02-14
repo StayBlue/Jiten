@@ -11,7 +11,7 @@ namespace Jiten.Cli;
 
 public static class MetadataDownloader
 {
-    private static Func<string, Task<List<Metadata>>> _currentApi;
+    private static Func<string, Task<List<Metadata>>>? _currentApi;
     private static bool _autoName;
     private static string _autoNamePrefix = "";
 
@@ -23,7 +23,7 @@ public static class MetadataDownloader
             return;
         }
 
-        _currentApi = api.Trim() switch
+        _currentApi = api?.Trim() switch
         {
             "vndb" => MetadataProviderHelper.VndbSearchApi,
             "books" => MetadataProviderHelper.GoogleBooksSearchApi,
@@ -188,7 +188,7 @@ public static class MetadataDownloader
         Console.WriteLine("====================================");
     }
 
-    private static async Task<List<string>> GetFileOrder(List<string> files)
+    private static Task<List<string>> GetFileOrder(List<string> files)
     {
         string? input = "";
 
@@ -205,17 +205,17 @@ public static class MetadataDownloader
         {
             Console.WriteLine("Only one file found, press enter to proceed or 's' to skip:");
             input = Console.ReadLine()?.Trim().ToLower();
-            return input is "s" or "skip" ? [] : files;
+            return Task.FromResult(input is "s" or "skip" ? new List<string>() : files);
         }
 
         Console.WriteLine("\nEnter file order (comma-separated numbers), 'a' for all or 's' to skip:");
         input = Console.ReadLine()?.Trim().ToLower();
 
         if (string.IsNullOrEmpty(input) || input == "s" || input == "skip")
-            return [];
+            return Task.FromResult<List<string>>([]);
 
         if (input == "a" || input == "all")
-            return files;
+            return Task.FromResult(files);
 
         var orderedFiles = new List<string>();
         var numbers = input.Split(',', StringSplitOptions.RemoveEmptyEntries);
@@ -227,7 +227,7 @@ public static class MetadataDownloader
             }
         }
 
-        return orderedFiles;
+        return Task.FromResult(orderedFiles);
     }
 
     private static async Task<Metadata?> ProcessFileWithApi(string filePath, int fileIndex)
@@ -271,7 +271,7 @@ public static class MetadataDownloader
                 return new Metadata { OriginalTitle = input };
             }
 
-            var results = await _currentApi.Invoke(input);
+            var results = await _currentApi!.Invoke(input);
 
             if (results.Count == 0)
             {

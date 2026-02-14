@@ -214,7 +214,7 @@ public class ExtractionCommands
                 break;
 
             case "mokuro":
-                var directories = Directory.GetDirectories(options.ExtractFilePath).ToList();
+                var directories = Directory.GetDirectories(options.ExtractFilePath!).ToList();
                 for (var i = 0; i < directories.Count; i++)
                 {
                     string? directory = directories[i];
@@ -247,7 +247,7 @@ public class ExtractionCommands
             var text = extension switch
             {
                 ".epub" => await extractor.ExtractTextFromEbook(file),
-                ".txt" => await File.ReadAllTextAsync(file),
+                ".txt" => await File.ReadAllTextAsync(file!),
                 _ => throw new NotSupportedException($"File extension {extension} not supported")
             };
 

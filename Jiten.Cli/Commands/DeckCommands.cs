@@ -22,7 +22,7 @@ public class DeckCommands(CliContext context)
 
     public async Task<bool> Insert(CliOptions options)
     {
-        var directories = Directory.GetDirectories(options.Insert).ToList();
+        var directories = Directory.GetDirectories(options.Insert!).ToList();
         int directoryCount = directories.Count;
 
         var serializerOptions = new JsonSerializerOptions
@@ -153,14 +153,14 @@ public class DeckCommands(CliContext context)
     private async Task<Deck?> ProcessMetadata(string directory, Metadata metadata, Deck? parentDeck, CliOptions options, MediaType deckType, int deckOrder)
     {
         Deck deck = new();
-        string filePath = metadata.FilePath;
+        string? filePath = metadata.FilePath;
         await using var context1 = await context.ContextFactory.CreateDbContextAsync();
 
-        if (!string.IsNullOrEmpty(metadata.FilePath))
+        if (!string.IsNullOrEmpty(filePath))
         {
-            if (!File.Exists(metadata.FilePath))
+            if (!File.Exists(filePath))
             {
-                filePath = Path.Combine(directory, Path.GetFileName(metadata.FilePath));
+                filePath = Path.Combine(directory, Path.GetFileName(filePath));
                 if (!File.Exists(filePath))
                 {
                     Console.WriteLine($"File {filePath} not found.");
@@ -254,7 +254,7 @@ public class DeckCommands(CliContext context)
             var text = extension switch
             {
                 ".epub" => await extractor.ExtractTextFromEbook(file),
-                ".txt" => await File.ReadAllTextAsync(file),
+                ".txt" => await File.ReadAllTextAsync(file!),
                 _ => throw new NotSupportedException($"File extension {extension} not supported")
             };
 

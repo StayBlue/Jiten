@@ -40,7 +40,7 @@ public static partial class MetadataProviderHelper
         List<Metadata> metadatas = [];
         foreach (var requestResult in requestResults)
         {
-            bool isAdultOnly = await FetchAdultStatus(requestResult.Id);
+            bool isAdultOnly = await FetchAdultStatus(requestResult.Id!);
             var tags = requestResult.Tags.Where(t => t.Spoiler == 0).Select(t => new MetadataTag
             {
                 Name = t.Id,
@@ -50,9 +50,9 @@ public static partial class MetadataProviderHelper
 
             var metadata = new Metadata
                            {
-                               OriginalTitle = requestResult.Titles.FirstOrDefault(t => t.Lang == "ja")?.Title ?? requestResult.Title,
-                               RomajiTitle = requestResult.Titles.FirstOrDefault(t => t.Lang == "ja")?.Latin,
-                               EnglishTitle = requestResult.Titles.FirstOrDefault(t => t.Lang == "en")?.Title,
+                               OriginalTitle = requestResult.Titles?.FirstOrDefault(t => t.Lang == "ja")?.Title ?? requestResult.Title ?? "Unknown",
+                               RomajiTitle = requestResult.Titles?.FirstOrDefault(t => t.Lang == "ja")?.Latin,
+                               EnglishTitle = requestResult.Titles?.FirstOrDefault(t => t.Lang == "en")?.Title,
                                ReleaseDate = requestResult.Released,
                                Description = Regex.Replace(requestResult.Description ?? "", @"\[.*\]", ""),
                                Links = [new Link { LinkType = LinkType.Vndb, Url = $"https://vndb.org/{requestResult.Id}" }],
@@ -99,7 +99,7 @@ public static partial class MetadataProviderHelper
                 return null;
         }
 
-        bool isAdultOnly = await FetchAdultStatus(requestResult.Id);
+        bool isAdultOnly = await FetchAdultStatus(requestResult.Id!);
         var tags = requestResult.Tags.Where(t => t.Spoiler == 0).Select(t => new MetadataTag
         {
             Name = t.Id,
@@ -108,9 +108,9 @@ public static partial class MetadataProviderHelper
 
         return new Metadata
                {
-                   OriginalTitle = requestResult.Titles.FirstOrDefault(t => t.Lang == "ja")?.Title ?? requestResult.Title,
-                   RomajiTitle = requestResult.Titles.FirstOrDefault(t => t.Lang == "ja")?.Latin,
-                   EnglishTitle = requestResult.Titles.FirstOrDefault(t => t.Lang == "en")?.Title, ReleaseDate = requestResult.Released,
+                   OriginalTitle = requestResult.Titles?.FirstOrDefault(t => t.Lang == "ja")?.Title ?? requestResult.Title ?? "Unknown",
+                   RomajiTitle = requestResult.Titles?.FirstOrDefault(t => t.Lang == "ja")?.Latin,
+                   EnglishTitle = requestResult.Titles?.FirstOrDefault(t => t.Lang == "en")?.Title, ReleaseDate = requestResult.Released,
                    Description = Regex.Replace(requestResult.Description ?? "", @"\[.*\]", ""),
                    Links = [new Link { LinkType = LinkType.Vndb, Url = $"https://vndb.org/{requestResult.Id}" }],
                    Image = requestResult.Image?.Url, Aliases = requestResult.Aliases, Rating = (int)Math.Round(requestResult.Rating ?? 0),
@@ -183,7 +183,7 @@ public static partial class MetadataProviderHelper
         var serializerOptions = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
         var result = JsonSerializer.Deserialize<VndbReleasePageResult>(json, serializerOptions);
 
-        var completeReleases = result.Results
+        var completeReleases = result!.Results
                                      .Where(r => r.Languages.Any(l => l.Lang == "ja") && r.Vns.Any(v => v.Rtype == "complete"))
                                      .ToList();
 

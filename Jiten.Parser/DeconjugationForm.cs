@@ -6,7 +6,7 @@ public class DeconjugationForm
     public string Text { get; }
     public string OriginalText { get; }
     public HashSet<string> SeenText { get; }
-    public List<String> Process { get; }
+    public List<string> Process { get; }
 
     private readonly int _hashCode;
 
@@ -44,7 +44,7 @@ public class DeconjugationForm
         _hashCode = hash.ToHashCode();
     }
 
-    public override bool Equals(object obj)
+    public override bool Equals(object? obj)
     {
         if (obj == null || GetType() != obj.GetType())
             return false;

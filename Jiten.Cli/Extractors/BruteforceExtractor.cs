@@ -7,7 +7,10 @@ public class BruteforceExtractor
 {
     public async Task<string> Extract(string? filePath, string encoding, bool verbose)
     {
-        string?[] files = [];
+        if (string.IsNullOrEmpty(filePath))
+            return "";
+
+        string[] files;
 
         // TODO: Handle subfolders separately
         if (Directory.Exists(filePath))
@@ -16,7 +19,7 @@ public class BruteforceExtractor
         }
         else
         {
-            files = new string[] { filePath };
+            files = [filePath];
         }
 
         if (verbose)

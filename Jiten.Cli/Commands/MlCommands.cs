@@ -32,10 +32,10 @@ public class MlCommands(CliContext context)
         Console.WriteLine("All features extracted.");
     }
 
-    public async Task<bool> ExtractMorphemes()
+    public Task<bool> ExtractMorphemes()
     {
         Console.WriteLine("This function is not supported at this time.");
-        return true;
+        return Task.FromResult(true);
 
         // The code below is commented out as it doesn't work correctly
         /*

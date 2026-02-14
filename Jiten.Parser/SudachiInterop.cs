@@ -45,9 +45,9 @@ static class SudachiInterop
     // Static callback delegate instance to prevent GC during native calls
     private static readonly unsafe OutputCallback _outputCallback = OnSudachiOutput;
 
-    private static RunCliFfiDelegate _runCliFfi;
-    private static ProcessTextFfiDelegate _processTextFfi;
-    private static FreeStringDelegate _freeString;
+    private static RunCliFfiDelegate _runCliFfi = null!;
+    private static ProcessTextFfiDelegate _processTextFfi = null!;
+    private static FreeStringDelegate _freeString = null!;
 
     // Streaming FFI delegates (optional, for newer library versions)
     private static CreateContextDelegate? _createContext;

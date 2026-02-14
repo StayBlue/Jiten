@@ -8,7 +8,7 @@ using System.Text.Json;
 
 namespace Jiten.Api.Jobs;
 
-public class StatsComputationJob(IDbContextFactory<JitenDbContext> contextFactory, IBackgroundJobClient backgroundJobs)
+public class StatsComputationJob(IDbContextFactory<JitenDbContext> contextFactory)
 {
     /// <summary>
     /// Compute coverage statistics for a single deck

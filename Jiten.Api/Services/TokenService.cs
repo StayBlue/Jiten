@@ -32,7 +32,7 @@ public class TokenService
                      {
                          new(ClaimTypes.NameIdentifier, user.Id), new(JwtRegisteredClaimNames.Sub, user.Id),
                          new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
-                         new(JwtRegisteredClaimNames.Email, user.Email), new(ClaimTypes.Name, user.UserName),
+                         new(JwtRegisteredClaimNames.Email, user.Email!), new(ClaimTypes.Name, user.UserName!),
                          // Add amr (Authentication Method Reference) claim for 2FA
                          // "mfa" indicates multi-factor authentication was performed
                          // This is useful for clients or other services to know the strength of the authentication
@@ -45,10 +45,10 @@ public class TokenService
             claims.Add(new Claim(ClaimTypes.Role, role));
         }
 
-        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSettings["Secret"]));
+        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSettings["Secret"]!));
         var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
 
-        var accessTokenExpiration = DateTime.UtcNow.AddMinutes(double.Parse(jwtSettings["AccessTokenExpirationMinutes"]));
+        var accessTokenExpiration = DateTime.UtcNow.AddMinutes(double.Parse(jwtSettings["AccessTokenExpirationMinutes"]!));
 
         var tokenDescriptor = new SecurityTokenDescriptor
                               {
@@ -65,7 +65,7 @@ public class TokenService
                                  {
                                      Token = refreshToken, JwtId = claims.First(c => c.Type == JwtRegisteredClaimNames.Jti).Value,
                                      UserId = user.Id, CreationDate = DateTime.UtcNow,
-                                     ExpiryDate = DateTime.UtcNow.AddDays(double.Parse(jwtSettings["RefreshTokenExpirationDays"])),
+                                     ExpiryDate = DateTime.UtcNow.AddDays(double.Parse(jwtSettings["RefreshTokenExpirationDays"]!)),
                                  };
 
         await _context.RefreshTokens.AddAsync(refreshTokenEntity);
@@ -92,7 +92,7 @@ public class TokenService
                                             ValidateIssuer = true, // Same as above
                                             ValidIssuer = jwtSettings["Issuer"], ValidAudience = jwtSettings["Audience"],
                                             ValidateIssuerSigningKey = true,
-                                            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSettings["Secret"])),
+                                            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSettings["Secret"]!)),
                                             ValidateLifetime = false // We check an expired token here
                                         };
 

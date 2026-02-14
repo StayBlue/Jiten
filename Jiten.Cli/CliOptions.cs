@@ -11,40 +11,40 @@ public class CliOptions
     public bool Import { get; set; }
 
     [Option("xml", Required = false, HelpText = "Path to the JMDict dtd_xml file.")]
-    public string XmlPath { get; set; }
+    public string? XmlPath { get; set; }
 
     [Option("dic", Required = false, HelpText = "Path to the JMdict dictionary file.")]
-    public string DictionaryPath { get; set; }
+    public string? DictionaryPath { get; set; }
 
     [Option("namedic", Required = false, HelpText = "Path to the JMNedict dictionary file.")]
-    public string NameDictionaryPath { get; set; }
+    public string? NameDictionaryPath { get; set; }
 
     [Option("furi", Required = false, HelpText = "Path to the JMDict Furigana dictionary file.")]
-    public string FuriganaPath { get; set; }
+    public string? FuriganaPath { get; set; }
 
     [Option('e', "extract", Required = false, HelpText = "Extract text from a file or a folder and all its subfolders.")]
-    public string ExtractFilePath { get; set; }
+    public string? ExtractFilePath { get; set; }
 
     [Option('p', "parse", Required = false, HelpText = "Parse text in directory using metadata.json.")]
-    public string Parse { get; set; }
+    public string? Parse { get; set; }
 
     [Option('t', "threads", Required = false, HelpText = "Number of threads to use.")]
     public int Threads { get; set; } = 1;
 
     [Option('s', "script", Required = false, HelpText = "Choose an available extraction script.")]
-    public string Script { get; set; }
+    public string? Script { get; set; }
 
     [Option('o', "output", Required = false, HelpText = "Output the operation to a file.")]
-    public string Output { get; set; }
+    public string? Output { get; set; }
 
     [Option('x', "extra", Required = false, HelpText = "Extra arguments for some operations.")]
-    public string Extra { get; set; }
+    public string? Extra { get; set; }
 
     [Option('m', "metadata", Required = false, HelpText = "Download metadata for a folder.")]
-    public string Metadata { get; set; }
+    public string? Metadata { get; set; }
 
     [Option('a', "api", Required = false, HelpText = "API to retrieve metadata from.")]
-    public string Api { get; set; }
+    public string? Api { get; set; }
 
     [Option(longName: "deck-type", Required = false, HelpText = "Type of deck for the parser.")]
     public string? DeckType { get; set; }
@@ -53,7 +53,7 @@ public class CliOptions
     public bool CleanSubtitles { get; set; }
 
     [Option(longName: "insert", Required = false, HelpText = "Insert the parsed deck.json into the database from a directory.")]
-    public string Insert { get; set; }
+    public string? Insert { get; set; }
 
     [Option(longName: "update", Required = false,
             HelpText = "Update the parsed deck.json into the database from a directory if it's more recent'.")]
@@ -67,22 +67,22 @@ public class CliOptions
 
     [Option(longName: "user-dic-mass-add", Required = false,
             HelpText = "Add all JMDict words that are not in the list of word of this file")]
-    public string UserDicMassAdd { get; set; }
+    public string? UserDicMassAdd { get; set; }
 
     [Option(longName: "apply-migrations", Required = false, HelpText = "Apply migrations to the database")]
     public bool ApplyMigrations { get; set; }
 
     [Option(longName: "import-pitch-accents", Required = false, HelpText = "Import pitch accents from a yomitan dictinoary directory.")]
-    public string ImportPitchAccents { get; set; }
+    public string? ImportPitchAccents { get; set; }
 
     [Option("import-vocabulary-origin", Required = false, HelpText = "Path to the VocabularyOrigin CSV file.")]
-    public string ImportVocabularyOrigin { get; set; }
+    public string? ImportVocabularyOrigin { get; set; }
 
     [Option(longName: "extract-features", Required = false, HelpText = "Extract features from directory for ML.")]
-    public string ExtractFeatures { get; set; }
+    public string? ExtractFeatures { get; set; }
 
     [Option(longName: "extract-features-db", Required = false, HelpText = "Extract features from DB for ML.")]
-    public string ExtractFeaturesDb { get; set; }
+    public string? ExtractFeaturesDb { get; set; }
 
     [Option(longName: "extract-morphemes", Required = false,
             HelpText = "Extract morphemes from words in the directionary and add them to the database.")]
@@ -92,22 +92,22 @@ public class CliOptions
     public bool RegisterAdmin { get; set; }
 
     [Option(longName: "email", Required = false, HelpText = "Email for the admin.")]
-    public string Email { get; set; }
+    public string? Email { get; set; }
 
     [Option(longName: "username", Required = false, HelpText = "Username for the admin.")]
-    public string Username { get; set; }
+    public string? Username { get; set; }
 
     [Option(longName: "password", Required = false, HelpText = "Password for the admin.")]
-    public string Password { get; set; }
+    public string? Password { get; set; }
 
     [Option(longName: "compare-jmdict", Required = false, HelpText = "Compare two JMDict XML.")]
     public bool CompareJMDict { get; set; }
 
     [Option(longName: "prune-sudachi", Required = false, HelpText = "Prune CSV files from sudachi directory")]
-    public string PruneSudachiCsvDirectory { get; set; }
+    public string? PruneSudachiCsvDirectory { get; set; }
 
     [Option(longName: "sync-jmnedict", Required = false, HelpText = "Sync missing JMNedict entries and update partial entries with missing readings/definitions.")]
-    public string SyncJMNedict { get; set; }
+    public string? SyncJMNedict { get; set; }
 
     [Option(longName: "sync-jmdict", Required = false, HelpText = "Sync JMDict metadata on WordForms and Definitions from XML source.")]
     public bool SyncJmDict { get; set; }
@@ -116,7 +116,7 @@ public class CliOptions
     public bool DryRun { get; set; }
 
     [Option(longName: "import-kanjidic", Required = false, HelpText = "Import KANJIDIC2 kanji dictionary from XML file.")]
-    public string ImportKanjidic { get; set; }
+    public string? ImportKanjidic { get; set; }
 
     [Option(longName: "populate-word-kanji", Required = false, HelpText = "Populate WordKanji junction table after kanji import.")]
     public bool PopulateWordKanji { get; set; }

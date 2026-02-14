@@ -6,11 +6,11 @@ public class TmdbMovieAlternativeTitle
 {
     [JsonPropertyName("id")] public int Id { get; set; }
 
-    [JsonPropertyName("titles")] public List<TmdbMovieAlternativeTitleItem> Titles { get; set; }
+    [JsonPropertyName("titles")] public List<TmdbMovieAlternativeTitleItem> Titles { get; set; } = [];
 }
 
 public class TmdbMovieAlternativeTitleItem
 {
-    [JsonPropertyName("iso_3166_1")] public string Iso31661 { get; set; }
-    [JsonPropertyName("title")] public string Title { get; set; }
+    [JsonPropertyName("iso_3166_1")] public string Iso31661 { get; set; } = default!;
+    [JsonPropertyName("title")] public string Title { get; set; } = default!;
 }

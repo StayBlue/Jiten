@@ -10,7 +10,7 @@ public class FsrsCard
     /// </summary>
     public long CardId { get; set; }
 
-    public string UserId { get; set; }
+    public string UserId { get; set; } = default!;
     public int WordId { get; set; }
     public byte ReadingIndex { get; set; }
 

@@ -9,32 +9,32 @@ public class SudachiDictionaryProcessor
     public class SudachiLexiconRecord
     {
         // Columns 0-3
-        public string Surface { get; set; }
+        public string Surface { get; set; } = "";
         public int LeftId { get; set; }
         public int RightId { get; set; }
         public int Cost { get; set; }
 
         // Columns 4-10
-        public string DisplayForm { get; set; }
-        public string Pos1 { get; set; }
-        public string Pos2 { get; set; }
-        public string Pos3 { get; set; }
-        public string Pos4 { get; set; }
-        public string Pos5_ConjType { get; set; }
-        public string Pos6_ConjForm { get; set; }
+        public string DisplayForm { get; set; } = "";
+        public string Pos1 { get; set; } = "";
+        public string Pos2 { get; set; } = "";
+        public string Pos3 { get; set; } = "";
+        public string Pos4 { get; set; } = "";
+        public string Pos5_ConjType { get; set; } = "";
+        public string Pos6_ConjForm { get; set; } = "";
 
         // Columns 11-17
-        public string Yomi { get; set; }
-        public string NormalizedForm { get; set; }
-        public string DictionaryFormWordId { get; set; }
-        public string SplitType { get; set; }
-        public string SplitInfoAUnit { get; set; }
-        public string SplitInfoBUnit { get; set; }
-        public string UnusedField { get; set; } // Column 17, explicitly handled
+        public string Yomi { get; set; } = "";
+        public string NormalizedForm { get; set; } = "";
+        public string DictionaryFormWordId { get; set; } = "";
+        public string SplitType { get; set; } = "";
+        public string SplitInfoAUnit { get; set; } = "";
+        public string SplitInfoBUnit { get; set; } = "";
+        public string UnusedField { get; set; } = ""; // Column 17, explicitly handled
 
         // --- Helper properties, not part of the CSV ---
         public int OriginalIndex { get; set; }
-        public string SourceFileName { get; set; }
+        public string SourceFileName { get; set; } = "";
         public string PosString => $"{Pos1},{Pos2},{Pos3},{Pos4},{Pos5_ConjType},{Pos6_ConjForm}";
     }
 
@@ -178,7 +178,7 @@ public class SudachiDictionaryProcessor
         {
             var fileName = group.Key;
             var originalPath = filePaths.First(p => Path.GetFileName(p) == fileName);
-            var outputPath = Path.Combine(Path.GetDirectoryName(originalPath),
+            var outputPath = Path.Combine(Path.GetDirectoryName(originalPath) ?? "",
                                           $"{Path.GetFileNameWithoutExtension(originalPath)}_pruned.csv");
 
             await using var writer = new StreamWriter(outputPath);
@@ -370,13 +370,13 @@ public class SudachiDictionaryProcessor
             {
                 var record = new SudachiLexiconRecord
                              {
-                                 OriginalIndex = index, SourceFileName = fileName, Surface = csv.GetField(0), LeftId = csv.GetField<int>(1),
-                                 RightId = csv.GetField<int>(2), Cost = csv.GetField<int>(3), DisplayForm = csv.GetField(4),
-                                 Pos1 = csv.GetField(5), Pos2 = csv.GetField(6), Pos3 = csv.GetField(7), Pos4 = csv.GetField(8),
-                                 Pos5_ConjType = csv.GetField(9), Pos6_ConjForm = csv.GetField(10), Yomi = csv.GetField(11),
-                                 NormalizedForm = csv.GetField(12), DictionaryFormWordId = csv.GetField(13), SplitType = csv.GetField(14),
-                                 SplitInfoAUnit = csv.GetField(15), SplitInfoBUnit = csv.GetField(16),
-                                 UnusedField = csv.TryGetField<string>(17, out var val) ? val : "*"
+                                 OriginalIndex = index, SourceFileName = fileName, Surface = csv.GetField(0) ?? "", LeftId = csv.GetField<int>(1),
+                                 RightId = csv.GetField<int>(2), Cost = csv.GetField<int>(3), DisplayForm = csv.GetField(4) ?? "",
+                                 Pos1 = csv.GetField(5) ?? "", Pos2 = csv.GetField(6) ?? "", Pos3 = csv.GetField(7) ?? "", Pos4 = csv.GetField(8) ?? "",
+                                 Pos5_ConjType = csv.GetField(9) ?? "", Pos6_ConjForm = csv.GetField(10) ?? "", Yomi = csv.GetField(11) ?? "",
+                                 NormalizedForm = csv.GetField(12) ?? "", DictionaryFormWordId = csv.GetField(13) ?? "", SplitType = csv.GetField(14) ?? "",
+                                 SplitInfoAUnit = csv.GetField(15) ?? "", SplitInfoBUnit = csv.GetField(16) ?? "",
+                                 UnusedField = csv.TryGetField<string>(17, out var val) ? val ?? "*" : "*"
                              };
 
 

@@ -1476,8 +1476,8 @@ public static class JmDictHelper
                 if (reader.Name == "ke_pri")
                 {
                     var pri = await reader.ReadElementContentAsStringAsync();
-                    if (!wordInfo.Priorities.Contains(pri))
-                        wordInfo.Priorities.Add(pri);
+                    if (!wordInfo.Priorities!.Contains(pri))
+                        wordInfo.Priorities!.Add(pri);
                 }
             }
 
@@ -1522,8 +1522,8 @@ public static class JmDictHelper
                 if (reader.Name == "re_pri")
                 {
                     var pri = await reader.ReadElementContentAsStringAsync();
-                    if (!wordInfo.Priorities.Contains(pri))
-                        wordInfo.Priorities.Add(pri);
+                    if (!wordInfo.Priorities!.Contains(pri))
+                        wordInfo.Priorities!.Add(pri);
                 }
             }
 
@@ -1607,8 +1607,8 @@ public static class JmDictHelper
                 if (reader.Name == "ke_pri")
                 {
                     var pri = await reader.ReadElementContentAsStringAsync();
-                    if (!wordInfo.Priorities.Contains(pri))
-                        wordInfo.Priorities.Add(pri);
+                    if (!wordInfo.Priorities!.Contains(pri))
+                        wordInfo.Priorities!.Add(pri);
                 }
             }
 
@@ -1652,8 +1652,8 @@ public static class JmDictHelper
                 if (reader.Name == "re_pri")
                 {
                     var pri = await reader.ReadElementContentAsStringAsync();
-                    if (!wordInfo.Priorities.Contains(pri))
-                        wordInfo.Priorities.Add(pri);
+                    if (!wordInfo.Priorities!.Contains(pri))
+                        wordInfo.Priorities!.Add(pri);
                 }
             }
 
@@ -1848,7 +1848,7 @@ public static class JmDictHelper
         }
 
         // Statistics
-        int wordsUpdated = 0, wordsCreated = 0, wordsSkipped = 0, wordsFailed = 0;
+        int wordsUpdated = 0, wordsCreated = 0, wordsFailed = 0;
         int formsMatched = 0, formsCreated = 0, formsDeactivated = 0;
         int definitionsDeleted = 0, definitionsCreated = 0;
         int lookupsCreated = 0;
@@ -2289,7 +2289,7 @@ public static class JmDictHelper
                                                    SyncEntry entry, Dictionary<string, List<JMDictFurigana>> furiganaDict)
     {
         int formsMatched = 0, formsCreated = 0, formsDeactivated = 0;
-        int lookupsCreated = 0, unresolvedRestrictions = 0;
+        int lookupsCreated = 0;
 
         // Build form map from existing DB forms
         var formMap = new Dictionary<(JmDictFormType, string), JmDictWordForm>();

@@ -12,17 +12,20 @@ public class PsbExtractor
 {
     public class Root
     {
-        [JsonPropertyName("scenes")] public List<Scene> Scenes { get; set; }
+        [JsonPropertyName("scenes")] public List<Scene> Scenes { get; set; } = [];
     }
 
     public class Scene
     {
-        [JsonPropertyName("texts")] public List<List<object>> Texts { get; set; }
+        [JsonPropertyName("texts")] public List<List<object>> Texts { get; set; } = [];
     }
 
     public async Task<string> Extract(string? filePath, bool verbose)
     {
-        string?[] files = [];
+        if (string.IsNullOrEmpty(filePath))
+            return "";
+
+        string[] files;
 
         // TODO: Handle subfolders separately
         if (Directory.Exists(filePath))
@@ -33,7 +36,7 @@ public class PsbExtractor
         }
         else
         {
-            files = new string[] { filePath };
+            files = [filePath];
         }
 
         if (verbose)
@@ -53,8 +56,8 @@ public class PsbExtractor
             var jsonContent = await File.ReadAllTextAsync(file, Encoding.UTF8);
 
             var rootObject = JsonSerializer.Deserialize<Root>(jsonContent);
+            if (rootObject == null) continue;
 
-            // Process the rootObject as needed
             foreach (var scene in rootObject.Scenes)
             {
                 if (scene.Texts == null) continue;
@@ -63,8 +66,7 @@ public class PsbExtractor
                 {
                     if (text.Count <= 2 || text[2] == null) continue;
 
-                    // Filter [tags]
-                    string line = Regex.Replace(text[2].ToString(), @"\[.*?\]", "", RegexOptions.None);
+                    string line = Regex.Replace(text[2].ToString() ?? "", @"\[.*?\]", "", RegexOptions.None);
                     line = Regex.Replace(line, @"\\n", "", RegexOptions.None);
 
                     extractedText.AppendLine(line);

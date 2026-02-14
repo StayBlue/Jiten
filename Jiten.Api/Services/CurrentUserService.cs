@@ -349,7 +349,7 @@ public class CurrentUserService(
         if (card == null) return;
 
         card.State = FsrsState.New;
-        await srsService.SyncKanaReading(UserId, wordId, readingIndex, card, DateTime.UtcNow);
+        await srsService.SyncKanaReading(UserId!, wordId, readingIndex, card, DateTime.UtcNow);
 
         await userContext.SaveChangesAsync();
     }

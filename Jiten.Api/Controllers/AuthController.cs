@@ -255,7 +255,7 @@ public class AuthController : ControllerBase
         code = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(code));
 
         var url = "https://jiten.moe";
-        var callbackUrl = $"{url}/reset-password?email={_urlEncoder.Encode(user.Email)}&code={code}";
+        var callbackUrl = $"{url}/reset-password?email={_urlEncoder.Encode(user.Email!)}&code={code}";
 
         await _emailSender.SendEmailAsync(model.Email, "Jiten - Reset Your Password",
                                           $"Please reset your password on Jiten.moe by <a href='{HtmlEncoder.Default.Encode(callbackUrl)}'>clicking here</a>.<br/>Do not share this link with anyone.<br/>If you did not request a password reset, please ignore this email.");
@@ -421,7 +421,7 @@ public class AuthController : ControllerBase
             return BadRequest(new { message = "Missing temporary token" });
         }
 
-        if (!_memoryCache.TryGetValue($"google_registration_{request.TempToken}", out GoogleRegistrationData registrationData))
+        if (!_memoryCache.TryGetValue($"google_registration_{request.TempToken}", out GoogleRegistrationData? registrationData) || registrationData == null)
         {
             return BadRequest(new { message = "Invalid or expired registration token" });
         }
@@ -452,7 +452,7 @@ public class AuthController : ControllerBase
             return BadRequest(new { message = "Username is already taken" });
         }
 
-        var emailExists = await _userManager.Users.AnyAsync(u => u.Email == registrationData.Email);
+        var emailExists = await _userManager.Users.AnyAsync(u => u.Email == registrationData!.Email);
         if (emailExists)
         {
             return BadRequest(new { message = "Email is already registered" });
@@ -494,7 +494,7 @@ public class AuthController : ControllerBase
         using (var http = _httpClientFactory.CreateClient())
         {
             var form = new FormUrlEncodedContent([
-                new KeyValuePair<string, string>("secret", recaptchaSecret),
+                new KeyValuePair<string, string>("secret", recaptchaSecret!),
                 new KeyValuePair<string, string>("response", recaptchaToken),
                 new KeyValuePair<string, string>("remoteip", remoteIp ?? string.Empty)
             ]);

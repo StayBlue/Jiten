@@ -18,7 +18,7 @@ public class EbookExtractor
     {
         try
         {
-            EpubBook book = await EpubReader.ReadBookAsync(filePath);
+            EpubBook book = await EpubReader.ReadBookAsync(filePath!);
 
             StringBuilder extractedText = new();
 

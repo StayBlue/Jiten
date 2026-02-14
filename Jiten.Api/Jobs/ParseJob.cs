@@ -13,7 +13,7 @@ public class ParseJob(IDbContextFactory<JitenDbContext> contextFactory, IBackgro
     public async Task Parse(Metadata metadata, MediaType deckType, bool storeRawText = false)
     {
         Deck deck = new();
-        string filePath = metadata.FilePath;
+        string filePath = metadata.FilePath!;
 
         await using var context = await contextFactory.CreateDbContextAsync();
 

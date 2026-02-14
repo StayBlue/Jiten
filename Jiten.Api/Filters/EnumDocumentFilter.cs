@@ -23,7 +23,7 @@ public class EnumDocumentFilter : IDocumentFilter
 
         foreach (var type in apiTypes)
         {
-            var enumTypes = GetEnumTypesRecursively(type);
+            var enumTypes = GetEnumTypesRecursively(type!);
             foreach (var enumType in enumTypes)
             {
                 discoveredEnums.Add(enumType);
@@ -121,9 +121,9 @@ public class EnumDocumentFilter : IDocumentFilter
             var intValue = Convert.ToInt32(value);
 
             schema.Enum.Add(new OpenApiInteger(intValue));
-            enumNames.Add(name);
+            enumNames.Add(name!);
 
-            var description = GetEnumDescription(enumType, name) ?? name;
+            var description = GetEnumDescription(enumType, name!) ?? name;
             descriptions.Add($"{name} ({intValue}){(description != name ? $": {description}" : "")}");
         }
 
@@ -137,7 +137,7 @@ public class EnumDocumentFilter : IDocumentFilter
         return schema;
     }
 
-    private static string GetEnumDescription(Type enumType, string enumName)
+    private static string? GetEnumDescription(Type enumType, string enumName)
     {
         var field = enumType.GetField(enumName);
         var attribute = field?.GetCustomAttribute<DescriptionAttribute>();

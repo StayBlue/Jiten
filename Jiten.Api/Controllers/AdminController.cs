@@ -1056,7 +1056,7 @@ public partial class AdminController(
                                                                             SubtitleExtractor.SupportedExtensions
                                                                                 .Contains(Path.GetExtension(currentEntry.Key))))
                     {
-                        var entryPath = Path.Combine(path, Path.GetFileName(e.Key));
+                        var entryPath = Path.Combine(path, Path.GetFileName(e.Key)!);
                         e.WriteToFile(entryPath, new ExtractionOptions { ExtractFullPath = false, Overwrite = true });
                         downloadedFiles.Add(entryPath);
                     }

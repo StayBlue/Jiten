@@ -17,8 +17,8 @@ namespace Jiten.Cli;
 public class JimakuDownloader
 {
     private static readonly HttpClient _jimakuHttpClient = new HttpClient();
-    private static string _jimakuApiKey;
-    private static string _tmdbApiKey;
+    private static string _jimakuApiKey = string.Empty;
+    private static string _tmdbApiKey = string.Empty;
 
     private static readonly List<string> _supportedExtensions = [".ass", ".srt", ".ssa"];
     // ASS styles/markers to skip (CN lines)
@@ -63,7 +63,7 @@ public class JimakuDownloader
             var entry = await GetEntryAsync(n);
             if (entry == null) continue;
 
-            var currentDirectory = Path.Combine(baseDirectory, entry.Flags.Anime ? "anime" : entry.Flags.Movie ? "movies" : "dramas",
+            var currentDirectory = Path.Combine(baseDirectory ?? "", entry.Flags.Anime ? "anime" : entry.Flags.Movie ? "movies" : "dramas",
                                                 entry.Id.ToString());
 
             var files = await GetFilesAsync(n);
@@ -94,7 +94,7 @@ public class JimakuDownloader
                 Console.WriteLine("Enter file numbers to exclude (comma-separated):");
                 input = Console.ReadLine()?.Trim().ToLower();
 
-                var excludeNumbers = input.Split(',').Select(s => int.Parse(s.Trim()) - 1).ToList();
+                var excludeNumbers = input?.Split(',').Select(s => int.Parse(s.Trim()) - 1).ToList() ?? [];
                 selectedFiles = files.Where((file, index) => !excludeNumbers.Contains(index)).ToList();
             }
             else if (input?.StartsWith("s") == true)

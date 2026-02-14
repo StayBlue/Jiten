@@ -205,10 +205,10 @@ public class Deck
 
     public float GetDifficulty() => DifficultyOverride > -1 ? DifficultyOverride : Difficulty;
 
-    public async Task AddChildDeckWords(JitenDbContext context)
+    public Task AddChildDeckWords(JitenDbContext context)
     {
         if (Children.Count == 0)
-            return;
+            return Task.CompletedTask;
 
         DeckWords = new List<DeckWord>();
         var deckWordLookup = new Dictionary<(int, byte), DeckWord>();
@@ -274,6 +274,8 @@ public class Deck
         var rebuiltText = sb.ToString();
         UniqueKanjiCount = rebuiltText.Distinct().Count(c => WanaKana.IsKanji(c.ToString()));
         UniqueKanjiUsedOnceCount = rebuiltText.GroupBy(c => c).Count(g => g.Count() == 1 && WanaKana.IsKanji(g.Key.ToString()));
+
+        return Task.CompletedTask;
     }
 
     public void SetParentsAndDeckWordDeck(Deck deck)

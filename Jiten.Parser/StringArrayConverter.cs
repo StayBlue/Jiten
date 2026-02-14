@@ -1,9 +1,7 @@
 namespace Jiten.Parser;
 
-using System;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using System.Collections.Generic;
 
 public class StringArrayConverter : JsonConverter<string[]>
 {

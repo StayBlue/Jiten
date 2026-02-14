@@ -39,7 +39,10 @@ public class NexasExtractor
     /// <returns></returns>
     public async Task<string> Extract(string? filePath, bool verbose)
     {
-        string?[] files = [];
+        if (string.IsNullOrEmpty(filePath))
+            return "";
+
+        string[] files;
 
         // TODO: Handle subfolders separately
         if (Directory.Exists(filePath))
@@ -48,7 +51,7 @@ public class NexasExtractor
         }
         else
         {
-            files = new string[] { filePath };
+            files = [filePath];
         }
 
         if (verbose)

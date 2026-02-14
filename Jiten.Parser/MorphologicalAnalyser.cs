@@ -162,10 +162,10 @@ public class MorphologicalAnalyser
     /// <param name="preserveStopToken">A boolean indicating whether the stop token should be preserved.</param>
     /// <param name="diagnostics">Optional diagnostics container for verbose debug output.</param>
     /// <returns>List of SentenceInfo lists, one per input text.</returns>
-    public async Task<List<List<SentenceInfo>>> ParseBatch(List<string> texts, bool morphemesOnly = false, bool preserveStopToken = false,
-                                                           ParserDiagnostics? diagnostics = null)
+    public Task<List<List<SentenceInfo>>> ParseBatch(List<string> texts, bool morphemesOnly = false, bool preserveStopToken = false,
+                                                     ParserDiagnostics? diagnostics = null)
     {
-        if (texts.Count == 0) return [];
+        if (texts.Count == 0) return Task.FromResult<List<List<SentenceInfo>>>([]);
 
         diagnostics?.TokenStages.Clear();
 
@@ -178,7 +178,7 @@ public class MorphologicalAnalyser
                             .AddJsonFile("appsettings.json", optional: true)
                             .AddEnvironmentVariables()
                             .Build();
-        var dic = configuration.GetValue<string>("DictionaryPath");
+        var dic = configuration.GetValue<string>("DictionaryPath")!;
 
         // Preprocess each text separately (preserves transformations per-text)
         var processedTexts = new List<string>(texts.Count);
@@ -308,7 +308,7 @@ public class MorphologicalAnalyser
             results.Add(SplitIntoSentences(originalTexts[i], wordInfos));
         }
 
-        return results;
+        return Task.FromResult(results);
     }
 
     /// <summary>

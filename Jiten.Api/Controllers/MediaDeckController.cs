@@ -225,6 +225,15 @@ public class MediaDeckController(
     /// <param name="subdeckCountMax"></param>
     /// <param name="extRatingMin"></param>
     /// <param name="extRatingMax"></param>
+    /// <param name="genres"></param>
+    /// <param name="excludeGenres"></param>
+    /// <param name="tags"></param>
+    /// <param name="excludeTags"></param>
+    /// <param name="coverageMin"></param>
+    /// <param name="coverageMax"></param>
+    /// <param name="uniqueCoverageMin"></param>
+    /// <param name="uniqueCoverageMax"></param>
+    /// <param name="excludeSequels"></param>
     /// <returns>Paginated list of decks.</returns>
     [HttpGet("get-media-decks")]
     [ResponseCache(Duration = 300, VaryByHeader = "Authorization",
@@ -508,7 +517,7 @@ public class MediaDeckController(
             else if (normalizedStatus == "nostatus")
             {
                 var decksWithStatus = allUserPrefs
-                                      .Where(p => p.Value.Status != null)
+                                      .Where(p => p.Value.Status != DeckStatus.None)
                                       .Select(p => p.Key)
                                       .ToHashSet();
                 query = query.Where(d => !decksWithStatus.Contains(d.DeckId));
@@ -1328,7 +1337,7 @@ public class MediaDeckController(
 
         var wordIds = deckWordsRaw!.Select(dw => (long)dw.WordId).ToList();
 
-        List<(int WordId, byte ReadingIndex, int Occurrences)> deckWords = deckWordsRaw
+        List<(int WordId, byte ReadingIndex, int Occurrences)> deckWords = deckWordsRaw!
                                                                            .Select(dw => new ValueTuple<int, byte, int>(dw.WordId,
                                                                                        dw.ReadingIndex, dw.Occurrences))
                                                                            .ToList();
@@ -1340,7 +1349,7 @@ public class MediaDeckController(
 
         logger.LogInformation(
                               "User downloaded deck: DeckId={DeckId}, DeckTitle={DeckTitle}, Format={Format}, DownloadType={DownloadType}, WordCount={WordCount}, ExcludeMature={ExcludeMature}, ExcludeAllTracked={ExcludeAllTracked}",
-                              id, deck.OriginalTitle, request.Format, request.DownloadType, deckWordsRaw.Count,
+                              id, deck.OriginalTitle, request.Format, request.DownloadType, deckWordsRaw!.Count,
                               request.ExcludeMatureMasteredBlacklisted, request.ExcludeAllTrackedWords);
 
         return request.Format switch
@@ -1443,7 +1452,7 @@ public class MediaDeckController(
 
         var fileResult = await GenerateDeckDownload(0, deckDownloadRequest, wordIds, deck, deckWords);
         var deckDto = new DeckDto(deck);
-        var fileBase64 = Convert.ToBase64String(fileResult);
+        var fileBase64 = Convert.ToBase64String(fileResult!);
 
         logger.LogInformation(
                               "User parsed custom deck: CharacterCount={CharacterCount}, WordCount={WordCount}, UniqueWordCount={UniqueWordCount}",

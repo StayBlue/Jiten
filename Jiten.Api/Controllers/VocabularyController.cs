@@ -22,7 +22,7 @@ namespace Jiten.Api.Controllers;
 [Route("api/vocabulary")]
 [EnableRateLimiting("fixed")]
 [Produces("application/json")]
-public class VocabularyController(JitenDbContext context, IDbContextFactory<JitenDbContext> contextFactory, ICurrentUserService currentUserService, IConnectionMultiplexer redis, ILogger<VocabularyController> logger) : ControllerBase
+public class VocabularyController(JitenDbContext context, IDbContextFactory<JitenDbContext> contextFactory, ICurrentUserService currentUserService, IConnectionMultiplexer redis) : ControllerBase
 {
     /// <summary>
     /// Gets a word by its ID and reading index, including definitions, readings, frequency and user known state.
@@ -262,6 +262,7 @@ public class VocabularyController(JitenDbContext context, IDbContextFactory<Jite
     /// <param name="wordId">The word ID.</param>
     /// <param name="readingIndex">The reading index for the word.</param>
     /// <param name="alreadyLoaded">A list of deck IDs already loaded on the client to avoid duplicates.</param>
+    /// <param name="mediaType">Optional media type filter.</param>
     /// <returns>A list of example sentences with metadata.</returns>
     [HttpPost("{wordId}/{readingIndex}/random-example-sentences/{mediaType?}")]
     [SwaggerOperation(Summary = "Get random example sentences",

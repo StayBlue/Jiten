@@ -260,7 +260,7 @@ public class FetchMetadataJob(IDbContextFactory<JitenDbContext> contextFactory, 
 
             var url = link.Url.TrimEnd('/');
 
-            Metadata metadata = await MetadataProviderHelper.IgdbApi(url,configuration["IgdbClientId"]!, configuration["IgdbClientSecret"]!);
+            Metadata? metadata = await MetadataProviderHelper.IgdbApi(url,configuration["IgdbClientId"]!, configuration["IgdbClientSecret"]!);
             if (metadata == null)
                 throw new Exception($"Metadata for IGDB URL {url} not found.");
 

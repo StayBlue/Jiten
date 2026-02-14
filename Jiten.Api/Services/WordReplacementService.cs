@@ -277,8 +277,8 @@ public class WordReplacementService(
             // Step 7: Update UniqueWordCount on affected decks
             if (affectedDeckIds.Count > 0)
             {
-                var deckIdsParam = string.Join(",", affectedDeckIds);
-                await context.Database.ExecuteSqlRawAsync($@"
+                var deckIdsArray = affectedDeckIds.ToArray();
+                await context.Database.ExecuteSqlAsync($@"
                     UPDATE jiten.""Decks"" d
                     SET ""UniqueWordCount"" = (
                         SELECT COUNT(DISTINCT (""WordId"", ""ReadingIndex""))
@@ -288,7 +288,7 @@ public class WordReplacementService(
                         SELECT COUNT(*)
                         FROM jiten.""DeckWords"" WHERE ""DeckId"" = d.""DeckId"" AND ""Occurrences"" = 1
                     )
-                    WHERE d.""DeckId"" IN ({deckIdsParam})");
+                    WHERE d.""DeckId"" = ANY({deckIdsArray})");
             }
 
             await transaction.CommitAsync();
@@ -605,8 +605,8 @@ public class WordReplacementService(
             // Update UniqueWordCount on affected decks
             if (affectedDeckIds.Count > 0)
             {
-                var deckIdsParam = string.Join(",", affectedDeckIds);
-                await context.Database.ExecuteSqlRawAsync($@"
+                var deckIdsArray = affectedDeckIds.ToArray();
+                await context.Database.ExecuteSqlAsync($@"
                     UPDATE jiten.""Decks"" d
                     SET ""UniqueWordCount"" = (
                         SELECT COUNT(DISTINCT (""WordId"", ""ReadingIndex""))
@@ -616,7 +616,7 @@ public class WordReplacementService(
                         SELECT COUNT(*)
                         FROM jiten.""DeckWords"" WHERE ""DeckId"" = d.""DeckId"" AND ""Occurrences"" = 1
                     )
-                    WHERE d.""DeckId"" IN ({deckIdsParam})");
+                    WHERE d.""DeckId"" = ANY({deckIdsArray})");
             }
 
             await transaction.CommitAsync();
@@ -764,8 +764,8 @@ public class WordReplacementService(
             // Update UniqueWordCount on affected decks
             if (affectedDeckIds.Count > 0)
             {
-                var deckIdsParam = string.Join(",", affectedDeckIds);
-                await context.Database.ExecuteSqlRawAsync($@"
+                var deckIdsArray = affectedDeckIds.ToArray();
+                await context.Database.ExecuteSqlAsync($@"
                     UPDATE jiten.""Decks"" d
                     SET ""UniqueWordCount"" = (
                         SELECT COUNT(DISTINCT (""WordId"", ""ReadingIndex""))
@@ -775,7 +775,7 @@ public class WordReplacementService(
                         SELECT COUNT(*)
                         FROM jiten.""DeckWords"" WHERE ""DeckId"" = d.""DeckId"" AND ""Occurrences"" = 1
                     )
-                    WHERE d.""DeckId"" IN ({deckIdsParam})");
+                    WHERE d.""DeckId"" = ANY({deckIdsArray})");
             }
 
             await transaction.CommitAsync();

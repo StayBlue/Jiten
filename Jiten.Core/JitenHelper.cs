@@ -18,7 +18,7 @@ public static class JitenHelper
         var totalTimer = Stopwatch.StartNew();
         Console.WriteLine($"[{DateTime.UtcNow:O}] Inserting deck {deck.OriginalTitle}...");
 
-        byte[] optimizedCoverBytes = null;
+        byte[]? optimizedCoverBytes = null;
         try
         {
             if (cover.Length > 0)
@@ -105,7 +105,7 @@ public static class JitenHelper
                 context.Entry(deck).State = EntityState.Added;
                 context.Entry(deck).Collection(d => d.Children).IsModified = false;
                 context.Entry(deck).Collection(d => d.DeckWords).IsModified = false;
-                context.Entry(deck).Collection(d => d.ExampleSentences).IsModified = false;
+                context.Entry(deck).Collection(d => d.ExampleSentences!).IsModified = false;
 
                 // Hint PostgreSQL to skip fsync for this small transaction; reduces latency for large row inserts
                 await context.Database.ExecuteSqlRawAsync(@"SET LOCAL synchronous_commit = OFF");
@@ -163,7 +163,7 @@ public static class JitenHelper
 
                 // Small retry to survive transient socket drops during final update
                 var attempts = 0;
-                Exception lastEx = null;
+                Exception? lastEx = null;
                 while (attempts < 3)
                 {
                     try
@@ -187,9 +187,6 @@ public static class JitenHelper
                 Console.WriteLine($"Insert took {totalTimer.ElapsedMilliseconds} ms.");
                 return;
             }
-
-            // If existing deck update path: we committed or will do bulk ops below.
-            await transaction.CommitAsync();
         }
         catch (Exception ex)
         {
@@ -488,17 +485,20 @@ public static class JitenHelper
 
         if (childrenToDelete.Any())
         {
-            await context.Database.ExecuteSqlRawAsync(
-                $@"DELETE FROM jiten.""DeckWords"" WHERE ""DeckId"" IN ({string.Join(",", childrenToDelete.Select((_, i) => $"{{{i}}}"))})",
-                childrenToDelete.Cast<object>().ToArray());
+            var placeholders = string.Join(",", childrenToDelete.Select((_, i) => "{" + i + "}"));
+            var parameters = childrenToDelete.Cast<object>().ToArray();
 
             await context.Database.ExecuteSqlRawAsync(
-                $@"DELETE FROM jiten.""ExampleSentences"" WHERE ""DeckId"" IN ({string.Join(",", childrenToDelete.Select((_, i) => $"{{{i}}}"))})",
-                childrenToDelete.Cast<object>().ToArray());
+                @"DELETE FROM jiten.""DeckWords"" WHERE ""DeckId"" IN (" + placeholders + ")",
+                parameters);
 
             await context.Database.ExecuteSqlRawAsync(
-                $@"DELETE FROM jiten.""Decks"" WHERE ""DeckId"" IN ({string.Join(",", childrenToDelete.Select((_, i) => $"{{{i}}}"))})",
-                childrenToDelete.Cast<object>().ToArray());
+                @"DELETE FROM jiten.""ExampleSentences"" WHERE ""DeckId"" IN (" + placeholders + ")",
+                parameters);
+
+            await context.Database.ExecuteSqlRawAsync(
+                @"DELETE FROM jiten.""Decks"" WHERE ""DeckId"" IN (" + placeholders + ")",
+                parameters);
 
             Console.WriteLine($"Deleted {childrenToDelete.Count} child decks.");
         }

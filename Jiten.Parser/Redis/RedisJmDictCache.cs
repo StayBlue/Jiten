@@ -116,8 +116,7 @@ public class RedisJmDictCache : IJmDictCache
                 results[kvp.Key] = kvp.Value;
                 var redisKey = BuildLookupKey(kvp.Key);
                 var json = JsonSerializer.Serialize(kvp.Value, _jsonOptions);
-                // Don't await here, just add to the batch
-                cacheBatch.StringSetAsync(redisKey, json, expiry: _cacheExpiry);
+                _ = cacheBatch.StringSetAsync(redisKey, json, expiry: _cacheExpiry);
             }
 
             // Execute the batch to write all new entries to Redis
@@ -237,7 +236,7 @@ public class RedisJmDictCache : IJmDictCache
                                     results[word.WordId] = word;
                                     var redisKey = BuildWordKey(word.WordId);
                                     var json = JsonSerializer.Serialize(word, _jsonOptions);
-                                    cacheBatch.StringSetAsync(redisKey, json, expiry: _cacheExpiry, flags: CommandFlags.FireAndForget);
+                                    _ = cacheBatch.StringSetAsync(redisKey, json, expiry: _cacheExpiry, flags: CommandFlags.FireAndForget);
                                 }
                                 cacheBatch.Execute();
                             }

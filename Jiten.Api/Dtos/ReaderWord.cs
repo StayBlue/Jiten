@@ -12,6 +12,6 @@ public class ReaderWord
     public List<string> PartsOfSpeech { get; set; } = new();
     public List<List<string>> MeaningsChunks { get; set; } = new();
     public List<string> MeaningsPartOfSpeech { get; set; } = new();
-    public List<KnownState> KnownState { get; set; }
+    public List<KnownState> KnownState { get; set; } = new();
     public List<int> PitchAccents { get; set; } = new();
 }

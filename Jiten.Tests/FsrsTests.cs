@@ -1124,7 +1124,7 @@ public class FsrsTests
         return new DateTime(2022, 11, 29, 12, 30, 0, DateTimeKind.Utc);
     }
 
-    public static void AssertIntervalEquals(int expected, FsrsCard card, DateTime reviewDateTime)
+    private static void AssertIntervalEquals(int expected, FsrsCard card, DateTime reviewDateTime)
     {
         var actual = (card.Due - card.LastReview!.Value).Days;
         Assert.Equal(expected, actual);

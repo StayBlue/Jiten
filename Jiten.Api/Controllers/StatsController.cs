@@ -19,7 +19,7 @@ namespace Jiten.Api.Controllers;
 [EnableRateLimiting("fixed")]
 [Produces("application/json")]
 [SwaggerTag("Operations that provide global statistics for the Jiten dataset.")]
-public class StatsController(JitenDbContext context, ILogger<StatsController> logger) : ControllerBase
+public class StatsController(JitenDbContext context) : ControllerBase
 {
     /// <summary>
     /// Gets aggregated global statistics.

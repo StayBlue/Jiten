@@ -24,7 +24,7 @@ public class ReparseJob(IDbContextFactory<JitenDbContext> contextFactory, IBackg
 
         if (deck.Children.Count == 0)
         {
-            Deck newDeck = await Parser.Parser.ParseTextToDeck(contextFactory, deck.RawText.RawText, true, true, deck.MediaType);
+            Deck newDeck = await Parser.Parser.ParseTextToDeck(contextFactory, deck.RawText!.RawText, true, true, deck.MediaType);
             deck.CharacterCount = newDeck.CharacterCount;
             deck.WordCount = newDeck.WordCount;
             deck.UniqueWordCount = newDeck.UniqueWordCount;

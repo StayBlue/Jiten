@@ -4,7 +4,7 @@ namespace Jiten.Core.Data.Providers.Vndb;
 
 public class VndbReleaseResult
 {
-    public string Id { get; set; }
+    public string Id { get; set; } = default!;
     public int? MinAge { get; set; }
     [JsonPropertyName("has_ero")]
     public bool? HasEro { get; set; }
@@ -16,10 +16,10 @@ public class VndbReleaseResult
 
 public class VndbReleaseResultVn
 {
-    public string Rtype { get; set; } // "complete", "trial", etc.
+    public string Rtype { get; set; } = default!;
 }
 
 public class VndbReleaseResultLanguage
 {
-    public string Lang { get; set; }
+    public string Lang { get; set; } = default!;
 }

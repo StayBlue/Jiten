@@ -30,7 +30,7 @@ public class ReaderController(
     /// <summary>
     /// Parses the provided text and returns a sequence of parsed and unparsed segments as deck words.
     /// </summary>
-    /// <param name="text">Text to parse. Max length 500 characters.</param>
+    /// <param name="request">Request containing text to parse.</param>
     /// <returns>List of parsed and unparsed segments preserving original order.</returns>
     [HttpPost("parse")]
     [SwaggerOperation(Summary = "Parse text into words",

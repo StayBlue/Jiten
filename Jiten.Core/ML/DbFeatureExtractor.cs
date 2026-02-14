@@ -286,7 +286,7 @@ public class DbFeatureExtractor
             _lastSaveCount = featuresToSave.Count; // Update based on what was actually attempted to save
             Console.WriteLine($"Successfully saved {featuresToSave.Count} rows to {outputPath}.");
         }
-        catch (Exception ex)
+        catch (Exception)
         {
             Console.WriteLine($"Failed to save CSV to {outputPath}");
         }

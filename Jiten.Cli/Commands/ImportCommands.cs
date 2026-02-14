@@ -18,7 +18,7 @@ public class ImportCommands(CliContext context)
 
         Console.WriteLine("Importing JMdict...");
         await JmDictHelper.Import(context.ContextFactory, options.XmlPath, options.DictionaryPath, options.FuriganaPath);
-        await JmDictHelper.ImportJMNedict(context.ContextFactory, options.NameDictionaryPath);
+        await JmDictHelper.ImportJMNedict(context.ContextFactory, options.NameDictionaryPath!);
     }
 
     public async Task ImportKanjidic(string path)
@@ -42,14 +42,14 @@ public class ImportCommands(CliContext context)
     public async Task ImportPitchAccents(CliOptions options)
     {
         Console.WriteLine("Importing pitch accents...");
-        await JmDictHelper.ImportPitchAccents(options.Verbose, context.ContextFactory, options.ImportPitchAccents);
+        await JmDictHelper.ImportPitchAccents(options.Verbose, context.ContextFactory, options.ImportPitchAccents!);
         Console.WriteLine("Pitch accents imported.");
     }
 
     public async Task ImportVocabularyOrigin(CliOptions options)
     {
         Console.WriteLine("Importing vocabulary origin...");
-        await JmDictHelper.ImportVocabularyOrigin(options.Verbose, context.ContextFactory, options.ImportVocabularyOrigin);
+        await JmDictHelper.ImportVocabularyOrigin(options.Verbose, context.ContextFactory, options.ImportVocabularyOrigin!);
         Console.WriteLine("Vocabulary origin imported.");
     }
 
@@ -62,7 +62,7 @@ public class ImportCommands(CliContext context)
         }
 
         Console.WriteLine("Syncing JMNedict entries with database...");
-        await JmDictHelper.SyncMissingJMNedict(context.ContextFactory, options.XmlPath, options.SyncJMNedict);
+        await JmDictHelper.SyncMissingJMNedict(context.ContextFactory, options.XmlPath, options.SyncJMNedict!);
         Console.WriteLine("JMNedict sync complete.");
     }
 
@@ -84,7 +84,7 @@ public class ImportCommands(CliContext context)
 
     public async Task CompareJMDict(CliOptions options)
     {
-        if (options.XmlPath == "" || options.DictionaryPath == "" || options.Extra == null)
+        if (string.IsNullOrEmpty(options.XmlPath) || string.IsNullOrEmpty(options.DictionaryPath) || options.Extra == null)
         {
             Console.WriteLine("Usage : -xml dtdPath -dic oldDictionaryPath -x newDictionaryPath");
             return;

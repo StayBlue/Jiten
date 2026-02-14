@@ -65,7 +65,10 @@ public class Cs2Extractor
 
     public async Task<string> Extract(string? filePath, bool verbose)
     {
-        string?[] files = [];
+        if (string.IsNullOrEmpty(filePath))
+            return "";
+
+        string[] files;
 
         // TODO: Handle subfolders separately
         if (Directory.Exists(filePath))

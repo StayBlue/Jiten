@@ -14,7 +14,10 @@ public class BgiExtractor
     /// <returns></returns>
     public async Task<string> Extract(string? filePath, string? filterNamesPath, bool verbose)
     {
-        string?[] files = [];
+        if (string.IsNullOrEmpty(filePath) || string.IsNullOrEmpty(filterNamesPath))
+            return "";
+
+        string[] files;
 
         // TODO: Handle subfolders separately
         if (Directory.Exists(filePath))
@@ -23,7 +26,7 @@ public class BgiExtractor
         }
         else
         {
-            files = new string[] { filePath };
+            files = [filePath];
         }
 
         if (verbose)

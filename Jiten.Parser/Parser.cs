@@ -20,12 +20,12 @@ namespace Jiten.Parser
 
         private static readonly bool UseCache = true;
         private static readonly bool UseRescue = true;
-        private static IDeckWordCache DeckWordCache;
-        private static IJmDictCache JmDictCache;
+        private static IDeckWordCache DeckWordCache = null!;
+        private static IJmDictCache JmDictCache = null!;
 
-        private static IDbContextFactory<JitenDbContext> _contextFactory;
-        private static Dictionary<string, List<int>> _lookups;
-        private static HashSet<int> _nameOnlyWordIds;
+        private static IDbContextFactory<JitenDbContext> _contextFactory = null!;
+        private static Dictionary<string, List<int>> _lookups = null!;
+        private static HashSet<int> _nameOnlyWordIds = null!;
 
         // Cache for compound expression lookups with bounded eviction
         private static readonly Dictionary<string, (bool validExpression, int? wordId)> CompoundExpressionCache = new();
@@ -1103,7 +1103,7 @@ namespace Jiten.Parser
             List<(DeconjugationForm form, List<int> ids)> candidates = new();
             foreach (var form in deconjugated)
             {
-                if (_lookups.TryGetValue(form.Text, out List<int> lookup))
+                if (_lookups.TryGetValue(form.Text, out List<int>? lookup))
                 {
                     candidates.Add((form, lookup));
                 }

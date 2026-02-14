@@ -8,7 +8,7 @@ namespace Jiten.Api.Controllers;
 [ApiController]
 [ApiExplorerSettings(IgnoreApi = true)]
 [Route("api/frequency-list")]
-public class FrequencyListController(JitenDbContext context, ILogger<FrequencyListController> logger) : ControllerBase
+public class FrequencyListController(ILogger<FrequencyListController> logger) : ControllerBase
 {
     /// <summary>
     /// DON'T TOUCH THIS
@@ -64,7 +64,6 @@ public class FrequencyListController(JitenDbContext context, ILogger<FrequencyLi
     /// IT'S BEING USED BY THE YOMITAN EXTENSION
     /// </summary>
     /// <param name="mediaType"></param>
-    /// <param name="downloadType"></param>
     /// <returns></returns>
     [HttpGet("index")]
     public async Task<IResult> GetFrequencyListIndex([FromQuery] MediaType? mediaType = null)
